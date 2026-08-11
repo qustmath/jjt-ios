@@ -1,0 +1,37 @@
+name: JJT
+options:
+  bundleIdPrefix: ink.groovy
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  JJT:
+    type: application
+    platform: iOS
+    sources:
+      - path: JJT
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ink.groovy.jjt
+        # 个人开发者 Team ID（苹果后台 Membership details 里 10 位字符），本地/CI 均可由
+        # `xcodebuild DEVELOPMENT_TEAM=xxx` 或 fastlane 覆盖，这里默认留空即可编译模拟器包
+        DEVELOPMENT_TEAM: ""
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: JJT/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: 荆棘兔
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+        Release:
+          CODE_SIGN_STYLE: Automatic

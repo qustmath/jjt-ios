@@ -1,0 +1,76 @@
+# fastlane 流水线
+#
+# 需要的 GitHub Secrets：
+#   APP_STORE_CONNECT_KEY_ID      App Store Connect API Key ID
+#   APP_STORE_CONNECT_ISSUER_ID   Issuer ID
+#   APP_STORE_CONNECT_API_KEY_B64 AuthKey_xxx.p8 文件的 base64 内容
+#   MATCH_PASSWORD                match 证书仓库加密口令（自定，牢记）
+#   MATCH_GIT_BASIC_AUTHORIZATION match 私有证书仓库的 HTTPS basic auth（base64(user:token)）
+#   TEAM_ID                       10 位开发者 Team ID
+#   APP_IDENTIFIER                Bundle ID（ink.groovy.jjt）
+
+default_platform(:ios)
+
+platform :ios do
+
+  desc "生成工程 + 模拟器编译验证（无需证书）"
+  lane :build_simulator do
+    sh("xcodegen")
+    xcodebuild(
+      scheme: "JJT",
+      destination: "generic/platform=iOS Simulator",
+      xcargs: "-sdk iphonesimulator CODE_SIGNING_ALLOWED=NO"
+    )
+  end
+
+  desc "签名打包并上传 TestFlight"
+  lane :beta do
+    # App Store Connect API Key（p8 内容由 workflow 写入临时文件）
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_filepath: "fastlane/AuthKey.p8",
+      duration: 1200,
+      in_house: false
+    )
+
+    sh("xcodegen")
+
+    # match：用 API Key 自动创建/复用 发布证书 + App Store 描述文件，
+    # 加密存放在独立的私有 git 证书仓库（MATCH_GIT_URL）
+    match(
+      type: "appstore",
+      api_key: api_key,
+      git_url: ENV["MATCH_GIT_URL"],
+      git_basic_authorization: ENV["MATCH_GIT_BASIC_AUTHORIZATION"],
+      app_identifier: ENV["APP_IDENTIFIER"],
+      team_id: ENV["TEAM_ID"],
+      readonly: false
+    )
+
+    # 每次构建自增 build 号（用 TestFlight 当前最大 build + 1）
+    increment_build_number(
+      build_number: latest_testflight_build_number(
+        api_key: api_key,
+        app_identifier: ENV["APP_IDENTIFIER"]
+      ) + 1,
+      xcodeproj: "JJT.xcodeproj"
+    )
+
+    build_app(
+      scheme: "JJT",
+      export_method: "app-store",
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['TEAM_ID']}",
+      export_options: {
+        signingStyle: "automatic",
+        teamID: ENV["TEAM_ID"]
+      }
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      notify_external_testers: false
+    )
+  end
+end

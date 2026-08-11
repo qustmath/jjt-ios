@@ -1,0 +1,70 @@
+name: iOS
+
+on:
+  # 代码推送：只跑模拟器编译验证（不需要任何 Secrets）
+  push:
+    branches: [master, main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  # 手动触发：可选跑 TestFlight 发布（需要 Secrets 齐备）
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "上传 TestFlight（true/false）"
+        required: true
+        default: "false"
+
+jobs:
+  # ── 编译验证：任何推送都跑，不需要付费账号 ─────────────────
+  build-simulator:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: Build (simulator, unsigned)
+        run: |
+          xcodegen
+          xcodebuild -scheme JJT \
+            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  # ── TestFlight 发布：仅手动触发且 release=true ─────────────
+  beta:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: Write App Store Connect API key
+        run: echo "$APP_STORE_CONNECT_API_KEY_B64" | base64 -d > fastlane/AuthKey.p8
+        env:
+          APP_STORE_CONNECT_API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+
+      - name: Bundle install
+        run: bundle install
+
+      - name: fastlane beta
+        run: bundle exec fastlane beta
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          APP_IDENTIFIER: ${{ secrets.APP_IDENTIFIER }}
