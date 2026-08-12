@@ -35,6 +35,8 @@ platform :ios do
     )
 
     sh("xcodegen")
+    # XcodeGen 2.45+ 默认 Xcode 16 工程格式，当前 runner Xcode 15.4 打不开，降级
+    sh("sed -i '' 's/objectVersion = [0-9]*;/objectVersion = 56;/' JJT.xcodeproj/project.pbxproj")
 
     # match：用 API Key 自动创建/复用 发布证书 + App Store 描述文件，
     # 加密存放在独立的私有 git 证书仓库（MATCH_GIT_URL）

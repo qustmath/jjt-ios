@@ -34,6 +34,8 @@ jobs:
       - name: Build (simulator, unsigned)
         run: |
           xcodegen
+          # XcodeGen 2.45+ 默认生成 Xcode 16 格式(objectVersion=77)，15.4 打不开，降到 56
+          sed -i '' 's/objectVersion = [0-9]*;/objectVersion = 56;/' JJT.xcodeproj/project.pbxproj
           xcodebuild -scheme JJT \
             -destination 'generic/platform=iOS Simulator' \
             -sdk iphonesimulator \
