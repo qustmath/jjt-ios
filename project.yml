@@ -1,6 +1,8 @@
 name: JJT
 options:
   bundleIdPrefix: ink.groovy
+  # 按 Xcode 15.4 格式生成工程（新版 XcodeGen 默认 Xcode 16 格式，旧 Xcode 打不开）
+  xcodeVersion: "15.4"
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
