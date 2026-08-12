@@ -26,7 +26,10 @@ jobs:
         run: brew install xcodegen
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+        run: |
+          ls /Applications | grep -i xcode || true
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
       - name: Build (simulator, unsigned)
         run: |
@@ -48,7 +51,10 @@ jobs:
         run: brew install xcodegen
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+        run: |
+          ls /Applications | grep -i xcode || true
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
       - name: Write App Store Connect API key
         run: echo "$APP_STORE_CONNECT_API_KEY_B64" | base64 -d > fastlane/AuthKey.p8
