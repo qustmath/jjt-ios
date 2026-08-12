@@ -8,10 +8,11 @@ final class AppState: ObservableObject {
 
     init() {
         isLoggedIn = TokenManager.shared.isLoggedIn
-        NotificationCenter.default.addObserver(
-            forName: .jjtUnauthorized, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.isLoggedIn = false }
+        // token 失效 → 回登录页（同 actor 隔离，无并发捕获问题）
+        Task { @MainActor in
+            for await _ in NotificationCenter.default.notifications(named: .jjtUnauthorized) {
+                isLoggedIn = false
+            }
         }
     }
 
