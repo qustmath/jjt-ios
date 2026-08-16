@@ -1,5 +1,10 @@
 import SwiftUI
 
+extension Notification.Name {
+    /// 切换主 Tab（object 为 tag Int：0 首页 1 广场 2 密语 3 我的），对齐安卓 navigateToTab
+    static let jjtSwitchTab = Notification.Name("jjtSwitchTab")
+}
+
 /// 主界面：首页 / 广场 / 密语 / 我的（对齐安卓四个主 Tab）
 struct MainTabView: View {
 
@@ -21,6 +26,11 @@ struct MainTabView: View {
                 .tag(3)
         }
         .tint(Noir.gold)
+        .onReceive(NotificationCenter.default.publisher(for: .jjtSwitchTab)) { note in
+            if let tag = note.object as? Int {
+                withAnimation { selection = tag }
+            }
+        }
     }
 }
 

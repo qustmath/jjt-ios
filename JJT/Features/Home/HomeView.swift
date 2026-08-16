@@ -7,6 +7,12 @@ struct HomeView: View {
 
     @StateObject private var vm = HomeViewModel()
     @State private var toast: String?
+    @State private var city: String?
+    @State private var appearedOnce = false
+    // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
+    @State private var mituGlow = false
+    @State private var mituShine = false
+    @State private var badgeSheen = false
 
     var body: some View {
         ZStack {
@@ -19,7 +25,7 @@ struct HomeView: View {
                     statusRow
 
                     if !vm.banners.isEmpty {
-                        HeroCarousel(banners: vm.banners, onTap: { _ in showToast("敬请期待") })
+                        HeroCarousel(banners: vm.banners, onTap: handleBannerTap)
                     }
 
                     ticker
@@ -46,7 +52,7 @@ struct HomeView: View {
 
                     if !vm.latestPosts.isEmpty {
                         Spacer().frame(height: 36)
-                        SectionTitle(en: "MOMENTS", title: "广场动态", actionText: "进广场") { showToast("敬请期待") }
+                        SectionTitle(en: "MOMENTS", title: "广场动态", actionText: "进广场") { switchTab(1) }
                         Spacer().frame(height: 4)
                         momentsList
                     }
@@ -71,7 +77,30 @@ struct HomeView: View {
                 }
             }
         }
-        .onAppear { vm.load() }
+        .onAppear {
+            // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
+            if appearedOnce { vm.load(force: true) } else { vm.load() }
+            appearedOnce = true
+            // 城市定位（拒绝/失败不显示位置块，对齐安卓）
+            if city == nil {
+                Task { city = await CityLocator.shared.currentCity() }
+            }
+        }
+    }
+
+    /// 切换主 Tab（0 首页 1 广场 2 密语 3 我的），对齐安卓 navigateToTab
+    private func switchTab(_ tag: Int) {
+        NotificationCenter.default.post(name: .jjtSwitchTab, object: tag)
+    }
+
+    /// banner 点击：解析 linkTarget DeepLink（{"t":"wheel"} / {"t":"activity","aid":N}）。
+    /// 转盘/活动页 iOS 端未迁移，先提示；页面就绪后在此接线。
+    private func handleBannerTap(_ banner: BannerInfo) {
+        guard let target = banner.linkTarget, !target.isEmpty,
+              let data = target.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              obj["t"] is String else { return }
+        showToast("敬请期待")
     }
 
     private func showToast(_ text: String) {
@@ -124,7 +153,8 @@ struct HomeView: View {
                 }
             }
             Spacer()
-            Button { showToast("敬请期待") } label: {
+            // 铃铛 → 密语 tab（对齐安卓 navigateToTab("messages")；未读红点待 IM SDK 接入后补）
+            Button { switchTab(2) } label: {
                 ZStack(alignment: .topTrailing) {
                     Circle()
                         .fill(.white.opacity(0.05))
@@ -140,11 +170,24 @@ struct HomeView: View {
         .padding(.top, 20)
     }
 
-    // MARK: - 状态行（城市定位待接 CoreLocation，先只显示时间）
+    // MARK: - 状态行（城市定位 + 时间，对齐安卓 StatusRow）
 
     private var statusRow: some View {
         HStack {
-            Spacer().frame(width: 1)
+            if let city {
+                HStack(spacing: 2) {
+                    Image(systemName: "location")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Noir.textDim)
+                    Text(city)
+                        .font(.system(size: 9.5))
+                        .tracking(1.4)
+                        .foregroundStyle(Noir.textDim)
+                }
+            } else {
+                Spacer().frame(width: 1)
+            }
+            Spacer()
             Text(statusTime)
                 .font(.system(size: 9.5, design: .serif))
                 .tracking(1.4)
@@ -195,7 +238,22 @@ struct HomeView: View {
                     .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
                 ], startPoint: .top, endPoint: .bottom)
 
-                // 仅邀约制 徽章
+                // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
+                GeometryReader { geo in
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
+                        .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
+                        .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
+                        .init(color: .clear, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: geo.size.width / 3, height: geo.size.height * 3)
+                    .rotationEffect(.degrees(-18))
+                    .offset(x: mituShine ? geo.size.width * 1.4 : -geo.size.width * 0.5, y: -geo.size.height)
+                }
+                .allowsHitTesting(false)
+
+                // 仅邀约制 徽章（vip-sheen 白色扫光 2.8s）
                 VStack {
                     HStack {
                         Text("仅 邀 约 制")
@@ -205,6 +263,16 @@ struct HomeView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
                             .background(Capsule().fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                            .overlay {
+                                GeometryReader { g in
+                                    LinearGradient(colors: [.clear, .white.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
+                                        .frame(width: g.size.width * 0.4, height: g.size.height * 3)
+                                        .rotationEffect(.degrees(-18))
+                                        .offset(x: badgeSheen ? g.size.width * 1.3 : -g.size.width * 0.5, y: -g.size.height)
+                                }
+                                .clipShape(Capsule())
+                                .allowsHitTesting(false)
+                            }
                             .padding(20)
                         Spacer()
                     }
@@ -260,8 +328,15 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.goldLight.opacity(0.45), lineWidth: 1))
             .cornerFrame(Noir.goldLight.opacity(0.9))
+            // 金色呼吸外阴影（对齐安卓 marquee-glow：快亮慢暗）
+            .shadow(color: Noir.gold.opacity(mituGlow ? 0.5 : 0.16), radius: mituGlow ? 30 : 14)
         }
         .buttonStyle(.plain)
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.9).repeatForever(autoreverses: true)) { mituGlow = true }
+            withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) { mituShine = true }
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false)) { badgeSheen = true }
+        }
     }
 
     // MARK: - 功能目录 · 横滑排
@@ -271,17 +346,19 @@ struct HomeView: View {
         let name: String
         let en: String
         let icon: String
+        /// 有主 tab 对应页的直达目标；nil = 页面未迁移（对齐安卓对应页面后接线）
+        let tab: Int?
     }
 
     private let entries: [Entry] = [
-        .init(name: "礼物中心", en: "Atelier", icon: "giftcard"),
-        .init(name: "组局", en: "Gather", icon: "person.3"),
-        .init(name: "群聊", en: "Channel", icon: "bubble.left.and.bubble.right"),
-        .init(name: "广场动态", en: "Square", icon: "flame"),
-        .init(name: "匹配", en: "Match", icon: "heart"),
-        .init(name: "AI伴侣", en: "Companion", icon: "sparkles"),
-        .init(name: "属性测试", en: "Persona", icon: "testtube.2"),
-        .init(name: "商城", en: "Boutique", icon: "bag"),
+        .init(name: "礼物中心", en: "Atelier", icon: "giftcard", tab: nil),
+        .init(name: "组局", en: "Gather", icon: "person.3", tab: nil),
+        .init(name: "群聊", en: "Channel", icon: "bubble.left.and.bubble.right", tab: nil),
+        .init(name: "广场动态", en: "Square", icon: "flame", tab: 1),
+        .init(name: "匹配", en: "Match", icon: "heart", tab: nil),
+        .init(name: "AI伴侣", en: "Companion", icon: "sparkles", tab: nil),
+        .init(name: "属性测试", en: "Persona", icon: "testtube.2", tab: nil),
+        .init(name: "商城", en: "Boutique", icon: "bag", tab: nil),
     ]
 
     private var entryRail: some View {
@@ -289,7 +366,9 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
                     ForEach(entries) { e in
-                        Button { showToast("敬请期待") } label: {
+                        Button {
+                            if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
+                        } label: {
                             VStack(spacing: 0) {
                                 ZStack {
                                     Circle()
@@ -352,14 +431,11 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(Array(recommendMock.enumerated()), id: \.element.id) { index, user in
+                    // 安卓跳用户主页；iOS 用户主页未迁移，先提示
                     Button { showToast("敬请期待") } label: {
                         ZStack(alignment: .topLeading) {
-                            AsyncImage(url: URL(string: user.cover)) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    Color.white.opacity(0.05)
-                                }
+                            WebImage(url: webImageURL(user.cover)) {
+                                Color.white.opacity(0.05)
                             }
                             .frame(width: 132, height: 190)
                             .clipped()
@@ -485,14 +561,11 @@ struct HomeView: View {
     private var momentsList: some View {
         VStack(spacing: 0) {
             ForEach(vm.latestPosts.prefix(3)) { post in
-                Button { showToast("敬请期待") } label: {
+                // 安卓进广场；iOS 切到广场 tab
+                Button { switchTab(1) } label: {
                     HStack(spacing: 12) {
-                        AsyncImage(url: URL(string: post.avatar ?? "")) { phase in
-                            if let image = phase.image {
-                                image.resizable().scaledToFill()
-                            } else {
-                                Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
-                            }
+                        WebImage(url: webImageURL(post.avatar)) {
+                            Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
                         }
                         .frame(width: 36, height: 36)
                         .clipShape(Circle())
@@ -510,12 +583,8 @@ struct HomeView: View {
                         }
                         Spacer()
                         if let img = post.images?.first {
-                            AsyncImage(url: URL(string: img)) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    Color.white.opacity(0.05)
-                                }
+                            WebImage(url: webImageURL(img)) {
+                                Color.white.opacity(0.05)
                             }
                             .frame(width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -617,12 +686,8 @@ private struct HeroCarousel: View {
         ZStack {
             TabView(selection: $index) {
                 ForEach(banners.indices, id: \.self) { i in
-                    AsyncImage(url: URL(string: banners[i].imageUrl ?? "")) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            Noir.noir2
-                        }
+                    WebImage(url: webImageURL(banners[i].imageUrl)) {
+                        Noir.noir2
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
