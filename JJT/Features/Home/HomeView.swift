@@ -319,11 +319,18 @@ struct HomeView: View {
     ]
 
     private var ticker: some View {
-        MarqueeText(text: Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　") + "　　")
-            .padding(.vertical, 10)
-            .background(Color.black.opacity(0.4))
-            .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
-            .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　"))
+                .font(.system(size: 10.5))
+                .tracking(1)
+                .foregroundStyle(Noir.gold.opacity(0.7))
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.vertical, 10)
+        }
+        .background(Color.black.opacity(0.4))
+        .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
     }
 
     // MARK: - 蜜兔会 · 独立奢华入口（静态版，呼吸/流光动画后续加回）
@@ -344,21 +351,21 @@ struct HomeView: View {
                 ], startPoint: .top, endPoint: .bottom)
 
                 // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
-                GeometryReader { geo in
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
-                        .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
-                        .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
-                        .init(color: .clear, location: 1),
-                    ], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: geo.size.width / 3, height: geo.size.height * 3)
-                    .rotationEffect(.degrees(-18))
-                    .offset(x: mituShine ? geo.size.width * 1.4 : -geo.size.width * 0.5, y: -geo.size.height)
-                }
+                // 宽度用已知常量（卡片宽 = 屏宽 - 40），不放 GeometryReader——
+                // 其在 ScrollView 内有引发布局错乱的前科
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
+                    .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
+                    .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
+                    .init(color: .clear, location: 1),
+                ], startPoint: .leading, endPoint: .trailing)
+                .frame(width: (screenWidth - 40) / 3, height: 190 * 3)
+                .rotationEffect(.degrees(-18))
+                .offset(x: mituShine ? (screenWidth - 40) * 1.4 : -(screenWidth - 40) * 0.5, y: -190)
                 .allowsHitTesting(false)
 
-                // 仅邀约制 徽章（vip-sheen 白色扫光 2.8s）
+                // 仅邀约制 徽章（vip-sheen 白色扫光 2.8s；徽章宽约 130pt，固定值避免 GeometryReader）
                 VStack {
                     HStack {
                         Text("仅 邀 约 制")
@@ -369,15 +376,13 @@ struct HomeView: View {
                             .padding(.vertical, 4)
                             .background(Capsule().fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing)))
                             .overlay {
-                                GeometryReader { g in
-                                    LinearGradient(colors: [.clear, .white.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
-                                        .frame(width: g.size.width * 0.4, height: g.size.height * 3)
-                                        .rotationEffect(.degrees(-18))
-                                        .offset(x: badgeSheen ? g.size.width * 1.3 : -g.size.width * 0.5, y: -g.size.height)
-                                }
-                                .clipShape(Capsule())
-                                .allowsHitTesting(false)
+                                Capsule()
+                                    .fill(LinearGradient(colors: [.clear, .white.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing))
+                                    .frame(width: 52, height: 90)
+                                    .rotationEffect(.degrees(-18))
+                                    .offset(x: badgeSheen ? 170 : -65, y: -30)
                             }
+                            .clipShape(Capsule())
                             .padding(20)
                         Spacer()
                     }
