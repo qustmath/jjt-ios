@@ -19,10 +19,21 @@ struct FriendApplyButton: View {
                     let enabled = status != "pending_out"
                     let label = status == "pending_out" ? "已申请" : (status == "pending_in" ? "同意申请" : "加好友")
                     button(label: label, enabled: enabled)
-                } else if loadFailed && status == nil {
-                    // 状态查询失败兜底：仍给入口，点了由后端返回真实错误
-                    button(label: "加好友", enabled: true)
+                } else if status == nil {
+                    // 调试期：槽位常显——加载中 "…"，失败显示"加好友（重试）"，
+                    // 若一直转圈说明视图层状态加载有 bug
+                    if loadFailed {
+                        button(label: "加好友", enabled: true)
+                    } else {
+                        Text("…")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.3))
+                            .frame(height: 30)
+                            .padding(.horizontal, 12)
+                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
                 }
+                // status == friend/self → 不渲染（对齐安卓）
             }
         }
         .onAppear { reload() }

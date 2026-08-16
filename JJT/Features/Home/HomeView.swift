@@ -219,15 +219,25 @@ struct HomeView: View {
     private var heroBanner: some View {
         let banner = vm.banners[safeBannerIndex]
         return ZStack {
+            // 嵌套分页容器：轮播区横滑只切图，不与主 tab 翻页冲突；
             // 写死屏幕宽：图片加载完成后不允许它参与宽度协商（撑爆布局的根因）
-            AsyncImage(url: webImageURL(banner.imageUrl)) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    Noir.noir2
+            TabView(selection: $bannerIndex) {
+                ForEach(vm.banners.indices, id: \.self) { i in
+                    AsyncImage(url: webImageURL(vm.banners[i].imageUrl)) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Noir.noir2
+                        }
+                    }
+                    .frame(width: screenWidth, height: 400)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    .onTapGesture { handleBannerTap(vm.banners[i]) }
+                    .tag(i)
                 }
             }
-            .id(safeBannerIndex) // 切换时重新加载
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(width: screenWidth, height: 400)
             .clipped()
 
@@ -303,19 +313,8 @@ struct HomeView: View {
         }
         .frame(width: screenWidth, height: 400)
         .clipped()
-        .contentShape(Rectangle())
-        .onTapGesture { handleBannerTap(banner) }
-        .gesture(
-            DragGesture(minimumDistance: 30).onEnded { value in
-                if value.translation.width < 0 {
-                    bannerIndex = (safeBannerIndex + 1) % vm.banners.count
-                } else if value.translation.width > 0 {
-                    bannerIndex = (safeBannerIndex - 1 + vm.banners.count) % vm.banners.count
-                }
-            }
-        )
         .onReceive(bannerTimer) { _ in
-            bannerIndex = (safeBannerIndex + 1) % vm.banners.count
+            withAnimation { bannerIndex = (safeBannerIndex + 1) % vm.banners.count }
         }
         .cornerFrame(Noir.gold.opacity(0.7))
     }

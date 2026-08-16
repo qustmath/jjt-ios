@@ -128,6 +128,49 @@ final class APIClient {
         throw APIError.unauthorized
     }
 
+    // MARK: - 文件上传
+
+    /// 经后端上传文件（Multipart，对齐安卓 FileApi.upload；moderate=false 跳过上传时审核，发帖接口统一审）
+    /// 返回文件 URL
+    func uploadFile(data: Data, filename: String, mime: String) async throws -> String {
+        var components = URLComponents(url: Config.apiBaseURL.appendingPathComponent("app-api/infra/file/upload"), resolvingAgainstBaseURL: true)!
+        components.queryItems = [URLQueryItem(name: "moderate", value: "false")]
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "POST"
+        if let token = TokenManager.shared.accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let boundary = "JJTBoundary\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mime)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        let (respData, response): (Data, URLResponse)
+        do {
+            (respData, response) = try await session.data(for: req)
+        } catch {
+            throw APIError.network(error)
+        }
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            throw APIError.unauthorized
+        }
+        let resp: CommonResp<String>
+        do {
+            resp = try decoder.decode(CommonResp<String>.self, from: respData)
+        } catch {
+            throw APIError.decoding(error)
+        }
+        guard resp.code == 0, let url = resp.data else {
+            throw APIError.business(code: resp.code, message: resp.msg ?? "上传失败")
+        }
+        return url
+    }
+
     // MARK: - Token 刷新
 
     private func refreshTokenIfNeeded() async -> Bool {

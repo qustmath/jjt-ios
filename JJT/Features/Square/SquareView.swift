@@ -48,6 +48,10 @@ struct SquareView: View {
         .onAppear { vm.switchTab(vm.tab) }
         // 分页滑动直接改 vm.tab（绑定），这里补触发数据加载
         .onChange(of: vm.tab) { _, new in vm.switchTab(new) }
+        // 发帖成功 → 刷新当前 tab
+        .onReceive(NotificationCenter.default.publisher(for: .jjtPostCreated)) { _ in
+            vm.refresh(vm.tab)
+        }
         .fullScreenCover(isPresented: Binding(
             get: { detailPostId != nil },
             set: { if !$0 { detailPostId = nil } }

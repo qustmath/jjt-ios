@@ -11,6 +11,7 @@ struct MainTabView: View {
 
     @State private var selection = 0
     @State private var toast: String?
+    @State private var showCreatePost = false
 
     var body: some View {
         ZStack {
@@ -45,6 +46,7 @@ struct MainTabView: View {
                 withAnimation { selection = tag }
             }
         }
+        .fullScreenCover(isPresented: $showCreatePost) { CreatePostView() }
     }
 
     private func showToast(_ text: String) {
@@ -96,9 +98,9 @@ struct MainTabView: View {
         .buttonStyle(.plain)
     }
 
-    /// 中央发布按钮（酒红渐变圆钮；发布页未迁移，先提示）
+    /// 中央发布按钮（酒红渐变圆钮）
     private var publishButton: some View {
-        Button { showToast("发布敬请期待") } label: {
+        Button { showCreatePost = true } label: {
             ZStack {
                 Circle()
                     .fill(LinearGradient(stops: [

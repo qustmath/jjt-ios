@@ -30,6 +30,28 @@ struct CommentReq: Encodable {
     let content: String
 }
 
+/// 发帖请求（对齐安卓 CreatePostReq；nil 字段不编码）
+struct CreatePostReq: Encodable {
+    let mediaType: String
+    let images: [String]?
+    let video: String?
+    let videoCover: String?
+    let content: String
+    let topics: [String]?
+    let location: String?
+    let latitude: Double?
+    let longitude: Double?
+    let cityCode: String?
+    let cityName: String?
+    let paidPrice: Int?
+    let previewSeconds: Int?
+}
+
+/// 发帖成功通知（广场列表收到后刷新）
+extension Notification.Name {
+    static let jjtPostCreated = Notification.Name("jjtPostCreated")
+}
+
 enum SocialAPI {
 
     /// 帖子流（tab: recommend/newest/nearby/follow；同城需带 cityCode；mediaType=video 只取视频帖）
@@ -63,6 +85,11 @@ enum SocialAPI {
     /// 发评论（parentId 非空为回复）
     static func addComment(postId: Int64, parentId: Int64?, content: String) async throws -> CommentInfo {
         try await APIClient.shared.post("app-api/social/post/comment", body: CommentReq(postId: postId, parentId: parentId, content: content))
+    }
+
+    /// 发布帖子
+    static func createPost(_ req: CreatePostReq) async throws -> PostInfo {
+        try await APIClient.shared.post("app-api/social/post/create", body: req)
     }
 
     /// 组局城市列表（cityCode ↔ 城市名映射，同城 tab 定位后反查 cityCode 用）
