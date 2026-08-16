@@ -7,7 +7,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            PlaceholderPage(title: "首页", en: "HOME", icon: "house")
+            HomeView()
                 .tabItem { Label("首页", systemImage: "house") }
                 .tag(0)
             PlaceholderPage(title: "广场", en: "SQUARE", icon: "square.grid.2x2")
