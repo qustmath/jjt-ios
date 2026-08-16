@@ -1,13 +1,21 @@
-import SwiftUI
+import Foundation
 
-/// 网络图片 URL 净化（对齐安卓 usesCleartextTraffic=true 的容忍度）：
-/// 历史上传数据里 cdn.jjt.org.cn 是 http 明文，iOS ATS 默认拦截导致图片全黑；
-/// 该域名（阿里云 OSS）已支持 https，统一升级。空串/非法 URL 返回 nil（调用方显示占位）。
+/// 图片 URL 归一化（对齐安卓 usesCleartextTraffic=true 的容忍度）：
+/// 1. 相对路径（/upload/x.jpg）→ 拼 API 域名
+/// 2. 协议相对（//cdn/x.jpg）→ 补 https
+/// 3. http 明文原样返回（Info.plist 已放行 ATS，与安卓一致）
+/// 空串/非法返回 nil（调用方显示占位）。
 func webImageURL(_ raw: String?) -> URL? {
-    guard let raw, !raw.isEmpty else { return nil }
-    var s = raw
-    if s.hasPrefix("http://cdn.jjt.org.cn/") {
-        s = "https://" + s.dropFirst("http://".count)
+    guard let raw else { return nil }
+    var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !s.isEmpty else { return nil }
+    if s.hasPrefix("//") {
+        s = "https:" + s
+    } else if !s.hasPrefix("http://") && !s.hasPrefix("https://") {
+        let base = Config.apiBaseURL.absoluteString.hasSuffix("/")
+            ? Config.apiBaseURL.absoluteString
+            : Config.apiBaseURL.absoluteString + "/"
+        s = s.hasPrefix("/") ? base + s.dropFirst() : base + s
     }
     return URL(string: s)
 }
@@ -21,7 +29,7 @@ enum WebImageCache {
     }()
 }
 
-/// 网络图片（替代 AsyncImage：URL 净化 + 内存缓存 + 取消/复用友好）。
+/// 网络图片（替代 AsyncImage：URL 归一化 + 内存缓存 + 取消/复用友好）。
 /// 加载中/失败均显示 placeholder，与安卓 Coil 的占位行为对齐。
 struct WebImage<Placeholder: View>: View {
     let url: URL?
