@@ -20,6 +20,7 @@ struct DiagnosticsSheet: View {
         NavigationStack {
             List {
                 Section("环境") {
+                    LabeledContent("App 版本", value: "v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")")
                     LabeledContent("API", value: Config.apiBaseURL.absoluteString)
                     LabeledContent("登录态", value: TokenManager.shared.isLoggedIn ? "已登录" : "未登录")
                 }

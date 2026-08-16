@@ -625,6 +625,11 @@ struct HomeView: View {
                 .font(.system(size: 9))
                 .tracking(2.7)
                 .foregroundStyle(.white.opacity(0.2))
+            // 调试期版本标识：确认真机装的构建号
+            Text("build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")")
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.15))
+                .padding(.top, 6)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
