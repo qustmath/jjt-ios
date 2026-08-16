@@ -14,6 +14,10 @@ struct HomeView: View {
     @State private var appearedOnce = false
     @State private var showDiagnostics = false
     @State private var bannerIndex = 0
+    // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
+    @State private var mituGlow = false
+    @State private var mituShine = false
+    @State private var badgeSheen = false
 
     /// 屏幕宽（竖屏锁定，按场景窗口取）
     private var screenWidth: CGFloat {
@@ -145,7 +149,7 @@ struct HomeView: View {
             Spacer()
             // 铃铛 → 密语 tab（对齐安卓 navigateToTab("messages")；未读红点待 IM SDK 接入后补）
             Button { switchTab(2) } label: {
-                ZStack(alignment: .topTrailing) {
+                ZStack {
                     Circle()
                         .fill(.white.opacity(0.05))
                         .overlay(Circle().stroke(Noir.hairlineGold, lineWidth: 1))
@@ -315,18 +319,11 @@ struct HomeView: View {
     ]
 
     private var ticker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            Text(Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　"))
-                .font(.system(size: 10.5))
-                .tracking(1)
-                .foregroundStyle(Noir.gold.opacity(0.7))
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.vertical, 10)
-        }
-        .background(Color.black.opacity(0.4))
-        .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
-        .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+        MarqueeText(text: Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　") + "　　")
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.4))
+            .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
     }
 
     // MARK: - 蜜兔会 · 独立奢华入口（静态版，呼吸/流光动画后续加回）
@@ -346,7 +343,22 @@ struct HomeView: View {
                     .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
                 ], startPoint: .top, endPoint: .bottom)
 
-                // 仅邀约制 徽章
+                // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
+                GeometryReader { geo in
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
+                        .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
+                        .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
+                        .init(color: .clear, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: geo.size.width / 3, height: geo.size.height * 3)
+                    .rotationEffect(.degrees(-18))
+                    .offset(x: mituShine ? geo.size.width * 1.4 : -geo.size.width * 0.5, y: -geo.size.height)
+                }
+                .allowsHitTesting(false)
+
+                // 仅邀约制 徽章（vip-sheen 白色扫光 2.8s）
                 VStack {
                     HStack {
                         Text("仅 邀 约 制")
@@ -356,6 +368,16 @@ struct HomeView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
                             .background(Capsule().fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                            .overlay {
+                                GeometryReader { g in
+                                    LinearGradient(colors: [.clear, .white.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
+                                        .frame(width: g.size.width * 0.4, height: g.size.height * 3)
+                                        .rotationEffect(.degrees(-18))
+                                        .offset(x: badgeSheen ? g.size.width * 1.3 : -g.size.width * 0.5, y: -g.size.height)
+                                }
+                                .clipShape(Capsule())
+                                .allowsHitTesting(false)
+                            }
                             .padding(20)
                         Spacer()
                     }
@@ -410,9 +432,15 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.goldLight.opacity(0.45), lineWidth: 1))
             .cornerFrame(Noir.goldLight.opacity(0.9))
-            .shadow(color: Noir.gold.opacity(0.2), radius: 18)
+            // 金色呼吸外阴影（对齐安卓 marquee-glow：快亮慢暗）
+            .shadow(color: Noir.gold.opacity(mituGlow ? 0.5 : 0.16), radius: mituGlow ? 30 : 14)
         }
         .buttonStyle(.plain)
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.9).repeatForever(autoreverses: true)) { mituGlow = true }
+            withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) { mituShine = true }
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false)) { badgeSheen = true }
+        }
     }
 
     // MARK: - 功能目录 · 横滑排
@@ -764,6 +792,51 @@ private struct SectionTitle: View {
             }
         }
         .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - 滚动播报（无限横向跑马灯）
+
+private struct MarqueeText: View {
+    let text: String
+
+    @State private var textWidth: CGFloat = 0
+    @State private var offset: CGFloat = 0
+
+    var body: some View {
+        HStack(spacing: 0) {
+            line
+            line
+        }
+        .offset(x: offset)
+        .fixedSize()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        .onAppear { start() }
+    }
+
+    private var line: some View {
+        Text(text)
+            .font(.system(size: 10.5))
+            .tracking(1)
+            .foregroundStyle(Noir.gold.opacity(0.7))
+            .lineLimit(1)
+            .fixedSize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                if textWidth == 0 { textWidth = $0 }
+            }
+    }
+
+    private func start() {
+        guard textWidth > 0 else {
+            // 等宽度测量完成后启动
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { start() }
+            return
+        }
+        offset = 0
+        withAnimation(.linear(duration: Double(textWidth) / 30).repeatForever(autoreverses: false)) {
+            offset = -textWidth
+        }
     }
 }
 
