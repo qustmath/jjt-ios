@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// 图片 URL 归一化（对齐安卓 usesCleartextTraffic=true 的容忍度）：
 /// 1. 相对路径（/upload/x.jpg）→ 拼 API 域名
