@@ -15,6 +15,11 @@ struct HomeView: View {
     @State private var showDiagnostics = false
     @State private var bannerIndex = 0
 
+    /// 屏幕宽（竖屏锁定，按场景窗口取）
+    private var screenWidth: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.width ?? 390
+    }
+
     var body: some View {
         ZStack {
             Noir.bg.ignoresSafeArea()
@@ -201,6 +206,7 @@ struct HomeView: View {
     private var heroBanner: some View {
         let banner = vm.banners[safeBannerIndex]
         return ZStack {
+            // 写死屏幕宽：图片加载完成后不允许它参与宽度协商（撑爆布局的根因）
             AsyncImage(url: webImageURL(banner.imageUrl)) { phase in
                 if let image = phase.image {
                     image.resizable().scaledToFill()
@@ -208,8 +214,9 @@ struct HomeView: View {
                     Noir.noir2
                 }
             }
-            .id(safeBannerIndex) // 切换时重新加载/过渡
-            .transition(.opacity)
+            .id(safeBannerIndex) // 切换时重新加载
+            .frame(width: screenWidth, height: 400)
+            .clipped()
 
             // 渐变蒙版
             LinearGradient(stops: [
@@ -281,24 +288,21 @@ struct HomeView: View {
             }
             .allowsHitTesting(false)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 400)
+        .frame(width: screenWidth, height: 400)
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture { handleBannerTap(banner) }
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { value in
-                withAnimation {
-                    if value.translation.width < 0 {
-                        bannerIndex = (safeBannerIndex + 1) % vm.banners.count
-                    } else if value.translation.width > 0 {
-                        bannerIndex = (safeBannerIndex - 1 + vm.banners.count) % vm.banners.count
-                    }
+                if value.translation.width < 0 {
+                    bannerIndex = (safeBannerIndex + 1) % vm.banners.count
+                } else if value.translation.width > 0 {
+                    bannerIndex = (safeBannerIndex - 1 + vm.banners.count) % vm.banners.count
                 }
             }
         )
         .onReceive(bannerTimer) { _ in
-            withAnimation { bannerIndex = (safeBannerIndex + 1) % vm.banners.count }
+            bannerIndex = (safeBannerIndex + 1) % vm.banners.count
         }
         .cornerFrame(Noir.gold.opacity(0.7))
     }
@@ -333,8 +337,7 @@ struct HomeView: View {
                 Image("MituBg")
                     .resizable()
                     .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 190)
+                    .frame(width: screenWidth - 40, height: 190)
                     .clipped()
                 // 底部压暗
                 LinearGradient(stops: [
@@ -402,8 +405,7 @@ struct HomeView: View {
                     .padding(20)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 190)
+            .frame(width: screenWidth - 40, height: 190)
             .background(LinearGradient(colors: [Color(red: 0x2E/255, green: 0x0A/255, blue: 0x14/255), Color(red: 0x10/255, green: 0x06/255, blue: 0x0A/255), Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255)], startPoint: .topLeading, endPoint: .bottomTrailing))
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.goldLight.opacity(0.45), lineWidth: 1))
