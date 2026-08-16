@@ -7,7 +7,7 @@
 #   MATCH_PASSWORD                match 证书仓库加密口令（自定，牢记）
 #   MATCH_GIT_BASIC_AUTHORIZATION match 私有证书仓库的 HTTPS basic auth（base64(user:token)）
 #   TEAM_ID                       10 位开发者 Team ID
-#   APP_IDENTIFIER                Bundle ID（ink.groovy.jjt）
+#   APP_IDENTIFIER                Bundle ID（online.tuxiansheng.jjt）
 
 default_platform(:ios)
 

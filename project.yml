@@ -1,6 +1,6 @@
 name: JJT
 options:
-  bundleIdPrefix: ink.groovy
+  bundleIdPrefix: online.tuxiansheng
   # 按 Xcode 15.4 格式生成工程（新版 XcodeGen 默认 Xcode 16 格式，旧 Xcode 打不开）
   xcodeVersion: "15.4"
   deploymentTarget:
@@ -15,7 +15,7 @@ targets:
       - path: JJT
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ink.groovy.jjt
+        PRODUCT_BUNDLE_IDENTIFIER: online.tuxiansheng.jjt
         # 个人开发者 Team ID（苹果后台 Membership details 里 10 位字符），本地/CI 均可由
         # `xcodebuild DEVELOPMENT_TEAM=xxx` 或 fastlane 覆盖，这里默认留空即可编译模拟器包
         DEVELOPMENT_TEAM: ""

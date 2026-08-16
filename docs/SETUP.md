@@ -22,7 +22,7 @@
 2. 选 **App IDs** → **App**
 3. 填：
    - Description：`JJT`
-   - Bundle ID 选 **Explicit**：`ink.groovy.jjt`（与安卓包名一致）
+   - Bundle ID 选 **Explicit**：`online.tuxiansheng.jjt`
    - Capabilities 勾选：**Push Notifications**（后续 IM 推送要用，先勾上）
 4. Register
 
@@ -35,7 +35,7 @@
    - 平台：iOS
    - 名称：荆棘兔子（"荆棘兔"已被占用）
    - 主要语言：简体中文
-   - 套装 ID：选刚建的 `ink.groovy.jjt`
+   - 套装 ID：选刚建的 `online.tuxiansheng.jjt`
    - SKU：`jjt-ios`（内部标识，随意）
 3. 创建后**记下 App 的 Apple ID**（App 信息页，一串数字）——选填，后续自动回复评论等用得到
 
@@ -76,7 +76,7 @@ iOS 代码仓库 → **Settings** → **Secrets and variables** → **Actions** 
 
 | Name | 值 | 来源 |
 |---|---|---|
-| `APP_IDENTIFIER` | `ink.groovy.jjt` | 第 2 步 |
+| `APP_IDENTIFIER` | `online.tuxiansheng.jjt` | 第 2 步 |
 | `TEAM_ID` | 10 位字符 | developer.apple.com/account → Membership details |
 | `APP_STORE_CONNECT_KEY_ID` | 10 位 | 第 4 步 |
 | `APP_STORE_CONNECT_ISSUER_ID` | UUID | 第 4 步 |
