@@ -20,7 +20,8 @@ struct MainTabView: View {
                 PlaceholderPage(title: "密语", en: "MESSAGES", icon: "bubble.left.and.bubble.right").tag(2)
                 MeView().tag(3)
             }
-            .toolbar(.hidden, for: .tabBar)
+            // 分页容器：左右滑跟手切换主 tab（对齐安卓 HorizontalPager）
+            .tabViewStyle(.page(indexDisplayMode: .never))
             // 底部留出导航条高度，内容不被遮挡
             .safeAreaInset(edge: .bottom, spacing: 0) { noirTabBar }
 
@@ -44,17 +45,6 @@ struct MainTabView: View {
                 withAnimation { selection = tag }
             }
         }
-        // 全局左右滑切主 tab（对齐安卓 HorizontalPager 横滑切换；
-        // 横向位移明显大于纵向才触发，不与页面内滚动/横滑组件抢手势）
-        .gesture(
-            DragGesture(minimumDistance: 60).onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                guard abs(dx) > abs(dy) * 2.5 else { return }
-                if dx < 0, selection < 3 { selection += 1 }
-                else if dx > 0, selection > 0 { selection -= 1 }
-            }
-        )
     }
 
     private func showToast(_ text: String) {

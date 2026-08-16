@@ -8,8 +8,6 @@ struct ImagePreviewViewer: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var index: Int
-    /// 任一页处于放大态（拖动图片时屏蔽翻页手势干扰由系统协调，此处仅上报）
-    @State private var zoomed = false
 
     init(images: [String], initialIndex: Int) {
         self.images = images
@@ -25,7 +23,6 @@ struct ImagePreviewViewer: View {
                 ForEach(images.indices, id: \.self) { i in
                     ZoomableImage(
                         urlString: images[i],
-                        onZoomChange: { zoomed = $0 },
                         onTap: { dismiss() }
                     )
                     .tag(i)
@@ -33,7 +30,6 @@ struct ImagePreviewViewer: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
-            .onChange(of: index) { _, _ in zoomed = false }
 
             // 页码胶囊
             if images.count > 1 {
@@ -71,71 +67,99 @@ struct ImagePreviewViewer: View {
     }
 }
 
-/// 可缩放图片：双指缩放、放大后拖动、双击放大/还原、单击关闭
-private struct ZoomableImage: View {
+/// 可缩放图片：改用 UIScrollView 原生缩放手势（双指/拖动手感与系统照片一致，
+/// 自绘手势有"不跟手"问题）
+private struct ZoomableImage: UIViewRepresentable {
     let urlString: String
-    var onZoomChange: (Bool) -> Void
     var onTap: () -> Void
 
-    @State private var scale: CGFloat = 1
-    @State private var lastScale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
+    func makeUIView(context: Context) -> UIScrollView {
+        let sv = UIScrollView()
+        sv.minimumZoomScale = 1
+        sv.maximumZoomScale = 4
+        sv.delegate = context.coordinator
+        sv.showsVerticalScrollIndicator = false
+        sv.showsHorizontalScrollIndicator = false
+        sv.contentInsetAdjustmentBehavior = .never
 
-    var body: some View {
-        AsyncImage(url: webImageURL(urlString)) { phase in
-            if let image = phase.image {
-                image.resizable().scaledToFit()
-            } else {
-                Color.clear.overlay(ProgressView().tint(.white.opacity(0.5)))
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .scaleEffect(scale)
-        .offset(offset)
-        .contentShape(Rectangle())
-        .gesture(
-            TapGesture(count: 2).onEnded {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if scale > 1.05 { reset() } else {
-                        scale = 2.5
-                        lastScale = 2.5
-                        onZoomChange(true)
-                    }
-                }
-            }
-        )
-        .simultaneousGesture(
-            TapGesture(count: 1).onEnded { if scale <= 1.05 { onTap() } }
-        )
-        .simultaneousGesture(
-            MagnificationGesture()
-                .onChanged { v in
-                    scale = max(1, lastScale * v)
-                    onZoomChange(scale > 1.05)
-                }
-                .onEnded { _ in
-                    lastScale = scale
-                    if scale <= 1.05 { withAnimation { reset() } }
-                }
-        )
-        // 拖动手势仅在放大态挂载——否则会把未放大时的左右翻页滑动吃掉
-        .gesture(
-            DragGesture()
-                .onChanged { v in
-                    offset = CGSize(width: lastOffset.width + v.translation.width,
-                                    height: lastOffset.height + v.translation.height)
-                }
-                .onEnded { _ in lastOffset = offset },
-            including: scale > 1.05 ? .all : .none
-        )
+        let iv = UIImageView()
+        iv.contentMode = .scaleAspectFit
+        iv.isUserInteractionEnabled = true
+        sv.addSubview(iv)
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.onDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        sv.addGestureRecognizer(doubleTap)
+        let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.onSingleTap(_:)))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.require(toFail: doubleTap)
+        sv.addGestureRecognizer(singleTap)
+
+        context.coordinator.scrollView = sv
+        context.coordinator.imageView = iv
+        return sv
     }
 
-    private func reset() {
-        scale = 1
-        lastScale = 1
-        offset = .zero
-        lastOffset = .zero
-        onZoomChange(false)
+    func updateUIView(_ uiView: UIScrollView, context: Context) {
+        context.coordinator.onTap = onTap
+        context.coordinator.load(urlString)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        weak var scrollView: UIScrollView?
+        weak var imageView: UIImageView?
+        var onTap: () -> Void = {}
+        private var currentURL: String?
+        private var task: URLSessionDataTask?
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+        func load(_ urlString: String) {
+            guard urlString != currentURL else { return }
+            currentURL = urlString
+            task?.cancel()
+            imageView?.image = nil
+            guard let url = webImageURL(urlString) else { return }
+            task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+                guard let data, let img = UIImage(data: data) else { return }
+                DispatchQueue.main.async {
+                    self?.imageView?.image = img
+                    self?.resetLayout()
+                }
+            }
+            task?.resume()
+        }
+
+        private func resetLayout() {
+            guard let sv = scrollView, let iv = imageView else { return }
+            sv.zoomScale = 1
+            iv.frame = CGRect(origin: .zero, size: sv.bounds.size)
+            sv.contentSize = sv.bounds.size
+            centerImage()
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) { centerImage() }
+
+        private func centerImage() {
+            guard let sv = scrollView, let iv = imageView else { return }
+            var frame = iv.frame
+            frame.origin.x = frame.width < sv.bounds.width ? (sv.bounds.width - frame.width) / 2 : 0
+            frame.origin.y = frame.height < sv.bounds.height ? (sv.bounds.height - frame.height) / 2 : 0
+            iv.frame = frame
+        }
+
+        @objc func onDoubleTap(_ g: UITapGestureRecognizer) {
+            guard let sv = scrollView, let iv = imageView else { return }
+            if sv.zoomScale > 1.05 {
+                sv.setZoomScale(1, animated: true)
+            } else {
+                let p = g.location(in: iv)
+                sv.zoom(to: CGRect(x: p.x - 50, y: p.y - 50, width: 100, height: 100), animated: true)
+            }
+        }
+
+        @objc func onSingleTap(_ g: UITapGestureRecognizer) { onTap() }
     }
 }

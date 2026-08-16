@@ -21,24 +21,14 @@ struct SquareView: View {
             VStack(spacing: 0) {
                 header
 
-                if vm.tab == "nearby" && vm.nearbyCityCode == nil {
-                    nearbyGate
-                } else {
-                    feedView
+                // 四 tab 分页容器：左右滑跟手切换（对齐安卓 HorizontalPager）
+                TabView(selection: $vm.tab) {
+                    ForEach(Self.tabs, id: \.key) { t in
+                        tabPage(t.key).tag(t.key)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            // 左右滑切 tab（横向位移明显大于纵向才触发，不与竖向滚动抢手势）
-            .gesture(
-                DragGesture(minimumDistance: 40).onEnded { value in
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy) * 2 else { return }
-                    let keys = Self.tabs.map(\.key)
-                    guard let i = keys.firstIndex(of: vm.tab) else { return }
-                    if dx < 0, i + 1 < keys.count { vm.switchTab(keys[i + 1]) }
-                    else if dx > 0, i - 1 >= 0 { vm.switchTab(keys[i - 1]) }
-                }
-            )
 
             if let toast {
                 VStack {
@@ -56,6 +46,8 @@ struct SquareView: View {
             }
         }
         .onAppear { vm.switchTab(vm.tab) }
+        // 分页滑动直接改 vm.tab（绑定），这里补触发数据加载
+        .onChange(of: vm.tab) { _, new in vm.switchTab(new) }
         .fullScreenCover(isPresented: Binding(
             get: { detailPostId != nil },
             set: { if !$0 { detailPostId = nil } }
@@ -191,10 +183,20 @@ struct SquareView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// 单个 tab 页（同城未定位时显示引导态）
+    @ViewBuilder
+    private func tabPage(_ tab: String) -> some View {
+        if tab == "nearby" && vm.nearbyCityCode == nil {
+            nearbyGate
+        } else {
+            feedView(tab)
+        }
+    }
+
     // MARK: - 瀑布流
 
-    private var feedView: some View {
-        let feed = vm.currentFeed
+    private func feedView(_ tab: String) -> some View {
+        let feed = vm.feeds[tab] ?? SquareViewModel.TabFeed()
         return ScrollView {
             if feed.isLoading {
                 ProgressView()
@@ -203,7 +205,7 @@ struct SquareView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 80)
             } else if feed.posts.isEmpty {
-                emptyHint
+                emptyHint(tab)
             } else {
                 waterfall(feed.posts)
 
@@ -225,11 +227,11 @@ struct SquareView: View {
                 } else {
                     Color.clear
                         .frame(height: 1)
-                        .onAppear { vm.loadMore(vm.tab) }
+                        .onAppear { vm.loadMore(tab) }
                 }
             }
         }
-        .refreshable { vm.refresh(vm.tab) }
+        .refreshable { vm.refresh(tab) }
     }
 
     /// 双列瀑布流（按估算高度分配到较短列；列宽写死，图片无权撑爆布局）
@@ -256,13 +258,13 @@ struct SquareView: View {
         .padding(.top, 10)
     }
 
-    private var emptyHint: some View {
+    private func emptyHint(_ tab: String) -> some View {
         VStack(spacing: 10) {
             Text("NO MOMENTS YET")
                 .font(.system(size: 10, design: .serif).italic())
                 .tracking(2)
                 .foregroundStyle(Noir.gold.opacity(0.6))
-            Text(vm.tab == "nearby"
+            Text(tab == "nearby"
                  ? "「\(vm.nearbyCityName ?? "同城")」还没有帖子，来发第一条吧"
                  : "暂无动态，来发布第一条吧")
                 .font(.system(size: 13))
