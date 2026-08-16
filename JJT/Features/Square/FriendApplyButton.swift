@@ -8,37 +8,56 @@ struct FriendApplyButton: View {
 
     @State private var status: String?
     @State private var busy = false
+    /// 状态加载失败（调试用：真机上接口/解析异常时不再静默）
+    @State private var loadFailed = false
 
     var body: some View {
         Group {
             if let targetUserId,
-               targetUserId != TokenManager.shared.userId,
-               let status, status != "friend", status != "self" {
-                let enabled = status != "pending_out"
-                let label = status == "pending_out" ? "已申请" : (status == "pending_in" ? "同意申请" : "加好友")
-                Button { apply() } label: {
-                    HStack(spacing: 4) {
-                        if enabled {
-                            Image(systemName: "person.badge.plus")
-                                .font(.system(size: 11))
-                        }
-                        Text(label)
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(enabled ? Noir.goldLight : Color.white.opacity(0.35))
-                    .frame(height: 30)
-                    .padding(.horizontal, 12)
-                    .overlay(Capsule().stroke(enabled ? Noir.gold.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1))
+               targetUserId != TokenManager.shared.userId {
+                if let status, status != "friend", status != "self" {
+                    let enabled = status != "pending_out"
+                    let label = status == "pending_out" ? "已申请" : (status == "pending_in" ? "同意申请" : "加好友")
+                    button(label: label, enabled: enabled)
+                } else if loadFailed && status == nil {
+                    // 状态查询失败兜底：仍给入口，点了由后端返回真实错误
+                    button(label: "加好友", enabled: true)
                 }
-                .disabled(!enabled || busy)
             }
         }
-        .task(id: targetUserId) { await loadStatus() }
+        .onAppear { reload() }
+        .onChange(of: targetUserId) { _, _ in reload() }
     }
 
-    private func loadStatus() async {
-        guard let targetUserId else { return }
-        status = try? await FollowAPI.friendStatus(userId: targetUserId)
+    @ViewBuilder
+    private func button(label: String, enabled: Bool) -> some View {
+        Button { apply() } label: {
+            HStack(spacing: 4) {
+                if enabled {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 11))
+                }
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(enabled ? Noir.goldLight : Color.white.opacity(0.35))
+            .frame(height: 30)
+            .padding(.horizontal, 12)
+            .overlay(Capsule().stroke(enabled ? Noir.gold.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1))
+        }
+        .disabled(!enabled || busy)
+    }
+
+    private func reload() {
+        Task {
+            guard let targetUserId else { return }
+            do {
+                status = try await FollowAPI.friendStatus(userId: targetUserId)
+                loadFailed = false
+            } catch {
+                loadFailed = true
+            }
+        }
     }
 
     private func apply() {
@@ -46,7 +65,7 @@ struct FriendApplyButton: View {
         busy = true
         Task {
             _ = try? await FollowAPI.friendApply(userId: targetUserId)
-            await loadStatus()
+            reload()
             busy = false
         }
     }

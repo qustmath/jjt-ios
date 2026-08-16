@@ -73,6 +73,13 @@ struct DiagnosticsSheet: View {
                 rows.append(Row(source: "post头像", rawURL: p.avatar ?? "(nil)"))
             }
         }
+        // 好友状态接口实测（加好友按钮不显示排查）
+        do {
+            let s = try await FollowAPI.friendStatus(userId: 2)
+            rows.append(Row(source: "好友状态(uid=2)", rawURL: "app-api/member/friend-apply/status", result: "✅ 返回：\(s)"))
+        } catch {
+            rows.append(Row(source: "好友状态(uid=2)", rawURL: "app-api/member/friend-apply/status", result: "❌ \(error.localizedDescription)"))
+        }
         testing = false
         await testAll()
     }
@@ -81,6 +88,7 @@ struct DiagnosticsSheet: View {
     private func testAll() async {
         for i in rows.indices {
             let raw = rows[i].rawURL
+            guard rows[i].result == "…" else { continue } // 已有结论的探针行跳过
             guard !raw.hasPrefix("失败") else { continue }
             guard let url = webImageURL(raw) else {
                 rows[i].result = "❌ URL 解析失败（归一化后仍非法）"
