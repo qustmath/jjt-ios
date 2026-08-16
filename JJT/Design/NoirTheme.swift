@@ -59,6 +59,32 @@ enum Noir {
     static let goldLine = LinearGradient(
         colors: [.clear, gold, Color(red: 0xF0/255, green: 0xDB/255, blue: 0xA8/255), gold, .clear],
         startPoint: .leading, endPoint: .trailing)
+
+    /// 后台配置的等级颜色（#RGB/#RRGGBB/#AARRGGBB），空值或解析失败回退鎏金（对齐安卓 tierColor）
+    static func tierColor(_ hex: String?) -> Color {
+        guard let hex else { return gold }
+        let s = hex.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
+        var v: UInt64 = 0
+        guard Scanner(string: s).scanHexInt64(&v) else { return gold }
+        switch s.count {
+        case 3: // RGB
+            return Color(red: Double((v >> 8) & 0xF) / 15, green: Double((v >> 4) & 0xF) / 15, blue: Double(v & 0xF) / 15)
+        case 6: // RRGGBB
+            return Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+        case 8: // AARRGGBB
+            return Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+                .opacity(Double((v >> 24) & 0xFF) / 255)
+        default:
+            return gold
+        }
+    }
+}
+
+/// 屏幕宽（竖屏锁定；图片/卡片写死宽度用，防止内容反向撑爆布局）
+enum JJTMetrics {
+    static var screenWidth: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.width ?? 390
+    }
 }
 
 /// 取景框四角（L 形角标），设计稿标志性元素

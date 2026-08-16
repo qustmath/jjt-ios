@@ -11,11 +11,40 @@ struct BannerInfo: Decodable {
 
 struct PostInfo: Decodable, Identifiable {
     let id: Int64
+    let userId: Int64?
     let nickname: String?
     let avatar: String?
+    let vipLevel: String?
+    let vipLevelColor: String?
+    let levelInTier: Int?
+    let avatarFrame: String?
+    let avatarFrameScale: Double?
+    let mediaType: String?
+    let title: String?
     let content: String?
     let images: [String]?
+    let video: String?
+    let videoCover: String?
+    let location: String?
     let likeCount: Int?
+    let commentCount: Int?
+    let viewCount: Int?
+    let liked: Bool?
+    let favorited: Bool?
+    let unlocked: Bool?
+    let paidPrice: Int?
+    let auditStatus: Int?
+
+    /// 卡片标题：无 title 时取 content 首行（对齐安卓 PostCard）
+    var displayTitle: String {
+        if let title, !title.isEmpty { return title }
+        let c = content ?? ""
+        if let nl = c.firstIndex(of: "\n") { return String(c[..<nl]) }
+        return c
+    }
+
+    /// 付费未解锁（对齐安卓 isPaidLocked）
+    var isPaidLocked: Bool { (paidPrice ?? 0) > 0 && unlocked != true }
 }
 
 struct GroupEventInfo: Decodable, Identifiable {

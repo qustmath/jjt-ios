@@ -15,7 +15,7 @@ struct MainTabView: View {
             HomeView()
                 .tabItem { Label("首页", systemImage: "house") }
                 .tag(0)
-            PlaceholderPage(title: "广场", en: "SQUARE", icon: "square.grid.2x2")
+            SquareView()
                 .tabItem { Label("广场", systemImage: "square.grid.2x2") }
                 .tag(1)
             PlaceholderPage(title: "密语", en: "MESSAGES", icon: "bubble.left.and.bubble.right")
