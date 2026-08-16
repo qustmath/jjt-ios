@@ -80,10 +80,13 @@ enum Noir {
     }
 }
 
-/// 屏幕宽（竖屏锁定；图片/卡片写死宽度用，防止内容反向撑爆布局）
+/// 屏幕尺寸（竖屏锁定；图片/卡片写死宽度用，防止内容反向撑爆布局）
 enum JJTMetrics {
     static var screenWidth: CGFloat {
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.width ?? 390
+    }
+    static var screenHeight: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 844
     }
 }
 

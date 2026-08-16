@@ -32,10 +32,11 @@ struct CommentReq: Encodable {
 
 enum SocialAPI {
 
-    /// 帖子流（tab: recommend/newest/nearby/follow；同城需带 cityCode）
-    static func postList(pageNo: Int, pageSize: Int = 20, tab: String, cityCode: String? = nil) async throws -> PageResult<PostInfo> {
+    /// 帖子流（tab: recommend/newest/nearby/follow；同城需带 cityCode；mediaType=video 只取视频帖）
+    static func postList(pageNo: Int, pageSize: Int = 20, tab: String, cityCode: String? = nil, mediaType: String? = nil) async throws -> PageResult<PostInfo> {
         var query = ["pageNo": "\(pageNo)", "pageSize": "\(pageSize)", "tab": tab]
         if let cityCode { query["cityCode"] = cityCode }
+        if let mediaType { query["mediaType"] = mediaType }
         return try await APIClient.shared.get("app-api/social/post/list", query: query)
     }
 
@@ -85,5 +86,15 @@ enum FollowAPI {
 
     static func unfollow(userId: Int64) async throws -> Bool {
         try await APIClient.shared.post("app-api/member/follow/unfollow", body: FollowBody(followUserId: userId))
+    }
+
+    /// 好友关系状态：none / pending_out / pending_in / friend / self
+    static func friendStatus(userId: Int64) async throws -> String {
+        try await APIClient.shared.get("app-api/member/friend-apply/status", query: ["targetUserId": "\(userId)"])
+    }
+
+    /// 发起好友申请（pending_in 时调用即互关）
+    static func friendApply(userId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/member/friend-apply/apply", query: ["targetUserId": "\(userId)"])
     }
 }

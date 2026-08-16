@@ -4,7 +4,8 @@ options:
   # 按 Xcode 15.4 格式生成工程（新版 XcodeGen 默认 Xcode 16 格式，旧 Xcode 打不开）
   xcodeVersion: "15.4"
   deploymentTarget:
-    iOS: "16.0"
+    # 17.0 起步：竖滑视频流需要 scrollTargetBehavior/scrollPosition（iOS 17+）
+    iOS: "17.0"
   createIntermediateGroups: true
 
 targets:

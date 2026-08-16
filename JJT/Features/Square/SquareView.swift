@@ -8,6 +8,7 @@ struct SquareView: View {
     @StateObject private var vm = SquareViewModel()
     @State private var toast: String?
     @State private var detailPostId: Int64?
+    @State private var videoFeedPostId: Int64?
 
     private static let tabs: [(key: String, label: String)] = [
         ("recommend", "推荐"), ("newest", "最新"), ("nearby", "同城"), ("follow", "关注"),
@@ -50,6 +51,23 @@ struct SquareView: View {
             if let id = detailPostId {
                 PostDetailView(postId: id)
             }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { videoFeedPostId != nil },
+            set: { if !$0 { videoFeedPostId = nil } }
+        )) {
+            if let id = videoFeedPostId {
+                VideoFeedView(initialPostId: id, tab: vm.tab, cityCode: vm.nearbyCityCode)
+            }
+        }
+    }
+
+    /// 卡片点击：视频帖进竖滑视频流，普通帖进详情（对齐安卓）
+    private func openPost(_ post: PostInfo) {
+        if post.mediaType == "video" {
+            videoFeedPostId = post.id
+        } else {
+            detailPostId = post.id
         }
     }
 
@@ -216,10 +234,10 @@ struct SquareView: View {
         }
         return HStack(alignment: .top, spacing: 10) {
             LazyVStack(spacing: 10) {
-                ForEach(col0) { PostCard(post: $0, width: colW, onTap: { detailPostId = $0.id }) }
+                ForEach(col0) { PostCard(post: $0, width: colW, onTap: openPost) }
             }
             LazyVStack(spacing: 10) {
-                ForEach(col1) { PostCard(post: $0, width: colW, onTap: { detailPostId = $0.id }) }
+                ForEach(col1) { PostCard(post: $0, width: colW, onTap: openPost) }
             }
         }
         .padding(.horizontal, 10)

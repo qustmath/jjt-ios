@@ -42,6 +42,17 @@ final class PostDetailViewModel: ObservableObject {
         if let r = try? await FollowAPI.check(userId: authorId) { isFollowed = r }
     }
 
+    /// 关注/取关（对齐安卓 toggleFollow）
+    func toggleFollow() {
+        guard let uid = post?.userId, uid != TokenManager.shared.userId else { return }
+        Task {
+            let ok = isFollowed
+                ? try? await FollowAPI.unfollow(userId: uid)
+                : try? await FollowAPI.follow(userId: uid)
+            if ok != nil { isFollowed.toggle() }
+        }
+    }
+
     /// 点赞（乐观更新，失败回滚）
     func toggleLike() {
         guard var p = post else { return }

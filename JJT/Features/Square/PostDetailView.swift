@@ -14,6 +14,7 @@ struct PostDetailView: View {
     @State private var replyTo: CommentInfo?
     @State private var isSending = false
     @State private var toast: String?
+    @State private var previewIndex: Int?
     @FocusState private var inputFocused: Bool
 
     init(postId: Int64) {
@@ -67,6 +68,14 @@ struct PostDetailView: View {
             }
         }
         .onAppear { if vm.post == nil { vm.load() } }
+        .fullScreenCover(isPresented: Binding(
+            get: { previewIndex != nil },
+            set: { if !$0 { previewIndex = nil } }
+        )) {
+            if let post = vm.post, let images = post.images, let i = previewIndex {
+                ImagePreviewViewer(images: images, initialIndex: i)
+            }
+        }
     }
 
     private func showToast(_ text: String) {
@@ -114,6 +123,9 @@ struct PostDetailView: View {
                             .frame(width: JJTMetrics.screenWidth, height: heroHeight)
                             .clipped()
                             .blur(radius: post.isPaidLocked ? 14 : 0)
+                            .contentShape(Rectangle())
+                            // 付费未解锁不给预览，保持虚化遮罩
+                            .onTapGesture { if !post.isPaidLocked { previewIndex = i } }
                             .tag(i)
                         }
                     }
@@ -328,6 +340,8 @@ struct PostDetailView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.4))
                 }
+                // 加好友（非本人帖；已是好友/已申请时组件内部控制状态）
+                FriendApplyButton(targetUserId: post.userId)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14))
