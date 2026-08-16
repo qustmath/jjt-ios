@@ -289,7 +289,7 @@ final class CreatePostViewModel: ObservableObject {
         for item in items {
             Task {
                 guard let data = try? await item.loadTransferable(type: Data.self),
-                      let img = UIImage(data: data) else { continue }
+                      let img = UIImage(data: data) else { return }
                 let entry = ImageItem(image: img)
                 images.append(entry)
                 await upload(id: entry.id)
