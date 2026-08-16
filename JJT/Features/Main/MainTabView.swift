@@ -1,37 +1,51 @@
 import SwiftUI
 
 extension Notification.Name {
-    /// 切换主 Tab（object 为 tag Int：0 首页 1 广场 2 密语 3 我的），对齐安卓 navigateToTab
+    /// 切换主 Tab（object 为 tag Int：0 主页 1 广场 2 密语 3 我的），对齐安卓 navigateToTab
     static let jjtSwitchTab = Notification.Name("jjtSwitchTab")
 }
 
-/// 主界面：首页 / 广场 / 密语 / 我的（对齐安卓四个主 Tab）
+/// 主界面：主页 / 广场 / [+] / 密语 / 我的（对齐安卓 Noir TabBar：
+/// 深底 #0C0C10 + 顶部鎏金发丝线 + 中央酒红渐变发布圆钮）
 struct MainTabView: View {
 
     @State private var selection = 0
+    @State private var toast: String?
 
     var body: some View {
-        TabView(selection: $selection) {
-            HomeView()
-                .tabItem { Label("首页", systemImage: "house") }
-                .tag(0)
-            SquareView()
-                .tabItem { Label("广场", systemImage: "square.grid.2x2") }
-                .tag(1)
-            PlaceholderPage(title: "密语", en: "MESSAGES", icon: "bubble.left.and.bubble.right")
-                .tabItem { Label("密语", systemImage: "bubble.left.and.bubble.right") }
-                .tag(2)
-            MeView()
-                .tabItem { Label("我的", systemImage: "person") }
-                .tag(3)
+        ZStack {
+            TabView(selection: $selection) {
+                HomeView().tag(0)
+                SquareView().tag(1)
+                PlaceholderPage(title: "密语", en: "MESSAGES", icon: "bubble.left.and.bubble.right").tag(2)
+                MeView().tag(3)
+            }
+            .toolbar(.hidden, for: .tabBar)
+            // 底部留出导航条高度，内容不被遮挡
+            .safeAreaInset(edge: .bottom, spacing: 0) { noirTabBar }
+
+            if let toast {
+                VStack {
+                    Spacer()
+                    Text(toast)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Noir.ivory)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Noir.noir3.opacity(0.95))
+                        .clipShape(Capsule())
+                        .padding(.bottom, 120)
+                        .transition(.opacity)
+                }
+            }
         }
-        .tint(Noir.gold)
         .onReceive(NotificationCenter.default.publisher(for: .jjtSwitchTab)) { note in
             if let tag = note.object as? Int {
                 withAnimation { selection = tag }
             }
         }
-        // 全局左右滑切主 tab（横向位移明显大于纵向才触发，不与页面内滚动/横滑组件抢手势）
+        // 全局左右滑切主 tab（对齐安卓 HorizontalPager 横滑切换；
+        // 横向位移明显大于纵向才触发，不与页面内滚动/横滑组件抢手势）
         .gesture(
             DragGesture(minimumDistance: 60).onEnded { value in
                 let dx = value.translation.width
@@ -41,6 +55,76 @@ struct MainTabView: View {
                 else if dx > 0, selection > 0 { selection -= 1 }
             }
         )
+    }
+
+    private func showToast(_ text: String) {
+        withAnimation { toast = text }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run { withAnimation { toast = nil } }
+        }
+    }
+
+    // MARK: - 自定义导航条
+
+    private var noirTabBar: some View {
+        VStack(spacing: 0) {
+            // 顶部鎏金发丝线
+            Rectangle()
+                .fill(Noir.goldLine)
+                .frame(height: 1)
+
+            HStack(spacing: 0) {
+                tabButton(index: 0, label: "主页", icon: "house")
+                tabButton(index: 1, label: "广场", icon: "flame")
+                publishButton
+                tabButton(index: 2, label: "密语", icon: "message")
+                tabButton(index: 3, label: "我的", icon: "person")
+            }
+            .frame(height: 64)
+        }
+        .background(
+            Color(red: 0x0C/255, green: 0x0C/255, blue: 0x10/255)
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    private func tabButton(index: Int, label: String, icon: String) -> some View {
+        let selected = selection == index
+        let color: Color = selected ? Noir.crimsonHot : Color.white.opacity(0.35)
+        return Button { selection = index } label: {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 21))
+                Text(label)
+                    .font(.system(size: 10, weight: selected ? .medium : .regular))
+            }
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 中央发布按钮（酒红渐变圆钮；发布页未迁移，先提示）
+    private var publishButton: some View {
+        Button { showToast("发布敬请期待") } label: {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(stops: [
+                        .init(color: Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), location: 0.0),
+                        .init(color: Noir.crimsonDeep, location: 0.6),
+                        .init(color: Noir.wine, location: 1.0),
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 52, height: 52)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
