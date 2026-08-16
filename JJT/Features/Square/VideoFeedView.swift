@@ -130,6 +130,7 @@ private struct VideoPostPageView: View {
 
     @StateObject private var vm: PostDetailViewModel
     @State private var player: AVPlayer?
+    @State private var endObserver: NSObjectProtocol?
     @State private var showComments = false
     @State private var commentText = ""
     @State private var previewEnded = false
@@ -176,6 +177,13 @@ private struct VideoPostPageView: View {
         }
         .onChange(of: active) { _, now in
             if now { player?.play() } else { player?.pause() }
+        }
+        // 退出/滑出页面必须停播并释放，否则声音还在后台放
+        .onDisappear {
+            player?.pause()
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+            endObserver = nil
+            player = nil
         }
         .sheet(isPresented: $showComments) { commentsSheet }
     }
@@ -524,7 +532,7 @@ private struct VideoPostPageView: View {
         let p = AVPlayer(url: url)
         player = p
         // 循环播放
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem, queue: .main) { _ in
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem, queue: .main) { _ in
             p.seek(to: .zero)
             p.play()
         }

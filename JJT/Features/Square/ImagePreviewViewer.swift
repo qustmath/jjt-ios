@@ -119,14 +119,15 @@ private struct ZoomableImage: View {
                     if scale <= 1.05 { withAnimation { reset() } }
                 }
         )
-        .simultaneousGesture(
+        // 拖动手势仅在放大态挂载——否则会把未放大时的左右翻页滑动吃掉
+        .gesture(
             DragGesture()
                 .onChanged { v in
-                    guard scale > 1.05 else { return }
                     offset = CGSize(width: lastOffset.width + v.translation.width,
                                     height: lastOffset.height + v.translation.height)
                 }
-                .onEnded { _ in lastOffset = offset }
+                .onEnded { _ in lastOffset = offset },
+            including: scale > 1.05 ? .all : .none
         )
     }
 

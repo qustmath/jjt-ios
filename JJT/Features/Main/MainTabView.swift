@@ -31,6 +31,16 @@ struct MainTabView: View {
                 withAnimation { selection = tag }
             }
         }
+        // 全局左右滑切主 tab（横向位移明显大于纵向才触发，不与页面内滚动/横滑组件抢手势）
+        .gesture(
+            DragGesture(minimumDistance: 60).onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > abs(dy) * 2.5 else { return }
+                if dx < 0, selection < 3 { selection += 1 }
+                else if dx > 0, selection > 0 { selection -= 1 }
+            }
+        )
     }
 }
 

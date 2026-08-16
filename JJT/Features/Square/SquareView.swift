@@ -27,6 +27,18 @@ struct SquareView: View {
                     feedView
                 }
             }
+            // 左右滑切 tab（横向位移明显大于纵向才触发，不与竖向滚动抢手势）
+            .gesture(
+                DragGesture(minimumDistance: 40).onEnded { value in
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > abs(dy) * 2 else { return }
+                    let keys = Self.tabs.map(\.key)
+                    guard let i = keys.firstIndex(of: vm.tab) else { return }
+                    if dx < 0, i + 1 < keys.count { vm.switchTab(keys[i + 1]) }
+                    else if dx > 0, i - 1 >= 0 { vm.switchTab(keys[i - 1]) }
+                }
+            )
 
             if let toast {
                 VStack {
