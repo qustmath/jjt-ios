@@ -36,6 +36,8 @@ struct PostInfo: Decodable, Identifiable {
     let favorited: Bool?
     let unlocked: Bool?
     let paidPrice: Int?
+    /// 付费视频试看秒数（null/0 不试看）
+    let previewSeconds: Int?
     let auditStatus: Int?
     let createTime: Int64?
 

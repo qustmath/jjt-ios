@@ -111,7 +111,7 @@ private extension PostInfo {
             viewCount: viewCount,
             liked: liked ?? self.liked,
             favorited: favorited ?? self.favorited,
-            unlocked: unlocked, paidPrice: paidPrice, auditStatus: auditStatus,
+            unlocked: unlocked, paidPrice: paidPrice, previewSeconds: previewSeconds, auditStatus: auditStatus,
             createTime: createTime
         )
     }
