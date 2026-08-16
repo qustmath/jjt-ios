@@ -38,16 +38,20 @@ struct WebImage<Placeholder: View>: View {
     }
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-            } else {
-                placeholder()
+        // 关键：以 Color.clear 为底座——它总是服从外部 frame 提议，
+        // 避免图片按自身像素尺寸无限撑大（ScrollView 内高度无界时会整页撑爆）
+        Color.clear
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    placeholder()
+                }
             }
-        }
-        .task(id: url) { await load() }
+            .clipped()
+            .task(id: url) { await load() }
     }
 
     private func load() async {

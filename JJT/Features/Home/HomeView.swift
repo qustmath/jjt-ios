@@ -689,14 +689,16 @@ private struct HeroCarousel: View {
                     WebImage(url: webImageURL(banners[i].imageUrl)) {
                         Noir.noir2
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
                     .contentShape(Rectangle())
                     .onTapGesture { onTap(banners[i]) }
                     .tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            // ScrollView 内 TabView 必须显式定高，否则会被图片内容撑到无限高
+            .frame(maxWidth: .infinity)
+            .frame(height: 400)
+            .clipped()
             .onReceive(timer) { _ in
                 withAnimation { index = (index + 1) % banners.count }
             }
@@ -724,7 +726,8 @@ private struct HeroCarousel: View {
             }
             .allowsHitTesting(false)
 
-            // 底部文案
+            // 底部文案（banners 刷新后 index 可能越界，钳制）
+            let current = banners[min(index, banners.count - 1)]
             VStack {
                 Spacer()
                 HStack {
@@ -733,7 +736,7 @@ private struct HeroCarousel: View {
                             .font(.system(size: 10))
                             .tracking(4)
                             .foregroundStyle(Noir.goldLight)
-                        Text(banners[index].title ?? "")
+                        Text(current.title ?? "")
                             .font(.system(size: 40, weight: .black, design: .serif))
                             .lineSpacing(4)
                             .foregroundStyle(Noir.ivory)
@@ -752,7 +755,7 @@ private struct HeroCarousel: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    Text(String(format: "%02d", index + 1))
+                    Text(String(format: "%02d", min(index, banners.count - 1) + 1))
                         .font(.system(size: 15, design: .serif))
                         .foregroundStyle(Noir.goldText)
                     HStack(spacing: 4) {
