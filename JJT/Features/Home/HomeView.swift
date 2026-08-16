@@ -1,8 +1,11 @@
 import SwiftUI
 
 /// 首页 — 暗夜奢华风（对齐安卓 HomeScreen.kt）
-/// 结构：顶栏 → 状态行 → 全出血轮播 → 滚动播报 → 蜜兔会入口 →
+/// 结构：顶栏 → 状态行 → 主视觉 banner → 滚动播报 → 蜜兔会入口 →
 ///       功能目录横滑排 → 今日心动 → 组局日程 → 广场动态 → 页脚
+///
+/// 注：为真机稳定性，轮播不用 TabView（其在 ScrollView 内高度自适应有坑），
+/// 改为单图 + 定时器/手势切换；跑马灯/流光等动画后续逐步加回。
 struct HomeView: View {
 
     @StateObject private var vm = HomeViewModel()
@@ -10,15 +13,11 @@ struct HomeView: View {
     @State private var city: String?
     @State private var appearedOnce = false
     @State private var showDiagnostics = false
-    // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
-    @State private var mituGlow = false
-    @State private var mituShine = false
-    @State private var badgeSheen = false
+    @State private var bannerIndex = 0
 
     var body: some View {
         ZStack {
             Noir.bg.ignoresSafeArea()
-            ambientGlows
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -26,7 +25,7 @@ struct HomeView: View {
                     statusRow
 
                     if !vm.banners.isEmpty {
-                        HeroCarousel(banners: vm.banners, onTap: handleBannerTap)
+                        heroBanner
                     }
 
                     ticker
@@ -113,22 +112,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - 氛围光晕
-
-    private var ambientGlows: some View {
-        ZStack {
-            Circle()
-                .fill(RadialGradient(colors: [Noir.crimson.opacity(0.16), .clear], center: .center, startRadius: 0, endRadius: 144))
-                .frame(width: 288, height: 288)
-                .offset(x: -96, y: -260)
-            Circle()
-                .fill(RadialGradient(colors: [Noir.gold.opacity(0.12), .clear], center: .center, startRadius: 0, endRadius: 128))
-                .frame(width: 256, height: 256)
-                .offset(x: 130, y: 180)
-        }
-        .allowsHitTesting(false)
-    }
-
     // MARK: - 顶栏
 
     private var header: some View {
@@ -143,7 +126,6 @@ struct HomeView: View {
                         .foregroundStyle(Noir.goldText)
                 }
                 .frame(width: 36, height: 36)
-                .onLongPressGesture { showDiagnostics = true }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("荆棘兔")
                         .font(.system(size: 17, weight: .bold, design: .serif))
@@ -208,7 +190,120 @@ struct HomeView: View {
         return f.string(from: Date()).uppercased()
     }
 
-    // MARK: - 滚动播报（与安卓同为硬编码文案）
+    // MARK: - 主视觉 banner（单图 + 定时切换 + 滑动手势；不用 TabView 避免布局坑）
+
+    private let bannerTimer = Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()
+
+    private var safeBannerIndex: Int {
+        min(bannerIndex, vm.banners.count - 1)
+    }
+
+    private var heroBanner: some View {
+        let banner = vm.banners[safeBannerIndex]
+        return ZStack {
+            AsyncImage(url: webImageURL(banner.imageUrl)) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    Noir.noir2
+                }
+            }
+            .id(safeBannerIndex) // 切换时重新加载/过渡
+            .transition(.opacity)
+
+            // 渐变蒙版
+            LinearGradient(stops: [
+                .init(color: Noir.noir.opacity(0.55), location: 0.00),
+                .init(color: .clear, location: 0.30),
+                .init(color: .clear, location: 0.55),
+                .init(color: Noir.noir.opacity(0.96), location: 1.00),
+            ], startPoint: .top, endPoint: .bottom)
+            .allowsHitTesting(false)
+
+            // 左侧竖排英文
+            HStack {
+                Text("TONIGHT'S SELECTION")
+                    .font(.system(size: 10, design: .serif))
+                    .tracking(5)
+                    .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize()
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 14)
+                    .padding(.leading, 14)
+                Spacer()
+            }
+            .allowsHitTesting(false)
+
+            // 底部文案
+            VStack {
+                Spacer()
+                HStack {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("荆棘兔 · 精选")
+                            .font(.system(size: 10))
+                            .tracking(4)
+                            .foregroundStyle(Noir.goldLight)
+                        Text(banner.title ?? "")
+                            .font(.system(size: 40, weight: .black, design: .serif))
+                            .lineSpacing(4)
+                            .foregroundStyle(Noir.ivory)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                }
+                .padding(.leading, 40)
+                .padding(.trailing, 96)
+                .padding(.bottom, 24)
+            }
+            .allowsHitTesting(false)
+
+            // 页码 + 进度条
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Text(String(format: "%02d", safeBannerIndex + 1))
+                        .font(.system(size: 15, design: .serif))
+                        .foregroundStyle(Noir.goldText)
+                    HStack(spacing: 4) {
+                        ForEach(vm.banners.indices, id: \.self) { i in
+                            Rectangle()
+                                .fill(i == safeBannerIndex ? Noir.goldLight : Color.white.opacity(0.18))
+                                .frame(width: 20, height: 2)
+                        }
+                    }
+                    Text(String(format: "%02d", vm.banners.count))
+                        .font(.system(size: 15, design: .serif))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
+                .padding(.trailing, 24)
+                .padding(.bottom, 24)
+            }
+            .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 400)
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture { handleBannerTap(banner) }
+        .gesture(
+            DragGesture(minimumDistance: 30).onEnded { value in
+                withAnimation {
+                    if value.translation.width < 0 {
+                        bannerIndex = (safeBannerIndex + 1) % vm.banners.count
+                    } else if value.translation.width > 0 {
+                        bannerIndex = (safeBannerIndex - 1 + vm.banners.count) % vm.banners.count
+                    }
+                }
+            }
+        )
+        .onReceive(bannerTimer) { _ in
+            withAnimation { bannerIndex = (safeBannerIndex + 1) % vm.banners.count }
+        }
+        .cornerFrame(Noir.gold.opacity(0.7))
+    }
+
+    // MARK: - 滚动播报（静态文案，跑马灯动画后续加回）
 
     private static let tickerLines = [
         "夜蔷 送出「荆棘之心」×1", "绯瞳 发起 古堡烛光暗夜茶会", "银蚀 与 鸦先生 匹配成功",
@@ -216,14 +311,21 @@ struct HomeView: View {
     ]
 
     private var ticker: some View {
-        MarqueeText(text: Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　") + "　　")
-            .padding(.vertical, 10)
-            .background(Color.black.opacity(0.4))
-            .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
-            .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　"))
+                .font(.system(size: 10.5))
+                .tracking(1)
+                .foregroundStyle(Noir.gold.opacity(0.7))
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.vertical, 10)
+        }
+        .background(Color.black.opacity(0.4))
+        .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
     }
 
-    // MARK: - 蜜兔会 · 独立奢华入口
+    // MARK: - 蜜兔会 · 独立奢华入口（静态版，呼吸/流光动画后续加回）
 
     private var mituEntrance: some View {
         Button { showToast("敬请期待") } label: {
@@ -241,22 +343,7 @@ struct HomeView: View {
                     .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
                 ], startPoint: .top, endPoint: .bottom)
 
-                // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
-                GeometryReader { geo in
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
-                        .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
-                        .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
-                        .init(color: .clear, location: 1),
-                    ], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: geo.size.width / 3, height: geo.size.height * 3)
-                    .rotationEffect(.degrees(-18))
-                    .offset(x: mituShine ? geo.size.width * 1.4 : -geo.size.width * 0.5, y: -geo.size.height)
-                }
-                .allowsHitTesting(false)
-
-                // 仅邀约制 徽章（vip-sheen 白色扫光 2.8s）
+                // 仅邀约制 徽章
                 VStack {
                     HStack {
                         Text("仅 邀 约 制")
@@ -266,16 +353,6 @@ struct HomeView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
                             .background(Capsule().fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing)))
-                            .overlay {
-                                GeometryReader { g in
-                                    LinearGradient(colors: [.clear, .white.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
-                                        .frame(width: g.size.width * 0.4, height: g.size.height * 3)
-                                        .rotationEffect(.degrees(-18))
-                                        .offset(x: badgeSheen ? g.size.width * 1.3 : -g.size.width * 0.5, y: -g.size.height)
-                                }
-                                .clipShape(Capsule())
-                                .allowsHitTesting(false)
-                            }
                             .padding(20)
                         Spacer()
                     }
@@ -331,15 +408,9 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.goldLight.opacity(0.45), lineWidth: 1))
             .cornerFrame(Noir.goldLight.opacity(0.9))
-            // 金色呼吸外阴影（对齐安卓 marquee-glow：快亮慢暗）
-            .shadow(color: Noir.gold.opacity(mituGlow ? 0.5 : 0.16), radius: mituGlow ? 30 : 14)
+            .shadow(color: Noir.gold.opacity(0.2), radius: 18)
         }
         .buttonStyle(.plain)
-        .onAppear {
-            withAnimation(.easeIn(duration: 0.9).repeatForever(autoreverses: true)) { mituGlow = true }
-            withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) { mituShine = true }
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false)) { badgeSheen = true }
-        }
     }
 
     // MARK: - 功能目录 · 横滑排
@@ -437,8 +508,12 @@ struct HomeView: View {
                     // 安卓跳用户主页；iOS 用户主页未迁移，先提示
                     Button { showToast("敬请期待") } label: {
                         ZStack(alignment: .topLeading) {
-                            WebImage(url: webImageURL(user.cover)) {
-                                Color.white.opacity(0.05)
+                            AsyncImage(url: webImageURL(user.cover)) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Color.white.opacity(0.05)
+                                }
                             }
                             .frame(width: 132, height: 190)
                             .clipped()
@@ -567,8 +642,12 @@ struct HomeView: View {
                 // 安卓进广场；iOS 切到广场 tab
                 Button { switchTab(1) } label: {
                     HStack(spacing: 12) {
-                        WebImage(url: webImageURL(post.avatar)) {
-                            Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
+                        AsyncImage(url: webImageURL(post.avatar)) { phase in
+                            if let image = phase.image {
+                                image.resizable().scaledToFill()
+                            } else {
+                                Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
+                            }
                         }
                         .frame(width: 36, height: 36)
                         .clipShape(Circle())
@@ -586,8 +665,12 @@ struct HomeView: View {
                         }
                         Spacer()
                         if let img = post.images?.first {
-                            WebImage(url: webImageURL(img)) {
-                                Color.white.opacity(0.05)
+                            AsyncImage(url: webImageURL(img)) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Color.white.opacity(0.05)
+                                }
                             }
                             .frame(width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -609,7 +692,7 @@ struct HomeView: View {
         return c > 999 ? String(format: "%.1fk", Double(c) / 1000) : "\(c)"
     }
 
-    // MARK: - 页脚
+    // MARK: - 页脚（点 build 号打开诊断面板）
 
     private var footer: some View {
         VStack(spacing: 4) {
@@ -625,11 +708,12 @@ struct HomeView: View {
                 .font(.system(size: 9))
                 .tracking(2.7)
                 .foregroundStyle(.white.opacity(0.2))
-            // 调试期版本标识：确认真机装的构建号
+            // 调试期版本标识 + 诊断入口
             Text("build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")")
                 .font(.system(size: 8, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.15))
                 .padding(.top, 6)
+                .onTapGesture { showDiagnostics = true }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
@@ -678,158 +762,6 @@ private struct SectionTitle: View {
             }
         }
         .padding(.horizontal, 20)
-    }
-}
-
-// MARK: - 全出血轮播
-
-private struct HeroCarousel: View {
-    let banners: [BannerInfo]
-    let onTap: (BannerInfo) -> Void
-
-    @State private var index = 0
-    private let timer = Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        ZStack {
-            TabView(selection: $index) {
-                ForEach(banners.indices, id: \.self) { i in
-                    WebImage(url: webImageURL(banners[i].imageUrl)) {
-                        Noir.noir2
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture { onTap(banners[i]) }
-                    .tag(i)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            // ScrollView 内 TabView 必须显式定高，否则会被图片内容撑到无限高
-            .frame(maxWidth: .infinity)
-            .frame(height: 400)
-            .clipped()
-            .onReceive(timer) { _ in
-                withAnimation { index = (index + 1) % banners.count }
-            }
-
-            // 渐变蒙版
-            LinearGradient(stops: [
-                .init(color: Noir.noir.opacity(0.55), location: 0.00),
-                .init(color: .clear, location: 0.30),
-                .init(color: .clear, location: 0.55),
-                .init(color: Noir.noir.opacity(0.96), location: 1.00),
-            ], startPoint: .top, endPoint: .bottom)
-            .allowsHitTesting(false)
-
-            // 左侧竖排英文
-            HStack {
-                Text("TONIGHT'S SELECTION")
-                    .font(.system(size: 10, design: .serif))
-                    .tracking(5)
-                    .foregroundStyle(.white.opacity(0.35))
-                    .fixedSize()
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 14)
-                    .padding(.leading, 14)
-                Spacer()
-            }
-            .allowsHitTesting(false)
-
-            // 底部文案（banners 刷新后 index 可能越界，钳制）
-            let current = banners[min(index, banners.count - 1)]
-            VStack {
-                Spacer()
-                HStack {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("荆棘兔 · 精选")
-                            .font(.system(size: 10))
-                            .tracking(4)
-                            .foregroundStyle(Noir.goldLight)
-                        Text(current.title ?? "")
-                            .font(.system(size: 40, weight: .black, design: .serif))
-                            .lineSpacing(4)
-                            .foregroundStyle(Noir.ivory)
-                            .lineLimit(2)
-                    }
-                    Spacer()
-                }
-                .padding(.leading, 40)
-                .padding(.trailing, 96)
-                .padding(.bottom, 24)
-            }
-            .allowsHitTesting(false)
-
-            // 页码 + 进度条
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text(String(format: "%02d", min(index, banners.count - 1) + 1))
-                        .font(.system(size: 15, design: .serif))
-                        .foregroundStyle(Noir.goldText)
-                    HStack(spacing: 4) {
-                        ForEach(banners.indices, id: \.self) { i in
-                            Rectangle()
-                                .fill(i == index ? Noir.goldLight : Color.white.opacity(0.18))
-                                .frame(width: 20, height: 2)
-                        }
-                    }
-                    Text(String(format: "%02d", banners.count))
-                        .font(.system(size: 15, design: .serif))
-                        .foregroundStyle(.white.opacity(0.3))
-                }
-                .padding(.trailing, 24)
-                .padding(.bottom, 24)
-            }
-            .allowsHitTesting(false)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 400)
-        .cornerFrame(Noir.gold.opacity(0.7))
-    }
-}
-
-// MARK: - 滚动播报（无限横向跑马灯）
-
-private struct MarqueeText: View {
-    let text: String
-
-    @State private var textWidth: CGFloat = 0
-    @State private var offset: CGFloat = 0
-
-    var body: some View {
-        HStack(spacing: 0) {
-            line
-            line
-        }
-        .offset(x: offset)
-        .fixedSize()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipped()
-        .onAppear { start() }
-    }
-
-    private var line: some View {
-        Text(text)
-            .font(.system(size: 10.5))
-            .tracking(1)
-            .foregroundStyle(Noir.gold.opacity(0.7))
-            .lineLimit(1)
-            .fixedSize()
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
-                if textWidth == 0 { textWidth = $0 }
-            }
-    }
-
-    private func start() {
-        guard textWidth > 0 else {
-            // 等宽度测量完成后启动
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { start() }
-            return
-        }
-        offset = 0
-        withAnimation(.linear(duration: Double(textWidth) / 30).repeatForever(autoreverses: false)) {
-            offset = -textWidth
-        }
     }
 }
 
