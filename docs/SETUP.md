@@ -33,7 +33,7 @@
 1. 打开 https://appstoreconnect.apple.com → **我的 App** → ➕ **新建 App**
 2. 填：
    - 平台：iOS
-   - 名称：荆棘兔
+   - 名称：荆棘兔子（"荆棘兔"已被占用）
    - 主要语言：简体中文
    - 套装 ID：选刚建的 `ink.groovy.jjt`
    - SKU：`jjt-ios`（内部标识，随意）

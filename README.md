@@ -1,6 +1,6 @@
-# 荆棘兔 iOS（jjt-ios）
+# 荆棘兔子 iOS（jjt-ios）
 
-荆棘兔 iOS 原生客户端，SwiftUI + 纯代码工程（XcodeGen 生成 .xcodeproj，无需 Mac 本地开发，GitHub Actions 云构建）。
+荆棘兔子 iOS 原生客户端，SwiftUI + 纯代码工程（XcodeGen 生成 .xcodeproj，无需 Mac 本地开发，GitHub Actions 云构建）。
 
 ## 工程结构
 

@@ -31,10 +31,10 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            Text("荆棘兔")
+            Text("荆棘兔子")
                 .font(.system(size: 34, weight: .bold, design: .serif))
                 .foregroundStyle(Noir.goldText)
-            Text("JING JI TU")
+            Text("JING JI TU ZI")
                 .font(.system(size: 11, weight: .medium, design: .serif))
                 .tracking(6)
                 .foregroundStyle(Noir.textTertiary)
