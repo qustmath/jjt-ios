@@ -7,6 +7,7 @@ struct SquareView: View {
 
     @StateObject private var vm = SquareViewModel()
     @State private var toast: String?
+    @State private var detailPostId: Int64?
 
     private static let tabs: [(key: String, label: String)] = [
         ("recommend", "推荐"), ("newest", "最新"), ("nearby", "同城"), ("follow", "关注"),
@@ -42,6 +43,14 @@ struct SquareView: View {
             }
         }
         .onAppear { vm.switchTab(vm.tab) }
+        .fullScreenCover(isPresented: Binding(
+            get: { detailPostId != nil },
+            set: { if !$0 { detailPostId = nil } }
+        )) {
+            if let id = detailPostId {
+                PostDetailView(postId: id)
+            }
+        }
     }
 
     private func showToast(_ text: String) {
@@ -207,10 +216,10 @@ struct SquareView: View {
         }
         return HStack(alignment: .top, spacing: 10) {
             LazyVStack(spacing: 10) {
-                ForEach(col0) { PostCard(post: $0, width: colW, onTap: { showToast("帖子详情敬请期待") }) }
+                ForEach(col0) { PostCard(post: $0, width: colW, onTap: { detailPostId = $0.id }) }
             }
             LazyVStack(spacing: 10) {
-                ForEach(col1) { PostCard(post: $0, width: colW, onTap: { showToast("帖子详情敬请期待") }) }
+                ForEach(col1) { PostCard(post: $0, width: colW, onTap: { detailPostId = $0.id }) }
             }
         }
         .padding(.horizontal, 10)
@@ -258,7 +267,7 @@ struct SquareView: View {
 private struct PostCard: View {
     let post: PostInfo
     let width: CGFloat
-    let onTap: () -> Void
+    let onTap: (PostInfo) -> Void
 
     private var coverURL: URL? {
         if post.mediaType == "video" { return webImageURL(post.videoCover) }
@@ -411,17 +420,11 @@ private struct PostCard: View {
                     .padding(.top, 10)
             }
 
-            // 底部行：头像 + 昵称/等级
+            // 底部行：头像（含头像框）+ 昵称/等级
             HStack(spacing: 10) {
-                AsyncImage(url: webImageURL(post.avatar)) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
-                    }
-                }
-                .frame(width: 34, height: 34)
-                .clipShape(Circle())
+                AppAvatar(url: post.avatar, size: 34,
+                          frameURL: post.avatarFrame, frameScale: CGFloat(post.avatarFrameScale ?? 1.25))
+                    .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(post.nickname ?? "用户\(post.userId ?? 0)")
@@ -459,7 +462,7 @@ private struct PostCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.05), lineWidth: 1))
         .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .onTapGesture { onTap(post) }
     }
 
     private static func formatCount(_ n: Int) -> String {

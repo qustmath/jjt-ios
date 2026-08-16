@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var appearedOnce = false
     @State private var showDiagnostics = false
     @State private var bannerIndex = 0
+    @State private var detailPostId: Int64?
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
     @State private var mituGlow = false
     @State private var mituShine = false
@@ -87,6 +88,14 @@ struct HomeView: View {
             }
         }
         .sheet(isPresented: $showDiagnostics) { DiagnosticsSheet() }
+        .fullScreenCover(isPresented: Binding(
+            get: { detailPostId != nil },
+            set: { if !$0 { detailPostId = nil } }
+        )) {
+            if let id = detailPostId {
+                PostDetailView(postId: id)
+            }
+        }
         .onAppear {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
             if appearedOnce { vm.load(force: true) } else { vm.load() }
@@ -674,19 +683,12 @@ struct HomeView: View {
     private var momentsList: some View {
         VStack(spacing: 0) {
             ForEach(vm.latestPosts.prefix(3)) { post in
-                // 安卓进广场；iOS 切到广场 tab
-                Button { switchTab(1) } label: {
+                // 对齐安卓：点动态进帖子详情
+                Button { detailPostId = post.id } label: {
                     HStack(spacing: 12) {
-                        AsyncImage(url: webImageURL(post.avatar)) { phase in
-                            if let image = phase.image {
-                                image.resizable().scaledToFill()
-                            } else {
-                                Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
-                            }
-                        }
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Noir.gold.opacity(0.4), lineWidth: 1))
+                        AppAvatar(url: post.avatar, size: 36,
+                                  frameURL: post.avatarFrame, frameScale: CGFloat(post.avatarFrameScale ?? 1.25))
+                            .overlay(Circle().stroke(Noir.gold.opacity(0.4), lineWidth: 1))
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(post.nickname ?? "用户") · \(Self.formatLikes(post.likeCount)) 赞")

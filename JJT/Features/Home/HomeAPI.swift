@@ -25,15 +25,19 @@ struct PostInfo: Decodable, Identifiable {
     let images: [String]?
     let video: String?
     let videoCover: String?
+    let topics: [String]?
     let location: String?
+    let cityName: String?
     let likeCount: Int?
     let commentCount: Int?
+    let favoriteCount: Int?
     let viewCount: Int?
     let liked: Bool?
     let favorited: Bool?
     let unlocked: Bool?
     let paidPrice: Int?
     let auditStatus: Int?
+    let createTime: Int64?
 
     /// 卡片标题：无 title 时取 content 首行（对齐安卓 PostCard）
     var displayTitle: String {
