@@ -19,7 +19,7 @@ struct HomeView: View {
                     statusRow
 
                     if !vm.banners.isEmpty {
-                        HeroCarousel(banners: vm.banners, onTap: { showToast("敬请期待") })
+                        HeroCarousel(banners: vm.banners, onTap: { _ in showToast("敬请期待") })
                     }
 
                     ticker
@@ -113,7 +113,7 @@ struct HomeView: View {
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("荆棘兔子")
+                    Text("荆棘兔")
                         .font(.system(size: 17, weight: .bold, design: .serif))
                         .tracking(3.4)
                         .foregroundStyle(Noir.ivory)
@@ -355,8 +355,11 @@ struct HomeView: View {
                     Button { showToast("敬请期待") } label: {
                         ZStack(alignment: .topLeading) {
                             AsyncImage(url: URL(string: user.cover)) { phase in
-                                phase.image?.resizable().scaledToFill()
-                                    ?? Color.white.opacity(0.05)
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Color.white.opacity(0.05)
+                                }
                             }
                             .frame(width: 132, height: 190)
                             .clipped()
@@ -485,8 +488,11 @@ struct HomeView: View {
                 Button { showToast("敬请期待") } label: {
                     HStack(spacing: 12) {
                         AsyncImage(url: URL(string: post.avatar ?? "")) { phase in
-                            phase.image?.resizable().scaledToFill()
-                                ?? Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
+                            if let image = phase.image {
+                                image.resizable().scaledToFill()
+                            } else {
+                                Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(Noir.gold.opacity(0.4))
+                            }
                         }
                         .frame(width: 36, height: 36)
                         .clipShape(Circle())
@@ -505,8 +511,11 @@ struct HomeView: View {
                         Spacer()
                         if let img = post.images?.first {
                             AsyncImage(url: URL(string: img)) { phase in
-                                phase.image?.resizable().scaledToFill()
-                                    ?? Color.white.opacity(0.05)
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Color.white.opacity(0.05)
+                                }
                             }
                             .frame(width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -609,8 +618,11 @@ private struct HeroCarousel: View {
             TabView(selection: $index) {
                 ForEach(banners.indices, id: \.self) { i in
                     AsyncImage(url: URL(string: banners[i].imageUrl ?? "")) { phase in
-                        phase.image?.resizable().scaledToFill()
-                            ?? Noir.noir2
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Noir.noir2
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
