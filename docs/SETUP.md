@@ -106,6 +106,7 @@ iOS 代码仓库 → **Settings** → **Secrets and variables** → **Actions** 
 
 ## 常见问题
 
-- **"缺少合规性"提示**：TestFlight 里构建版本选「不提供加密豁免」或我们在 Info.plist 加 `ITSAppUsesNonExemptEncryption=false`（后续加）
+- **"缺少合规性"提示**：已通过 project.yml 内置 `ITSAppUsesNonExemptEncryption=NO` 解决，不会再弹
+- **上传报 SDK version issue（409）**：苹果每年强制用最新 Xcode 的 SDK 上传，把 workflow runner 升级到当年最新 macos 镜像即可（已改为 macos-26）
 - **兔币充值**：苹果 3.1.1 条款要求虚拟币必须走 IAP 内购，上架前需改造，否则拒审
 - **构建失败看日志**：Actions → 失败的那次运行 → 点开红色步骤
