@@ -60,14 +60,24 @@ platform :ios do
         xcodeproj: "JJT.xcodeproj"
       )
 
-      build_app(
-        scheme: "JJT",
-        project: "JJT.xcodeproj",
+    # CI 无 Apple 账号登录，自动签名不可用：切手动签名并绑定 match 安装的描述文件
+    profile_name = "match AppStore #{ENV['APP_IDENTIFIER']}"
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "JJT.xcodeproj",
+      team_id: ENV["TEAM_ID"],
+      profile_name: profile_name,
+      code_sign_identity: "Apple Distribution"
+    )
+
+    build_app(
+      scheme: "JJT",
+      project: "JJT.xcodeproj",
       export_method: "app-store",
-      xcargs: "DEVELOPMENT_TEAM=#{ENV['TEAM_ID']}",
       export_options: {
-        signingStyle: "automatic",
-        teamID: ENV["TEAM_ID"]
+        signingStyle: "manual",
+        teamID: ENV["TEAM_ID"],
+        provisioningProfiles: { ENV["APP_IDENTIFIER"] => profile_name }
       }
     )
 
