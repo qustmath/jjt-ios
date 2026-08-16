@@ -17,7 +17,11 @@ func webImageURL(_ raw: String?) -> URL? {
             : Config.apiBaseURL.absoluteString + "/"
         s = s.hasPrefix("/") ? base + s.dropFirst() : base + s
     }
-    return URL(string: s)
+    // URL 含未编码的空格/中文时 URL(string:) 返回 nil（安卓 Coil 自动编码不受影响），
+    // 兜底整体 percent 编码
+    if let u = URL(string: s) { return u }
+    let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%")
+    return URL(string: s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s)
 }
 
 /// 全 App 共享的内存图片缓存

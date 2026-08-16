@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var toast: String?
     @State private var city: String?
     @State private var appearedOnce = false
+    @State private var showDiagnostics = false
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
     @State private var mituGlow = false
     @State private var mituShine = false
@@ -77,6 +78,7 @@ struct HomeView: View {
                 }
             }
         }
+        .sheet(isPresented: $showDiagnostics) { DiagnosticsSheet() }
         .onAppear {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
             if appearedOnce { vm.load(force: true) } else { vm.load() }
@@ -141,6 +143,7 @@ struct HomeView: View {
                         .foregroundStyle(Noir.goldText)
                 }
                 .frame(width: 36, height: 36)
+                .onLongPressGesture { showDiagnostics = true }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("荆棘兔")
                         .font(.system(size: 17, weight: .bold, design: .serif))
