@@ -40,7 +40,7 @@ struct GiftCenterView: View {
             }
         }
         .onAppear { vm.load() }
-        .onChange(of: vm.gifts) { _, _ in
+        .onChange(of: vm.gifts.map(\.id)) { _, _ in
             if vm.selected == nil || !(displayGifts.contains { $0.id == vm.selected?.id }) {
                 vm.selected = displayGifts.first
             }
