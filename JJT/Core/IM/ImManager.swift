@@ -78,7 +78,7 @@ final class ImManager: NSObject {
     }
 
     func logout() {
-        V2TIMManager.sharedInstance().logout {} fail: {}
+        V2TIMManager.sharedInstance().logout {} fail: { (_, _: String?) in }
         isLoggedIn = false
     }
 
@@ -100,8 +100,8 @@ final class ImManager: NSObject {
 
     func conversationList() async throws -> [V2TIMConversation] {
         try await withCheckedThrowingContinuation { cont in
-            V2TIMManager.sharedInstance().getConversationList(0, count: 100) { result in
-                cont.resume(returning: result?.conversationList ?? [])
+            V2TIMManager.sharedInstance().getConversationList(0, count: 100) { list, _, _ in
+                cont.resume(returning: list ?? [])
             } fail: { code, msg in
                 cont.resume(throwing: APIError.business(code: Int(code), message: msg ?? "获取会话失败"))
             }
@@ -112,19 +112,19 @@ final class ImManager: NSObject {
         await withCheckedContinuation { cont in
             V2TIMManager.sharedInstance().getTotalUnreadMessageCount { count in
                 cont.resume(returning: Int(count))
-            } fail: { _, _ in
+            } fail: { (_, _: String?) in
                 cont.resume(returning: 0)
             }
         }
     }
 
     func markRead(conversationID: String) {
-        V2TIMManager.sharedInstance().cleanConversationUnreadMessageCount(conversationID, cleanTimestamp: 0, cleanSequence: 0) {} fail: {}
+        V2TIMManager.sharedInstance().cleanConversationUnreadMessageCount(conversationID, cleanTimestamp: 0, cleanSequence: 0) {} fail: { (_, _: String?) in }
     }
 
     func deleteConversation(_ conversationID: String) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            V2TIMManager.sharedInstance().deleteConversation(conversationID) {
+            V2TIMManager.sharedInstance().deleteConversation(conversation: conversationID) {
                 cont.resume()
             } fail: { code, msg in
                 cont.resume(throwing: APIError.business(code: Int(code), message: msg ?? "删除失败"))
@@ -134,7 +134,7 @@ final class ImManager: NSObject {
 
     func pinConversation(_ conversationID: String, pinned: Bool) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            V2TIMManager.sharedInstance().pinConversation(conversationID, isPinned: pinned) {
+            V2TIMManager.sharedInstance().pinConversation(conversationID: conversationID, isPinned: pinned) {
                 cont.resume()
             } fail: { code, msg in
                 cont.resume(throwing: APIError.business(code: Int(code), message: msg ?? "操作失败"))
@@ -146,9 +146,9 @@ final class ImManager: NSObject {
 
     func c2cHistory(peerId: String, count: Int32 = 20, lastMsg: V2TIMMessage? = nil) async -> [V2TIMMessage] {
         await withCheckedContinuation { cont in
-            V2TIMManager.sharedInstance().getC2CHistoryMessageList(peerId, count: count, lastMsg: lastMsg) { msgs in
+            V2TIMManager.sharedInstance().getC2CHistoryMessageList(userID: peerId, count: count, lastMsg: lastMsg) { msgs in
                 cont.resume(returning: msgs ?? [])
-            } fail: { _, _ in
+            } fail: { (_, _: String?) in
                 cont.resume(returning: [])
             }
         }
@@ -156,9 +156,9 @@ final class ImManager: NSObject {
 
     func groupHistory(groupId: String, count: Int32 = 20, lastMsg: V2TIMMessage? = nil) async -> [V2TIMMessage] {
         await withCheckedContinuation { cont in
-            V2TIMManager.sharedInstance().getGroupHistoryMessageList(groupId, count: count, lastMsg: lastMsg) { msgs in
+            V2TIMManager.sharedInstance().getGroupHistoryMessageList(groupID: groupId, count: count, lastMsg: lastMsg) { msgs in
                 cont.resume(returning: msgs ?? [])
-            } fail: { _, _ in
+            } fail: { (_, _: String?) in
                 cont.resume(returning: [])
             }
         }
@@ -168,25 +168,25 @@ final class ImManager: NSObject {
 
     /// text / imagePath / customData 三选一由调用方组合；isGroup 决定路由
     func sendText(_ text: String, to peerId: String, isGroup: Bool, cloudCustomData: String? = nil) async throws {
-        guard let msg = V2TIMManager.sharedInstance().createTextMessage(text) else { return }
+        guard let msg = V2TIMManager.sharedInstance().createTextMessage(text: text) else { return }
         msg.cloudCustomData = cloudCustomData?.data(using: .utf8)
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
     func sendImage(_ localPath: String, to peerId: String, isGroup: Bool) async throws {
-        guard let msg = V2TIMManager.sharedInstance().createImageMessage(localPath) else { return }
+        guard let msg = V2TIMManager.sharedInstance().createImageMessage(imagePath: localPath) else { return }
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
     func sendCustom(_ jsonData: String, to peerId: String, isGroup: Bool) async throws {
-        guard let msg = V2TIMManager.sharedInstance().createCustomMessage(Data(jsonData.utf8)) else { return }
+        guard let msg = V2TIMManager.sharedInstance().createCustomMessage(data: Data(jsonData.utf8)) else { return }
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
     private func send(_ msg: V2TIMMessage, to peerId: String, isGroup: Bool) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             V2TIMManager.sharedInstance().sendMessage(
-                msg,
+                message: msg,
                 receiver: isGroup ? nil : peerId,
                 groupID: isGroup ? peerId : nil,
                 priority: .PRIORITY_DEFAULT,
@@ -206,7 +206,7 @@ final class ImManager: NSObject {
         let info = V2TIMUserFullInfo()
         info.nickName = nickname
         info.faceURL = avatar
-        V2TIMManager.sharedInstance().setSelfInfo(info) {} fail: { _, _ in }
+        V2TIMManager.sharedInstance().setSelfInfo(info: info) {} fail: { (_, _: String?) in }
     }
 
     /// 翻译 IM SDK 常见英文错误为中文（对齐安卓 translateError）
