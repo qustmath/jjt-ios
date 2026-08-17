@@ -3,6 +3,13 @@ import SwiftUI
 extension Notification.Name {
     /// 切换主 Tab（object 为 tag Int：0 主页 1 广场 2 密语 3 我的），对齐安卓 navigateToTab
     static let jjtSwitchTab = Notification.Name("jjtSwitchTab")
+    /// 全局轻提示（object 为提示文本 String）
+    static let jjtToast = Notification.Name("jjtToast")
+}
+
+/// 任意页面弹轻提示（对齐安卓 Toast / ErrorBus）
+func jjtShowToast(_ text: String) {
+    NotificationCenter.default.post(name: .jjtToast, object: text)
 }
 
 /// 主界面：主页 / 广场 / [+] / 密语 / 我的（对齐安卓 Noir TabBar：
@@ -44,6 +51,11 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .jjtSwitchTab)) { note in
             if let tag = note.object as? Int {
                 withAnimation { selection = tag }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jjtToast)) { note in
+            if let text = note.object as? String {
+                showToast(text)
             }
         }
         .fullScreenCover(isPresented: $showCreatePost) { CreatePostView() }
