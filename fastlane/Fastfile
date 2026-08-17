@@ -12,16 +12,17 @@
 default_platform(:ios)
 
 # CocoaPods trunk CDN 偶发 429 Too Many Requests（raw.githubusercontent.com 限流），
-# pod install 统一走带退避的重试，避免网络抖动打挂整条流水线
+# pod install 统一走递增退避重试（5 次，30/60/90/120s），避免网络抖动打挂整条流水线
 def pod_install_with_retry(cmd)
-  3.times do |i|
+  5.times do |i|
     begin
       sh(cmd)
       return
     rescue
-      raise if i == 2
-      UI.message("pod install 失败（第 #{i + 1} 次），30s 后重试…")
-      sleep 30
+      raise if i == 4
+      wait = 30 * (i + 1)
+      UI.message("pod install 失败（第 #{i + 1} 次），#{wait}s 后重试…")
+      sleep wait
     end
   end
 end

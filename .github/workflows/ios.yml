@@ -31,15 +31,29 @@ jobs:
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
 
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: cocoapods-${{ hashFiles('Podfile.lock') }}
+          restore-keys: cocoapods-
+
       - name: Build (simulator, unsigned)
         run: |
           xcodegen
-          # CocoaPods trunk CDN 偶发 429（raw.githubusercontent.com 限流），失败重试 3 次
-          for i in 1 2 3; do
-            pod install && break
-            echo "pod install 失败（第 $i 次），30s 后重试…"
-            sleep 30
+          # CocoaPods trunk CDN 偶发 429（raw.githubusercontent.com 限流），递增退避重试 5 次；
+          # 重试耗尽必须 fail-fast（for 循环末次是 sleep，退出码恒 0，需显式 exit 1）
+          ok=0
+          for i in 1 2 3 4 5; do
+            pod install && { ok=1; break; }
+            s=$((30 * i))
+            echo "pod install 失败（第 $i 次），${s}s 后重试…"
+            sleep $s
           done
+          [ $ok -eq 1 ] || { echo "pod install 重试 5 次仍失败"; exit 1; }
           xcodebuild -workspace JJT.xcworkspace -scheme JJT \
             -destination 'generic/platform=iOS Simulator' \
             -sdk iphonesimulator \
@@ -69,6 +83,16 @@ jobs:
 
       - name: Bundle install
         run: bundle install
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: cocoapods-${{ hashFiles('Podfile.lock') }}
+          restore-keys: cocoapods-
 
       - name: fastlane beta
         run: bundle exec fastlane beta
