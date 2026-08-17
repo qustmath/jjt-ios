@@ -183,13 +183,8 @@ struct MemberCenterView: View {
                 Circle()
                     .fill(Noir.noir3)
                     .frame(width: 52, height: 52)
-                if let cur = vm.frameOptions?.current, !cur.isEmpty, let url = URL(string: cur) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFit()
-                        }
-                    }
-                    .frame(width: 60, height: 60)
+                if let cur = vm.frameOptions?.current, !cur.isEmpty {
+                    framePreview(url: cur, size: 60)
                 } else {
                     Image(systemName: "circle.dashed")
                         .font(.system(size: 22))
@@ -473,6 +468,24 @@ struct MemberCenterView: View {
         }
     }
 
+    // MARK: - 头像框预览（SVGA 动效 / 静态图）
+
+    private func framePreview(url: String, size: CGFloat) -> some View {
+        Group {
+            if url.lowercased().hasSuffix(".svga") {
+                SvgaView(url: url)
+            } else if let u = URL(string: url) {
+                AsyncImage(url: u) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFit()
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
+    }
+
     private func frameGroupTitle(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11))
@@ -491,17 +504,8 @@ struct MemberCenterView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle().fill(Noir.noir3).frame(width: 40, height: 40)
-                    if !url.isEmpty, !isSvga, let u = URL(string: url) {
-                        AsyncImage(url: u) { phase in
-                            if let image = phase.image {
-                                image.resizable().scaledToFit()
-                            }
-                        }
-                        .frame(width: 46, height: 46)
-                    } else if isSvga {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Noir.gold.opacity(0.6))
+                    if !url.isEmpty {
+                        framePreview(url: url, size: 46)
                     } else {
                         Image(systemName: "nosign")
                             .font(.system(size: 14))
