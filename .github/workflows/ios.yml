@@ -34,7 +34,8 @@ jobs:
       - name: Build (simulator, unsigned)
         run: |
           xcodegen
-          xcodebuild -scheme JJT \
+          pod install
+          xcodebuild -workspace JJT.xcworkspace -scheme JJT \
             -destination 'generic/platform=iOS Simulator' \
             -sdk iphonesimulator \
             CODE_SIGNING_ALLOWED=NO \

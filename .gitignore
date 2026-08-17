@@ -4,6 +4,10 @@
 *.xcodeproj/
 *.xcworkspace/
 
+# CocoaPods（CI 按需安装）
+Pods/
+Podfile.lock
+
 # Xcode 用户态
 xcuserdata/
 *.xcuserstate

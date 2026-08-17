@@ -24,14 +24,21 @@ struct AppAvatar: View {
             .frame(width: size, height: size)
             .clipShape(Circle())
 
-            if let frameURL, let fURL = webImageURL(frameURL) {
-                AsyncImage(url: fURL) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFit()
+            if let frameURL, !frameURL.isEmpty {
+                if frameURL.lowercased().hasSuffix(".svga") {
+                    // SVGA 动框（SVGAPlayer 播放，全局缓存解析结果）
+                    SvgaView(url: frameURL)
+                        .frame(width: size * frameScale, height: size * frameScale)
+                        .allowsHitTesting(false)
+                } else if let fURL = webImageURL(frameURL) {
+                    AsyncImage(url: fURL) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFit()
+                        }
                     }
+                    .frame(width: size * frameScale, height: size * frameScale)
+                    .allowsHitTesting(false)
                 }
-                .frame(width: size * frameScale, height: size * frameScale)
-                .allowsHitTesting(false)
             }
         }
         .frame(width: size, height: size)
