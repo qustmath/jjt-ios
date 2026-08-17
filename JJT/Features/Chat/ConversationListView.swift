@@ -202,7 +202,7 @@ final class ConversationListViewModel: ObservableObject {
         do {
             let list = try await ImManager.shared.conversationList()
             var items = list.map { conv -> ConversationItem in
-                let isGroup = conv.type == .CONVERSATION_TYPE_GROUP
+                let isGroup = conv.type == .V2TIM_GROUP
                 let lastMsg = Self.lastMessageText(conv.lastMessage)
                 return ConversationItem(
                     id: conv.conversationID,
@@ -219,7 +219,7 @@ final class ConversationListViewModel: ObservableObject {
             // 单聊：用后端昵称/头像/头像框覆盖 IM showName（对齐安卓 enrichUserInfo）
             let c2cIds = items.filter { !$0.isGroup }.compactMap { Int64($0.peerId) }
             if !c2cIds.isEmpty, let users = try? await UserAPI.getUserInfoList(ids: c2cIds) {
-                let map = Dictionary(uniqueKeysWithValues: users.map { (String($0.id), $0) })
+                let map = Dictionary<String, UserInfoResp>(uniqueKeysWithValues: users.map { (String($0.id), $0) })
                 items = items.map { item in
                     guard let u = map[item.peerId] else { return item }
                     var item = item

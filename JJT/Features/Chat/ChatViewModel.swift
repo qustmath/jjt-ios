@@ -213,7 +213,8 @@ final class ChatViewModel: ObservableObject {
 
     private func parseMessages(_ raws: [V2TIMMessage]) -> [ChatMessage] {
         // 过滤发送失败/已撤回（对齐安卓），SDK 历史新→旧，reverse 成旧→新
-        raws.filter { $0.status != .STATUS_SEND_FAIL && $0.status != .STATUS_LOCAL_REVOKED }
+        let swiftArr = raws as [V2TIMMessage]
+        return swiftArr.filter { $0.status != .STATUS_SEND_FAIL && $0.status != .STATUS_LOCAL_REVOKED }
             .reversed()
             .compactMap { v2ToChat($0) }
     }
@@ -221,7 +222,7 @@ final class ChatViewModel: ObservableObject {
     private func v2ToChat(_ msg: V2TIMMessage) -> ChatMessage? {
         let myId = String(TokenManager.shared.userId ?? 0)
         let isMine = msg.sender == myId
-        let quote = parseQuote(msg.cloudCustomData)
+        let quote = parseQuote(msg.cloudCustomData.flatMap { String(data: $0, encoding: .utf8) })
         let atMe = msg.groupAtUserList?.contains(myId) == true
 
         func base(_ text: String) -> ChatMessage {
@@ -232,7 +233,7 @@ final class ChatViewModel: ObservableObject {
                 senderName: msg.nickName ?? msg.sender ?? "",
                 senderAvatar: msg.faceURL,
                 text: text,
-                timestamp: Int64(msg.timestamp.timeIntervalSince1970),
+                timestamp: Int64(msg.timestamp?.timeIntervalSince1970 ?? 0),
                 quoteText: quote?.text,
                 quoteSenderName: quote?.senderName,
                 isAtMe: atMe

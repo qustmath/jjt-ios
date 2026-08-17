@@ -169,7 +169,7 @@ final class ImManager: NSObject {
     /// text / imagePath / customData 三选一由调用方组合；isGroup 决定路由
     func sendText(_ text: String, to peerId: String, isGroup: Bool, cloudCustomData: String? = nil) async throws {
         guard let msg = V2TIMManager.sharedInstance().createTextMessage(text) else { return }
-        msg.cloudCustomData = cloudCustomData
+        msg.cloudCustomData = cloudCustomData?.data(using: .utf8)
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
