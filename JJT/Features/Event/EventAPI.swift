@@ -115,6 +115,25 @@ enum GroupAPI {
     static func join(groupId: Int64) async throws -> String? {
         try await APIClient.shared.post("app-api/im/group/join", query: ["groupId": String(groupId)])
     }
+
+    /// 按 IM groupId 查内部群信息（专属红包选人用）
+    static func get(imGroupId: String) async throws -> GroupInfo {
+        try await APIClient.shared.get("app-api/im/group/get", query: ["imGroupId": imGroupId])
+    }
+
+    static func members(groupId: Int64) async throws -> [GroupMember] {
+        try await APIClient.shared.get("app-api/im/group/members", query: ["groupId": String(groupId)])
+    }
+}
+
+struct GroupMember: Decodable, Identifiable {
+    let id: Int64
+    let userId: Int64
+    let groupId: Int64
+    let role: Int?            // 1=群主 2=管理员 3=普通
+    let nickname: String?
+    let avatar: String?
+    let muteEndTime: Int64?
 }
 
 // MARK: - 组局 API（对齐安卓 GroupEventApi）

@@ -1,27 +1,72 @@
 import SwiftUI
 
-/// 发红包（对齐安卓 RedPacketSendScreen 的聊天场景子集）
+/// 发红包（对齐安卓 RedPacketSendScreen）
+/// 类型：群聊 1拼手气/2普通/3专属（指定群成员）；单聊固定普通包 1 份，无类型与个数选择
+/// 金额口径：拼手气=总金额；普通=单个金额×个数；专属/单聊=金额
 /// scene: 1 单聊 2 群聊；成功后回调 onSent 由聊天页发 IM 红包消息
 struct RedPacketSendView: View {
 
     let scene: Int
     let targetId: String
-    let onSent: (_ packetId: Int64, _ greeting: String, _ walletType: String) -> Void
+    let onSent: (_ packetId: Int64, _ greeting: String, _ walletType: String, _ exclusiveToName: String?) -> Void
 
     @StateObject private var payGuard = PayPasswordGuard()
     @Environment(\.dismiss) private var dismiss
 
-    @State private var packetType = 1          // 1 拼手气 2 普通
+    @State private var packetType = 1          // 群：1 拼手气 2 普通 3 专属
     @State private var walletType = "rabbit_coin"
     @State private var amount = ""
     @State private var count = ""
     @State private var greeting = ""
     @State private var balance: Int64?
     @State private var error: String?
+    @State private var sending = false
     @State private var showPaySettings = false
     @State private var showRecharge = false
+    // 专属红包：群成员选人
+    @State private var members: [GroupMember] = []
+    @State private var exclusive: GroupMember?
+    @State private var pickingMember = false
+    @State private var memberFilter = ""
+
+    private var isExclusive: Bool { scene == 2 && packetType == 3 }
+    private var needCount: Bool { scene == 2 && packetType != 3 }
+    private var amountValue: Int { Int(amount) ?? 0 }
+    private var countValue: Int { Int(count) ?? 0 }
+    /// 提交总金额：普通=单个×个数；其余=输入金额（对齐安卓 totalAmount）
+    private var totalAmount: Int { scene == 2 && packetType == 2 ? amountValue * countValue : amountValue }
+
+    /// 校验规则对齐安卓
+    private var valid: Bool {
+        let base: Bool
+        if isExclusive {
+            base = (1...20000).contains(amountValue) && exclusive != nil
+        } else if scene == 2 && packetType == 2 {
+            base = (1...20000).contains(amountValue) && (1...100).contains(countValue) && totalAmount <= 20000
+        } else if scene == 2 {
+            base = (1...20000).contains(amountValue) && (1...100).contains(countValue) && amountValue >= countValue // 拼手气：每份至少 1
+        } else {
+            base = (1...20000).contains(amountValue) // 单聊
+        }
+        return base && (balance == nil || totalAmount <= balance!)
+    }
+
+    /// 兔币余额不足时按钮可点，点了弹充值引导（对齐安卓 RechargeGuideBus；萝贝不可充值）
+    private var insufficientRabbit: Bool {
+        walletType == "rabbit_coin" && balance != nil && totalAmount > balance!
+    }
 
     var body: some View {
+        if pickingMember {
+            memberPickPage
+        } else {
+            mainPage
+        }
+    }
+
+    // MARK: - 主表单
+
+    private var mainPage: some View {
         VStack(spacing: 0) {
             // 头部
             Rectangle().fill(Noir.goldLine).frame(height: 1)
@@ -64,12 +109,13 @@ struct RedPacketSendView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    // 类型（群聊才有拼手气/普通选择；单聊固定普通）
+                    // 类型（群聊：拼手气/普通/专属；单聊固定普通包，不展示类型）
                     if scene == 2 {
                         fieldLabel("红包类型")
                         HStack(spacing: 8) {
                             typePill(1, "拼手气")
                             typePill(2, "普通")
+                            typePill(3, "专属")
                         }
                     }
                     fieldLabel("钱包")
@@ -77,33 +123,83 @@ struct RedPacketSendView: View {
                         walletPill("rabbit_coin", "兔币")
                         walletPill("radish_coin", "萝贝")
                     }
-                    fieldLabel(packetType == 1 ? "总金额" : "单个金额")
-                    TextField(packetType == 1 ? "总金额（\(walletTypeLabel(walletType))）" : "单个金额", text: $amount)
+                    // 专属红包：指定领取人
+                    if isExclusive {
+                        fieldLabel("发给谁")
+                        Button { pickingMember = true } label: {
+                            HStack {
+                                Text(exclusive?.nickname ?? "选择群成员")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(exclusive != nil ? Noir.ivory : .white.opacity(0.3))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.3))
+                            }
+                            .noirField()
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    fieldLabel(scene == 2 && packetType == 1 ? "总金额" : (scene == 2 && packetType == 2 ? "单个金额" : "金额"))
+                    TextField(scene == 2 && packetType == 1 ? "总金额（\(walletTypeLabel(walletType))）" : "0", text: $amount)
                         .keyboardType(.numberPad)
                         .noirField()
-                    fieldLabel("个数")
-                    TextField("红包个数", text: $count)
-                        .keyboardType(.numberPad)
-                        .noirField()
+                        .onChange(of: amount) { _, v in amount = String(v.filter(\.isNumber).prefix(5)) }
+                    // 个数：群聊非专属才有（单聊固定 1 份）
+                    if needCount {
+                        fieldLabel("个数")
+                        TextField("红包个数", text: $count)
+                            .keyboardType(.numberPad)
+                            .noirField()
+                            .onChange(of: count) { _, v in count = String(v.filter(\.isNumber).prefix(3)) }
+                        Text("本群共 \(members.count + 1) 人")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
                     fieldLabel("祝福语")
                     TextField("恭喜发财，大吉大利", text: $greeting)
                         .noirField()
+                        .onChange(of: greeting) { _, v in greeting = String(v.prefix(32)) }
                     if let error {
                         Text(error)
                             .font(.system(size: 11))
                             .foregroundStyle(Noir.crimsonHot)
                     }
-                    Button { submit() } label: {
-                        Text("塞钱进红包")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                    if insufficientRabbit {
+                        Text("兔币余额不足（当前 \(balance ?? 0)）")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Noir.crimsonHot)
+                    }
+                    // 底部大金额（对齐安卓）
+                    HStack(alignment: .bottom, spacing: 5) {
+                        Text("\(totalAmount)")
+                            .font(.system(size: 36, weight: .black, design: .serif))
+                            .foregroundStyle(Noir.goldText)
+                        Text(walletTypeLabel(walletType))
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .padding(.bottom, 6)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 6)
+                    Button { tapSubmit() } label: {
+                        Text(sending ? "发送中…" : "塞钱进红包")
+                            .font(.system(size: 14, weight: .bold))
+                            .tracking(2)
+                            .foregroundStyle(valid && !sending ? .white : .white.opacity(0.3))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
-                            .background(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
-                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .clipShape(Capsule())
+                            .background(
+                                Capsule().fill(
+                                    valid && !sending
+                                        ? LinearGradient(colors: [Color(red: 0x9E/255, green: 0x1B/255, blue: 0x1B/255), Color(red: 0xC4/255, green: 0x38/255, blue: 0x2E/255)],
+                                                         startPoint: .leading, endPoint: .trailing)
+                                        : LinearGradient(colors: [Color.white.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
+                                )
+                            )
                     }
                     .buttonStyle(.plain)
+                    .disabled(!(valid && !sending) && !insufficientRabbit)
                     .padding(.top, 6)
                 }
                 .padding(.horizontal, 20)
@@ -111,11 +207,10 @@ struct RedPacketSendView: View {
             }
         }
         .onAppear {
-            Task { balance = try await WalletAPI.getWallet(walletType).availableAmount }
+            loadBalance()
+            loadMembersIfNeeded()
         }
-        .onChange(of: walletType) { _, wt in
-            Task { balance = try await WalletAPI.getWallet(wt).availableAmount }
-        }
+        .onChange(of: walletType) { _, _ in loadBalance() }
         .payPasswordGuard(payGuard) { showPaySettings = true }
         .fullScreenCover(isPresented: $showPaySettings) {
             PayPasswordSettingsView()
@@ -125,6 +220,60 @@ struct RedPacketSendView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .jjtInsufficientBalance)) { _ in
             showRecharge = true
+        }
+    }
+
+    // MARK: - 指定领取人（对齐安卓 MemberPickPage：搜索 + 成员列表）
+
+    private var memberPickPage: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(Noir.goldLine).frame(height: 1)
+            HStack {
+                Button { pickingMember = false } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Noir.ivory)
+                        .frame(width: 32, height: 32)
+                }
+                Spacer()
+                Text("指定领取人")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Noir.ivory)
+                Spacer()
+                Color.clear.frame(width: 32, height: 32)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            TextField("搜索成员", text: $memberFilter)
+                .noirField()
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+
+            let shown = memberFilter.isEmpty ? members
+                : members.filter { ($0.nickname ?? "").localizedCaseInsensitiveContains(memberFilter) }
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(shown) { m in
+                        HStack(spacing: 10) {
+                            AppAvatar(url: m.avatar, size: 36)
+                                .frame(width: 36, height: 36)
+                            Text(m.nickname ?? "用户\(m.userId)")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Noir.ivory)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Noir.noir2)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.hairlineGold, lineWidth: 1))
+                        .contentShape(Rectangle())
+                        .onTapGesture { exclusive = m; pickingMember = false }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
@@ -162,21 +311,41 @@ struct RedPacketSendView: View {
             .onTapGesture { walletType = type }
     }
 
-    private func submit() {
-        guard let amt = Int(amount), amt > 0 else { error = "请输入金额"; return }
-        guard let cnt = Int(count), cnt > 0 else { error = "请输入个数"; return }
-        if scene == 2, packetType == 2, cnt > 0, amt * cnt > (balance ?? 0) {
-            // 普通红包按 单个×个数 扣款，余额不足提前提示（服务端仍会校验）
+    // MARK: - 数据加载与提交
+
+    private func loadBalance() {
+        Task { balance = try await WalletAPI.getWallet(walletType).availableAmount }
+    }
+
+    /// 群聊：IM groupId → 内部 id → 成员列表（排除自己），供专属红包选人 / 「本群共 N 人」
+    private func loadMembersIfNeeded() {
+        guard scene == 2 else { return }
+        Task {
+            guard let info = try? await GroupAPI.get(imGroupId: targetId),
+                  let all = try? await GroupAPI.members(groupId: info.id) else { return }
+            let myId = TokenManager.shared.userId
+            members = all.filter { $0.userId != myId }
         }
+    }
+
+    private func tapSubmit() {
+        if insufficientRabbit && !valid {
+            showRecharge = true
+            return
+        }
+        guard valid else { return }
         error = nil
         let greet = greeting.trimmingCharacters(in: .whitespaces).isEmpty ? "恭喜发财，大吉大利" : greeting
         payGuard.require { pwd in
+            sending = true
+            defer { sending = false }
             let resp = try await RedPacketAPI.send(RedPacketSendReq(
                 scene: scene, targetId: targetId, walletType: walletType,
                 packetType: scene == 1 ? 2 : packetType,
-                totalAmount: amt, totalCount: cnt,
+                totalAmount: totalAmount, totalCount: needCount ? countValue : 1,
+                exclusiveUserId: isExclusive ? exclusive?.userId : nil,
                 greeting: greet, payPassword: pwd))
-            onSent(resp.packetId, greet, walletType)
+            onSent(resp.packetId, greet, walletType, isExclusive ? exclusive?.nickname : nil)
         }
     }
 }

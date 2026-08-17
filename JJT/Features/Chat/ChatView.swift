@@ -25,6 +25,8 @@ struct ChatView: View {
     @State private var peerProfileId: Int64?
     /// 已滚到的最新消息 id（区分首次瞬时定位 vs 后续动画滚动）
     @State private var lastScrolledMsg: String?
+    /// 输入框焦点（键盘与功能面板互斥：点 + 收键盘展开面板，点输入框收面板弹键盘）
+    @FocusState private var inputFocused: Bool
 
     private enum PanelKind { case actions, stickers }
 
@@ -71,9 +73,9 @@ struct ChatView: View {
         }
         // 发红包
         .sheet(isPresented: $showRedPacketSend) {
-            RedPacketSendView(scene: isGroup ? 2 : 1, targetId: peerId) { packetId, greeting, walletType in
+            RedPacketSendView(scene: isGroup ? 2 : 1, targetId: peerId) { packetId, greeting, walletType, exclusiveToName in
                 showRedPacketSend = false
-                vm.sendRedPacketMessage(packetId: packetId, greeting: greeting, walletType: walletType)
+                vm.sendRedPacketMessage(packetId: packetId, greeting: greeting, walletType: walletType, toName: exclusiveToName)
             }
             .presentationDetents([.large])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
@@ -156,6 +158,42 @@ struct ChatView: View {
 
     // MARK: - 消息列表
 
+    /// 列表展示项：时间分隔标签 + 消息（对齐安卓 buildChatDisplayItems，间隔 >300s 插时间标签）
+    private enum ChatDisplayItem: Identifiable {
+        case time(text: String, id: String)
+        case message(ChatMessage)
+
+        var id: String {
+            switch self {
+            case .time(_, let key): return "time_\(key)"
+            case .message(let m): return m.localId
+            }
+        }
+    }
+
+    private func buildDisplayItems(_ msgs: [ChatMessage]) -> [ChatDisplayItem] {
+        guard !msgs.isEmpty else { return [] }
+        var items: [ChatDisplayItem] = []
+        for (i, msg) in msgs.enumerated() {
+            if i == 0 || (msg.timestamp - msgs[i - 1].timestamp) > 300 {
+                items.append(.time(text: Self.formatChatTime(msg.timestamp), id: "\(msg.timestamp)_\(i)"))
+            }
+            items.append(.message(msg))
+        }
+        return items
+    }
+
+    /// 对齐安卓 formatChatTime：今天 HH:mm / 昨天 HH:mm / 更早 M月d日 HH:mm
+    private static func formatChatTime(_ ts: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(ts))
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        if Calendar.current.isDateInToday(date) { return f.string(from: date) }
+        if Calendar.current.isDateInYesterday(date) { return "昨天 \(f.string(from: date))" }
+        f.dateFormat = "M月d日 HH:mm"
+        return f.string(from: date)
+    }
+
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -172,9 +210,18 @@ struct ChatView: View {
                             .padding(8)
                             .onAppear { vm.loadMoreHistory() }
                     }
-                    ForEach(vm.messages) { msg in
-                        messageRow(msg)
-                            .id(msg.localId)
+                    ForEach(buildDisplayItems(vm.messages)) { item in
+                        switch item {
+                        case .time(let text, _):
+                            Text(text)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.25))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        case .message(let msg):
+                            messageRow(msg)
+                                .id(msg.localId)
+                        }
                     }
                 }
                 .padding(.horizontal, 14)
@@ -182,15 +229,19 @@ struct ChatView: View {
             }
             .onChange(of: vm.messages.last?.localId) { _, last in
                 // 新消息（尾部追加）才滚到底；加载更早历史（头部前插）last 不变，不打扰阅读位置
-                // 首次进会话瞬时定位到底——动画会被布局/图片加载打断而停在半空（对齐安卓 firstScroll）
                 guard let last else { return }
                 let first = lastScrolledMsg == nil
                 lastScrolledMsg = last
-                // 延迟到下一 runloop，等 LazyVStack 布局完成再滚
-                DispatchQueue.main.async {
-                    if first {
-                        proxy.scrollTo(last, anchor: .bottom)
-                    } else {
+                if first {
+                    // 首次进会话瞬时定位到底：fullScreenCover 转场 + 图片异步加载会改变布局，
+                    // 分几个时点补滚，确保最终停在最底（对齐安卓 firstScroll 瞬时定位）
+                    for delay in [0.05, 0.4, 1.0] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
                         withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                     }
                 }
@@ -389,6 +440,7 @@ struct ChatView: View {
         HStack(spacing: 10) {
             TextField("说点什么…", text: $input)
                 .noirField()
+                .focused($inputFocused)
                 .onSubmit { sendText() }
             Button { sendText() } label: {
                 Image(systemName: "paperplane.fill")
@@ -401,6 +453,8 @@ struct ChatView: View {
             }
             .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty)
             Button {
+                // 展开面板前先收键盘，两者同槽位互斥（对齐微信/安卓）
+                inputFocused = false
                 withAnimation { panel = panel == .actions ? nil : .actions }
             } label: {
                 Image(systemName: panel == .actions ? "xmark" : "plus")
@@ -415,6 +469,10 @@ struct ChatView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Color(red: 0x0C/255, green: 0x0C/255, blue: 0x10/255))
+        .onChange(of: inputFocused) { _, focused in
+            // 点输入框弹键盘时收起面板，避免面板被键盘盖住
+            if focused, panel != nil { withAnimation { panel = nil } }
+        }
     }
 
     private func sendText() {
