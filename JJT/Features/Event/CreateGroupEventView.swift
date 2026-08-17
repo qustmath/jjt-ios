@@ -230,32 +230,30 @@ struct CreateGroupEventView: View {
         return LazyVGrid(columns: cols, spacing: 8) {
             ForEach(vm.images) { img in
                 ZStack(alignment: .topTrailing) {
-                    Group {
-                        if let url = img.remoteUrl, let u = URL(string: url) {
-                            AsyncImage(url: u) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    Noir.noir3
+                    Noir.noir3
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay {
+                            if let url = img.remoteUrl, let u = URL(string: url) {
+                                AsyncImage(url: u) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().scaledToFill()
+                                    }
                                 }
+                            } else if let data = img.localData, let ui = UIImage(data: data) {
+                                Image(uiImage: ui).resizable().scaledToFill()
                             }
-                        } else if let data = img.localData, let ui = UIImage(data: data) {
-                            Image(uiImage: ui).resizable().scaledToFill()
-                        } else {
-                            Noir.noir3
                         }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(1, contentMode: .fill)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay {
-                        if img.uploading {
-                            Color.black.opacity(0.4)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay {
+                            if img.uploading {
+                                ZStack {
+                                    Color.black.opacity(0.4)
+                                    ProgressView().tint(Noir.gold).scaleEffect(0.8)
+                                }
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                            ProgressView().tint(Noir.gold).scaleEffect(0.8)
+                            }
                         }
-                    }
                     Button { vm.removeImage(img.id) } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 10, weight: .bold))

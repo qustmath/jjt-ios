@@ -398,29 +398,27 @@ struct UserProfileView: View {
         let coverUrl = post.mediaType == "video" ? post.videoCover : post.images?.first
         return VStack(spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                Group {
-                    if let cover = coverUrl, let url = URL(string: cover) {
-                        AsyncImage(url: url) { phase in
-                            if let image = phase.image {
-                                image.resizable().scaledToFill()
-                            } else {
-                                Noir.noir3
+                Noir.noir3
+                    .aspectRatio(tall ? 0.75 : 1.0, contentMode: .fit)
+                    .overlay {
+                        if let cover = coverUrl, let url = URL(string: cover) {
+                            AsyncImage(url: url) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                }
                             }
+                        } else {
+                            Noir.noir3.overlay(
+                                Text("暂无图片")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Noir.textFaint)
+                            )
                         }
-                    } else {
-                        Noir.noir3.overlay(
-                            Text("暂无图片")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Noir.textFaint)
-                        )
                     }
-                }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(tall ? 0.75 : 1.0, contentMode: .fill)
-                .clipped()
-                .overlay(
-                    LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
-                )
+                    .clipped()
+                    .overlay(
+                        LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+                    )
 
                 HStack(spacing: 6) {
                     if post.auditStatus == 0 {
