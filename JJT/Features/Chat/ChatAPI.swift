@@ -46,6 +46,34 @@ struct RedPacketStatusResp: Decodable {
     let myAmount: Int?
     let canOpen: Bool
     let expireTime: String?
+
+    // expireTime 是 LocalDateTime → 后端序列化为毫秒时间戳数字，需宽容解码
+    private enum CodingKeys: String, CodingKey {
+        case packetId, status, packetType, scene, walletType, greeting
+        case senderId, senderNickname, senderAvatar, exclusiveUserId, exclusiveNickname
+        case totalCount, remainCount, opened, myAmount, canOpen, expireTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        packetId = try c.decode(Int64.self, forKey: .packetId)
+        status = try c.decode(Int.self, forKey: .status)
+        packetType = try c.decode(Int.self, forKey: .packetType)
+        scene = try c.decode(Int.self, forKey: .scene)
+        walletType = try c.decodeIfPresent(String.self, forKey: .walletType)
+        greeting = try c.decodeIfPresent(String.self, forKey: .greeting)
+        senderId = try c.decode(Int64.self, forKey: .senderId)
+        senderNickname = try c.decodeIfPresent(String.self, forKey: .senderNickname)
+        senderAvatar = try c.decodeIfPresent(String.self, forKey: .senderAvatar)
+        exclusiveUserId = try c.decodeIfPresent(Int64.self, forKey: .exclusiveUserId)
+        exclusiveNickname = try c.decodeIfPresent(String.self, forKey: .exclusiveNickname)
+        totalCount = try c.decode(Int.self, forKey: .totalCount)
+        remainCount = try c.decode(Int.self, forKey: .remainCount)
+        opened = try c.decode(Bool.self, forKey: .opened)
+        myAmount = try c.decodeIfPresent(Int.self, forKey: .myAmount)
+        canOpen = try c.decode(Bool.self, forKey: .canOpen)
+        expireTime = try c.decodeLenientString(forKey: .expireTime)
+    }
 }
 
 struct RedPacketOpenResp: Decodable {
@@ -74,6 +102,34 @@ struct RedPacketDetailResp: Decodable {
     let myAmount: Int?
     let createTime: String?
     let claims: [RedPacketClaim]?
+
+    // createTime 是 LocalDateTime → 毫秒时间戳数字，需宽容解码
+    private enum CodingKeys: String, CodingKey {
+        case packetId, status, packetType, scene, walletType, greeting
+        case senderId, senderNickname, senderAvatar, totalAmount, totalCount
+        case remainAmount, remainCount, exclusiveNickname, myAmount, createTime, claims
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        packetId = try c.decode(Int64.self, forKey: .packetId)
+        status = try c.decode(Int.self, forKey: .status)
+        packetType = try c.decode(Int.self, forKey: .packetType)
+        scene = try c.decode(Int.self, forKey: .scene)
+        walletType = try c.decodeIfPresent(String.self, forKey: .walletType)
+        greeting = try c.decodeIfPresent(String.self, forKey: .greeting)
+        senderId = try c.decode(Int64.self, forKey: .senderId)
+        senderNickname = try c.decodeIfPresent(String.self, forKey: .senderNickname)
+        senderAvatar = try c.decodeIfPresent(String.self, forKey: .senderAvatar)
+        totalAmount = try c.decode(Int.self, forKey: .totalAmount)
+        totalCount = try c.decode(Int.self, forKey: .totalCount)
+        remainAmount = try c.decode(Int.self, forKey: .remainAmount)
+        remainCount = try c.decode(Int.self, forKey: .remainCount)
+        exclusiveNickname = try c.decodeIfPresent(String.self, forKey: .exclusiveNickname)
+        myAmount = try c.decodeIfPresent(Int.self, forKey: .myAmount)
+        createTime = try c.decodeLenientString(forKey: .createTime)
+        claims = try c.decodeIfPresent([RedPacketClaim].self, forKey: .claims)
+    }
 }
 
 struct RedPacketClaim: Decodable, Identifiable {
@@ -85,6 +141,20 @@ struct RedPacketClaim: Decodable, Identifiable {
     let createTime: String?
 
     var id: Int64 { userId }
+
+    private enum CodingKeys: String, CodingKey {
+        case userId, nickname, avatar, amount, luckiest, createTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try c.decode(Int64.self, forKey: .userId)
+        nickname = try c.decodeIfPresent(String.self, forKey: .nickname)
+        avatar = try c.decodeIfPresent(String.self, forKey: .avatar)
+        amount = try c.decode(Int.self, forKey: .amount)
+        luckiest = try c.decodeIfPresent(Bool.self, forKey: .luckiest) ?? false
+        createTime = try c.decodeLenientString(forKey: .createTime)
+    }
 }
 
 /// 钱包类型展示名

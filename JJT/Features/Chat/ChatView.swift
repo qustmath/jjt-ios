@@ -80,15 +80,11 @@ struct ChatView: View {
             .presentationDetents([.large])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
         }
-        // 开红包
-        .sheet(isPresented: Binding(
-            get: { openPacketId != nil },
-            set: { if !$0 { openPacketId = nil } }
-        )) {
+        // 开红包（居中弹窗，对齐安卓 Dialog；不用底部半屏）
+        .overlay {
             if let pid = openPacketId {
-                RedPacketOpenSheet(packetId: pid)
-                    .presentationDetents([.medium])
-                    .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+                RedPacketOpenDialog(packetId: pid) { openPacketId = nil }
+                    .transition(.opacity)
             }
         }
         // 帖子详情
@@ -357,26 +353,39 @@ struct ChatView: View {
                     .foregroundStyle(Noir.ivory)
             }
         case .redPacket:
-            HStack(spacing: 10) {
-                Image(systemName: "envelope.fill")
-                    .font(.system(size: 24))
-                    .foregroundStyle(Color(red: 0xF5/255, green: 0xD0/255, blue: 0x8A/255))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(msg.redPacketGreeting ?? "恭喜发财，大吉大利")
-                        .font(.system(size: 13.5, weight: .medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(msg.redPacketToName.map { "仅 \($0) 可领取" } ?? "\(walletTypeLabel(msg.redPacketWalletType))红包")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.6))
+            // 红金卡片：图标+祝福语+专属提示，底部币种条（对齐安卓 ChatScreen 红包气泡）
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    RedPacketIcon()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(msg.redPacketGreeting ?? "恭喜发财，大吉大利")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                        if let to = msg.redPacketToName {
+                            Text("仅 \(to) 可领取")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Noir.goldPale.opacity(0.9))
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                Text("红包 · \(walletTypeLabel(msg.redPacketWalletType))")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color.black.opacity(0.18))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(width: 220, alignment: .leading)
-            .background(LinearGradient(colors: [Color(red: 0xC8/255, green: 0x3A/255, blue: 0x2E/255), Color(red: 0xA0/255, green: 0x20/255, blue: 0x1C/255)],
+            .frame(width: 190)
+            .background(LinearGradient(colors: [Color(red: 0xC4/255, green: 0x38/255, blue: 0x2E/255), Color(red: 0x9E/255, green: 0x1B/255, blue: 0x1B/255)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Noir.gold.opacity(0.35), lineWidth: 1))
             .onTapGesture { if let pid = msg.redPacketId { openPacketId = pid } }
         case .postShare:
             HStack(spacing: 10) {

@@ -31,6 +31,19 @@ extension Notification.Name {
     static let jjtUnauthorized = Notification.Name("jjt.unauthorized")
 }
 
+/// 宽容解码字符串字段：后端 LocalDateTime 序列化为毫秒时间戳数字
+/// （TimestampLocalDateTimeSerializer），Gson 能把数字收进 String，JSONDecoder 不能。
+/// 数字统一转为毫秒时间戳字符串，字符串原样返回。
+extension KeyedDecodingContainer {
+    func decodeLenientString(forKey key: Key) throws -> String? {
+        if try decodeNil(forKey: key) { return nil }
+        if let s = try? decode(String.self, forKey: key) { return s }
+        if let n = try? decode(Int64.self, forKey: key) { return String(n) }
+        if let d = try? decode(Double.self, forKey: key) { return String(Int64(d)) }
+        return nil
+    }
+}
+
 /// 网络层：URLSession + async/await，自动带 Bearer Token，401 自动刷新重放一次
 /// （对齐安卓 ApiClient 的 authCheckInterceptor + tokenAuthenticator）
 final class APIClient {

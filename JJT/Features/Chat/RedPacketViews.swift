@@ -1,5 +1,34 @@
 import SwiftUI
 
+// 实体红包质感配色（对齐安卓 RedPacketSheet.kt）
+private let PacketRed = Color(red: 0x9E/255, green: 0x1B/255, blue: 0x1B/255)
+private let PacketRedHot = Color(red: 0xC4/255, green: 0x38/255, blue: 0x2E/255)
+private let PacketCream = Color(red: 0xF5/255, green: 0xE6/255, blue: 0xC8/255)
+
+/// 竖向信封红包图标（聊天气泡用）：竖版红信封 + 米色封口弧 + 金色封口圆片
+/// （1:1 对齐安卓 RedPacketIcon）
+struct RedPacketIcon: View {
+    var body: some View {
+        ZStack {
+            // 封口弧：大圆上偏，只露下缘弧线
+            Circle()
+                .fill(PacketCream)
+                .frame(width: 40, height: 40)
+                .offset(y: -20)
+            // 金色封口圆片
+            Circle()
+                .fill(RadialGradient(colors: [Noir.goldPale, Noir.gold, Noir.goldDeep],
+                                     center: .center, startRadius: 0, endRadius: 5))
+                .frame(width: 9, height: 9)
+                .offset(y: -1.5)
+        }
+        .frame(width: 22, height: 28)
+        .background(LinearGradient(colors: [PacketRedHot, PacketRed], startPoint: .top, endPoint: .bottom))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Noir.gold.opacity(0.5), lineWidth: 0.5))
+    }
+}
+
 /// 发红包（对齐安卓 RedPacketSendScreen）
 /// 类型：群聊 1拼手气/2普通/3专属（指定群成员）；单聊固定普通包 1 份，无类型与个数选择
 /// 金额口径：拼手气=总金额；普通=单个金额×个数；专属/单聊=金额
@@ -350,139 +379,225 @@ struct RedPacketSendView: View {
     }
 }
 
-/// 开红包弹层（对齐安卓 RedPacketSheet：状态 → 开 → 结果/领取记录）
-struct RedPacketOpenSheet: View {
+/// 开红包弹窗（对齐安卓 RedPacketSheet 的 RedPacketOpenSheet——居中 Dialog 而非底部半屏）
+/// 竖版实体红包形态：上米色封口穹顶压发送者头像昵称，下红包身（祝福语 + 「開」金币 / 领取结果与记录）
+struct RedPacketOpenDialog: View {
 
     let packetId: Int64
+    let onClose: () -> Void
 
     @State private var status: RedPacketStatusResp?
-    @State private var openResult: RedPacketOpenResp?
     @State private var detail: RedPacketDetailResp?
     @State private var opening = false
-    @State private var error: String?
-    @Environment(\.dismiss) private var dismiss
+    @State private var justOpenedAmount: Int?
+    @State private var loadError: String?
+
+    private var senderAvatar: String? { detail?.senderAvatar ?? status?.senderAvatar }
+    private var senderName: String? { detail?.senderNickname ?? status?.senderNickname }
+    private var greeting: String {
+        let g = detail?.greeting ?? status?.greeting
+        return (g?.isEmpty == false ? g! : "恭喜发财，大吉大利")
+    }
+    private var coinLabel: String { walletTypeLabel(detail?.walletType ?? status?.walletType) }
 
     var body: some View {
-        VStack(spacing: 14) {
-            Rectangle().fill(Noir.goldLine).frame(height: 1)
-            if let s = status {
-                // 发送者
-                HStack(spacing: 10) {
-                    AppAvatar(url: s.senderAvatar, size: 36)
-                        .frame(width: 36, height: 36)
-                    Text("\(s.senderNickname ?? "用户\(s.senderId)") 的红包")
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+                .onTapGesture { onClose() }
+            VStack(spacing: 16) {
+                card
+                // 底部圆形关闭钮
+                Button { onClose() } label: {
+                    Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Noir.ivory)
-                    Spacer()
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(width: 34, height: 34)
+                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
                 }
-                Text(s.greeting ?? "恭喜发财，大吉大利")
-                    .font(.system(size: 15, design: .serif))
-                    .foregroundStyle(Noir.goldText)
-
-                if let result = openResult {
-                    // 领取结果
-                    resultView(result)
-                } else if s.canOpen {
-                    Button { open() } label: {
-                        Text(opening ? "開" : "開")
-                            .font(.system(size: 22, weight: .bold, design: .serif))
-                            .foregroundStyle(Color(red: 0x8B/255, green: 0x0A/255, blue: 0x1E/255))
-                            .frame(width: 84, height: 84)
-                            .background(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .top, endPoint: .bottom))
-                            .clipShape(Circle())
-                    }
-                    .disabled(opening)
-                    .padding(.vertical, 10)
-                } else {
-                    Text(statusHint(s))
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .padding(.vertical, 16)
-                }
-
-                // 领取记录
-                if let d = detail, let claims = d.claims, !claims.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("已领取 \(d.totalCount - d.remainCount)/\(d.totalCount)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.4))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        ForEach(claims) { claim in
-                            HStack(spacing: 10) {
-                                AppAvatar(url: claim.avatar, size: 26)
-                                    .frame(width: 26, height: 26)
-                                Text(claim.nickname ?? "用户\(claim.userId)")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.white.opacity(0.75))
-                                Spacer()
-                                if claim.luckiest {
-                                    Text("手气最佳")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(Noir.gold)
-                                }
-                                Text("\(claim.amount) \(walletTypeLabel(d.walletType))")
-                                    .font(.system(size: 12, design: .serif))
-                                    .foregroundStyle(Noir.goldText)
-                            }
-                        }
-                    }
-                    .padding(.top, 8)
-                }
-            } else {
-                ProgressView().tint(Noir.gold).padding(40)
-            }
-            if let error {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Noir.crimsonHot)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 24)
         .onAppear { load() }
     }
 
-    private func statusHint(_ s: RedPacketStatusResp) -> String {
-        if s.opened { return "你已领取过" }
-        switch s.status {
-        case 2: return "红包已领完"
-        case 3: return "红包已过期"
-        default:
-            if let ex = s.exclusiveNickname { return "仅 \(ex) 可领取" }
-            return "暂不可领取"
+    // MARK: - 红包卡（264×406，实体红包比例）
+
+    private var card: some View {
+        VStack(spacing: 0) {
+            dome
+            bodyContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+        }
+        .frame(width: 264, height: 406)
+        .background(LinearGradient(colors: [PacketRedHot, PacketRed, Color(red: 0x6E/255, green: 0x10/255, blue: 0x10/255)],
+                                   startPoint: .top, endPoint: .bottom))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Noir.gold.opacity(0.45), lineWidth: 1))
+    }
+
+    /// 米色封口穹顶（大圆上偏露下弧）+ 金环头像 + 发送者
+    private var dome: some View {
+        ZStack {
+            Circle()
+                .fill(PacketCream)
+                .frame(width: 600, height: 600)
+                .offset(y: -247)
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 62, height: 62)
+                    AppAvatar(url: senderAvatar, size: 57)
+                        .frame(width: 57, height: 57)
+                }
+                VStack(spacing: 2) {
+                    Text("\(senderName ?? "TA") 的红包")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Noir.gold)
+                    Text("发了一个\(coinLabel)红包")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Noir.gold.opacity(0.85))
+                }
+            }
+            .offset(y: 8)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 190)
+        .clipped()
+    }
+
+    // MARK: - 红包身
+
+    @ViewBuilder
+    private var bodyContent: some View {
+        VStack(spacing: 0) {
+            Text(greeting)
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.9))
+                .multilineTextAlignment(.center)
+            Spacer(minLength: 12)
+
+            if let loadError {
+                Text(loadError)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                Spacer(minLength: 12)
+            } else if status == nil {
+                ProgressView().tint(Noir.goldLight)
+                Spacer(minLength: 12)
+            } else if status!.canOpen && justOpenedAmount == nil {
+                // 「開」金币
+                Button { open() } label: {
+                    Text("開")
+                        .font(.system(size: 32, weight: .black, design: .serif))
+                        .foregroundStyle(PacketRed)
+                        .frame(width: 80, height: 80)
+                        .background(RadialGradient(colors: [Noir.goldPale, Noir.gold, Noir.goldDeep],
+                                                   center: .center, startRadius: 0, endRadius: 40))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Noir.goldPale.opacity(0.7), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(opening)
+                .padding(.bottom, 12)
+                Text(opening ? "开启中…" : "剩余 \(status!.remainCount)/\(status!.totalCount) 份")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer(minLength: 12)
+            } else {
+                detailBody
+            }
         }
     }
 
+    /// 结果 + 领取记录（对齐安卓 PacketDetailBody；领取记录内嵌展示，iOS 暂无独立详情页）
     @ViewBuilder
-    private func resultView(_ result: RedPacketOpenResp) -> some View {
-        switch result.result {
-        case 1:
-            VStack(spacing: 6) {
-                Text("\(result.amount ?? 0)")
-                    .font(.system(size: 40, weight: .bold, design: .serif))
-                    .foregroundStyle(Noir.goldText)
-                Text("\(walletTypeLabel(status?.walletType))已存入钱包")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.45))
+    private var detailBody: some View {
+        let myAmount = justOpenedAmount ?? detail?.myAmount ?? status?.myAmount
+        if let myAmount {
+            HStack(alignment: .bottom, spacing: 4) {
+                Text("\(myAmount)")
+                    .font(.system(size: 38, weight: .black, design: .serif))
+                    .foregroundStyle(Noir.goldPale)
+                Text(coinLabel)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.bottom, 7)
             }
-            .padding(.vertical, 10)
-        case 2: Text("你已领取过").foregroundStyle(.white.opacity(0.5))
-        case 3: Text("手慢了，红包已领完").foregroundStyle(.white.opacity(0.5))
-        case 4: Text("红包已过期").foregroundStyle(.white.opacity(0.5))
-        default: Text("无权领取").foregroundStyle(.white.opacity(0.5))
+        } else if detail?.packetType == 3 {
+            Text("专属红包 · 仅 \(detail?.exclusiveNickname ?? "指定成员") 可领取")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.75))
         }
+
+        // 状态行
+        let total = detail?.totalCount ?? status?.totalCount ?? 0
+        let openedCount = detail?.claims?.count ?? ((status?.totalCount ?? 0) - (status?.remainCount ?? 0))
+        let statusText: String = {
+            switch detail?.status ?? status?.status {
+            case 2: return "已领完 \(openedCount)/\(total) 份"
+            case 3: return "已过期 · 剩余 \(detail?.remainAmount ?? 0) \(walletTypeLabel(detail?.walletType))已退回"
+            case 4: return "红包已取消"
+            default: return "已领取 \(openedCount)/\(total) 份"
+            }
+        }()
+        Text(statusText)
+            .font(.system(size: 11.5))
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.top, 6)
+
+        if detail == nil {
+            ProgressView().tint(Noir.goldLight).scaleEffect(0.8)
+                .padding(.top, 12)
+        } else if let claims = detail?.claims, !claims.isEmpty {
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(claims) { claim in
+                        HStack(spacing: 8) {
+                            AppAvatar(url: claim.avatar, size: 24)
+                                .frame(width: 24, height: 24)
+                            Text(claim.nickname ?? "用户\(claim.userId)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.75))
+                                .lineLimit(1)
+                            Spacer()
+                            if claim.luckiest {
+                                Text("手气最佳")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(Noir.gold)
+                            }
+                            Text("\(claim.amount)")
+                                .font(.system(size: 11, design: .serif))
+                                .foregroundStyle(Noir.goldText)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 110)
+            .padding(.top, 10)
+        }
+        Spacer(minLength: 0)
     }
+
+    // MARK: - 数据
 
     private func load() {
         Task {
             do {
-                status = try await RedPacketAPI.status(packetId: packetId)
-                detail = try? await RedPacketAPI.detail(packetId: packetId)
+                let s = try await RedPacketAPI.status(packetId: packetId)
+                status = s
+                loadError = nil
+                if !s.canOpen { loadDetail() }
             } catch {
-                self.error = error.localizedDescription
+                loadError = error.localizedDescription
             }
         }
+    }
+
+    private func loadDetail() {
+        Task { detail = try? await RedPacketAPI.detail(packetId: packetId) }
     }
 
     private func open() {
@@ -491,10 +606,17 @@ struct RedPacketOpenSheet: View {
         Task {
             defer { opening = false }
             do {
-                openResult = try await RedPacketAPI.open(packetId: packetId)
-                detail = try? await RedPacketAPI.detail(packetId: packetId)
+                let resp = try await RedPacketAPI.open(packetId: packetId)
+                if resp.result == 1 || resp.result == 2 {
+                    justOpenedAmount = resp.amount
+                    loadDetail()
+                } else {
+                    // 领完/过期/无权：重拉状态与详情（对齐安卓 canOpen=false + loadDetail）
+                    load()
+                    loadDetail()
+                }
             } catch {
-                self.error = error.localizedDescription
+                loadError = error.localizedDescription
             }
         }
     }
