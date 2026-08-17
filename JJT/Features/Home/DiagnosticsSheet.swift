@@ -1,6 +1,7 @@
 import SwiftUI
+import Bugly
 
-/// 真机诊断面板（长按首页左上角"棘"logo 唤出）：
+/// 真机诊断面板（首页滑到底，点页脚几乎隐形的 "build N" 小字唤出）：
 /// 拉取轮播图/广场接口，展示原始 imageUrl 与逐个实测加载结果，
 /// 用于定位图片不显示的真实原因（URL 格式 / 状态码 / 证书 / DNS）。
 struct DiagnosticsSheet: View {
@@ -15,6 +16,7 @@ struct DiagnosticsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var rows: [Row] = []
     @State private var testing = false
+    @State private var buglyTestMsg: String?
 
     var body: some View {
         NavigationStack {
@@ -23,6 +25,32 @@ struct DiagnosticsSheet: View {
                     LabeledContent("App 版本", value: "v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")")
                     LabeledContent("API", value: Config.apiBaseURL.absoluteString)
                     LabeledContent("登录态", value: TokenManager.shared.isLoggedIn ? "已登录" : "未登录")
+                    LabeledContent("Bugly", value: Config.buglyAppID.isEmpty ? "未配置" : "已启用 \(Config.buglyAppID)")
+                }
+                // Bugly 上报链路测试（对齐安卓 CrashLogScreen 的测试崩溃入口）
+                Section("Bugly 上报测试") {
+                    Button("测试异常上报（不闪退）") {
+                        Bugly.reportException(NSException(
+                            name: NSExceptionName("JJTTestException"),
+                            reason: "Bugly 上报链路测试（手动触发，非真实bug）",
+                            userInfo: nil))
+                        buglyTestMsg = "已上报一条测试异常，几分钟后在 Bugly 后台「错误分析」查看"
+                    }
+                    Button("测试崩溃（App 会闪退）") {
+                        buglyTestMsg = "即将闪退…"
+                        // 延迟半秒让提示渲染出来再崩；崩溃将在 Bugly 后台「崩溃分析」出现
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            let empty: [Int] = []
+                            let i = Int(Date().timeIntervalSince1970) % 5 + 1 // 非常量下标，防编译期优化掉
+                            _ = empty[i]
+                        }
+                    }
+                    .foregroundStyle(.red)
+                    if let buglyTestMsg {
+                        Text(buglyTestMsg)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section("图片实测") {
                     if rows.isEmpty {

@@ -13,7 +13,8 @@ enum Config {
     /// 腾讯 IM SDK App ID（对齐安卓 ImManager.SDK_APP_ID）
     static let imSDKAppID: Int32 = 1600148788
 
-    /// Bugly iOS 产品 App ID（与安卓 743f5ae4a2 分平台，需在 bugly.qq.com 新建 iOS 产品后填入）
-    /// TODO: 创建后替换；空串时 Bugly 不初始化
-    static let buglyAppID = ""
+    /// Bugly iOS 产品 App ID（与安卓 743f5ae4a2 分平台）
+    static let buglyAppID = "3850b55428"
+    /// Bugly iOS 产品 App Key（运行时只需 App ID；App Key 留给符号表/dSYM 上传工具用）
+    static let buglyAppKey = "2efa084d-44ca-40ec-ab51-cb242a0dc853"
 }
