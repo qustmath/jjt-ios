@@ -123,7 +123,9 @@ struct UserProfileView: View {
             .frame(width: JJTMetrics.screenWidth, height: 208)
 
             // 返回
-            Button { (onBack ?? { dismiss() })() } label: {
+            Button {
+                    if let onBack { onBack() } else { dismiss() }
+                } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.white)

@@ -79,7 +79,9 @@ struct FriendApplyListView: View {
     private var topBar: some View {
         VStack(spacing: 0) {
             HStack {
-                Button { (onBack ?? { dismiss() })() } label: {
+                Button {
+                    if let onBack { onBack() } else { dismiss() }
+                } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Noir.goldLight)
