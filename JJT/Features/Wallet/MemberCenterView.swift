@@ -4,7 +4,7 @@ import SwiftUI
 /// 段位列表 + 层内等级点亮矩阵（点未点亮格 → 购买弹窗）+ 头像框更换 + 外显段位佩戴
 struct MemberCenterView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = MemberCenterViewModel()
     @Environment(\.dismiss) private var dismiss

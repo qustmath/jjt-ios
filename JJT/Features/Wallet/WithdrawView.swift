@@ -3,7 +3,7 @@ import SwiftUI
 /// 提现 — 金额 + 费率试算 + 选卡 + 支付密码（对齐安卓 WithdrawScreen）
 struct WithdrawView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = WithdrawViewModel()
     @StateObject private var payGuard = PayPasswordGuard()

@@ -4,7 +4,7 @@ import SwiftUI
 /// 对齐安卓 FriendApplyScreen；同意后双方自动互关
 struct FriendApplyListView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = FriendApplyViewModel()
     @Environment(\.dismiss) private var dismiss

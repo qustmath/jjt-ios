@@ -5,7 +5,7 @@ struct FollowListView: View {
 
     /// 0=粉丝 1=关注
     let initialTab: Int
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = FollowListViewModel()
     @Environment(\.dismiss) private var dismiss

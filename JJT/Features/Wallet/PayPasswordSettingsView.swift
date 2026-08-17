@@ -6,7 +6,7 @@ import SwiftUI
 ///  - 修改：原密码 → 短信验证码 → 新密码 → 确认新密码
 struct PayPasswordSettingsView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = PayPasswordSettingsViewModel()
     @Environment(\.dismiss) private var dismiss

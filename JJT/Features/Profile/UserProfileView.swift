@@ -6,7 +6,7 @@ import PhotosUI
 struct UserProfileView: View {
 
     let userId: Int64
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = UserProfileViewModel()
     @Environment(\.dismiss) private var dismiss

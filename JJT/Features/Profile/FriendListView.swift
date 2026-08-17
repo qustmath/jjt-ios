@@ -3,7 +3,7 @@ import SwiftUI
 /// 好友 — 暗夜奢华风（对齐安卓 FriendScreen：好友列表 + 亲密关系 + 申请入口）
 struct FriendListView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = FriendListViewModel()
     @Environment(\.dismiss) private var dismiss

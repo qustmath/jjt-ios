@@ -4,7 +4,7 @@ import SwiftUI
 /// iOS 暂不上架，沿用安卓支付渠道（聚合吧-支付宝），无需 IAP
 struct CoinRechargeView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = CoinRechargeViewModel()
     @Environment(\.dismiss) private var dismiss

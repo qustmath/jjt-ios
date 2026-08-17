@@ -4,7 +4,7 @@ import PhotosUI
 /// 银行卡管理 — 列表/删除 + 绑卡表单（对齐安卓 BankCardScreen）
 struct BankCardView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = BankCardViewModel()
     @Environment(\.dismiss) private var dismiss

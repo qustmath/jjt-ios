@@ -5,11 +5,11 @@ import SwiftUI
 struct WalletView: View {
 
     let walletType: String
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
     /// 兔币钱包显示「充值」
-    var onRecharge: (() -> Unit)? = nil
+    var onRecharge: (() -> Void)? = nil
     /// 收益钱包显示「提现」
-    var onWithdraw: (() -> Unit)? = nil
+    var onWithdraw: (() -> Void)? = nil
 
     @StateObject private var vm = WalletViewModel()
     @Environment(\.dismiss) private var dismiss

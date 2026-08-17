@@ -3,7 +3,7 @@ import SwiftUI
 /// 我的钱包（聚合页）— 资产总览 + 银行卡 + 提现记录（对齐安卓 WalletHomeScreen）
 struct WalletHomeView: View {
 
-    var onBack: (() -> Unit)? = nil
+    var onBack: (() -> Void)? = nil
 
     @StateObject private var vm = WalletHomeViewModel()
     @Environment(\.dismiss) private var dismiss
