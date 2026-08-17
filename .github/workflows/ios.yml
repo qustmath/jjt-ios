@@ -34,7 +34,12 @@ jobs:
       - name: Build (simulator, unsigned)
         run: |
           xcodegen
-          pod install
+          # CocoaPods trunk CDN 偶发 429（raw.githubusercontent.com 限流），失败重试 3 次
+          for i in 1 2 3; do
+            pod install && break
+            echo "pod install 失败（第 $i 次），30s 后重试…"
+            sleep 30
+          done
           xcodebuild -workspace JJT.xcworkspace -scheme JJT \
             -destination 'generic/platform=iOS Simulator' \
             -sdk iphonesimulator \

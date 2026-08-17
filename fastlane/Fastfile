@@ -11,12 +11,27 @@
 
 default_platform(:ios)
 
+# CocoaPods trunk CDN 偶发 429 Too Many Requests（raw.githubusercontent.com 限流），
+# pod install 统一走带退避的重试，避免网络抖动打挂整条流水线
+def pod_install_with_retry(cmd)
+  3.times do |i|
+    begin
+      sh(cmd)
+      return
+    rescue
+      raise if i == 2
+      UI.message("pod install 失败（第 #{i + 1} 次），30s 后重试…")
+      sleep 30
+    end
+  end
+end
+
 platform :ios do
 
   desc "生成工程 + 模拟器编译验证（无需证书）"
   lane :build_simulator do
     sh("xcodegen")
-    sh("pod install")
+    pod_install_with_retry("pod install")
     xcodebuild(
       workspace: "JJT.xcworkspace",
       scheme: "JJT",
@@ -42,7 +57,7 @@ platform :ios do
     # fastlane lane 内的工作目录是 fastlane/，sh 需回到仓库根目录执行
     sh("cd .. && xcodegen")
     # CocoaPods：SVGAPlayer（SVGA 头像框）
-    sh("cd .. && pod install")
+    pod_install_with_retry("cd .. && pod install")
 
     # match：用 API Key 自动创建/复用 发布证书 + App Store 描述文件，
     # 加密存放在独立的私有 git 证书仓库（MATCH_GIT_URL）
