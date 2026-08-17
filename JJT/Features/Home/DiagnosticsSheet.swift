@@ -30,7 +30,7 @@ struct DiagnosticsSheet: View {
                 // Bugly 上报链路测试（对齐安卓 CrashLogScreen 的测试崩溃入口）
                 Section("Bugly 上报测试") {
                     Button("测试异常上报（不闪退）") {
-                        Bugly.reportException(NSException(
+                        Bugly.report(NSException(
                             name: NSExceptionName("JJTTestException"),
                             reason: "Bugly 上报链路测试（手动触发，非真实bug）",
                             userInfo: nil))
