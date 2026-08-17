@@ -39,10 +39,10 @@ struct WalletHomeView: View {
             set: { if !$0 { walletType = nil } }
         ), onDismiss: { vm.load() }) {
             if let type = walletType {
-                WalletView(walletType: type, onRecharge: {
+                WalletView(walletType: type, onRecharge: { () -> Void in
                     walletType = nil
                     reopenAfterDismiss { showRecharge = true }
-                }, onWithdraw: {
+                }, onWithdraw: { () -> Void in
                     walletType = nil
                     reopenAfterDismiss { showWithdraw = true }
                 })
