@@ -19,6 +19,8 @@ struct UserProfileView: View {
     @State private var pendingDeletePost: PostInfo?
     @State private var detailPostId: Int64?
     @State private var followListTab: Int?     // 0=粉丝 1=关注（nil 关闭）
+    @State private var showGiftPanel = false
+    @State private var showGiftWall = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -91,6 +93,20 @@ struct UserProfileView: View {
             if let tab = followListTab {
                 FollowListView(initialTab: tab)
             }
+        }
+        // 送礼面板（底部弹层）
+        .sheet(isPresented: $showGiftPanel) {
+            GiftPanelSheet(
+                receiverId: userId,
+                toName: vm.profile?.nickname ?? "TA",
+                onClose: { showGiftPanel = false }
+            )
+            .presentationDetents([.medium])
+            .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
+        // 礼物墙（他人）
+        .fullScreenCover(isPresented: $showGiftWall) {
+            GiftWallView(userId: userId)
         }
     }
 
@@ -317,19 +333,26 @@ struct UserProfileView: View {
                     .buttonStyle(.plain)
 
                     outlineButton("私信") { jjtShowToast("密语功能建设中，敬请期待") }
-                    outlineButton("送礼", gold: true) { jjtShowToast("礼物功能建设中，敬请期待") }
+                    outlineButton("送礼", gold: true) { showGiftPanel = true }
                     FriendApplyButton(targetUserId: p.id)
                 }
                 .padding(.top, 20)
             }
 
-            // 入口卡（本人）：成就勋章
+            // 入口卡（本人）：成就勋章；（他人）：礼物墙
             if isSelf {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         entryCard("成就勋章", "\(vm.hallLit)/\(vm.hallTotal)", "medal", gold: true) {
                             jjtShowToast("成就殿堂建设中，敬请期待")
                         }
+                    }
+                }
+                .padding(.top, 20)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        entryCard("礼物墙", "查看", "gift", gold: true) { showGiftWall = true }
                     }
                 }
                 .padding(.top, 20)

@@ -19,6 +19,8 @@ struct MeView: View {
     @State private var showWallet = false
     @State private var showMemberCenter = false
     @State private var showMyEvents = false
+    @State private var showGiftCenter = false
+    @State private var showMyGifts = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -46,6 +48,8 @@ struct MeView: View {
                     gridSection(title: "社交", en: "SOCIAL", items: [
                         GridItem("好友", "person.2") { showFriends = true },
                         GridItem("群聊", "bubble.left.and.bubble.right") { switchTab(2) },
+                        GridItem("礼物中心", "gift", gold: true) { showGiftCenter = true },
+                        GridItem("我的礼物", "heart.text.square") { showMyGifts = true },
                         GridItem("我的组局", "calendar") { showMyEvents = true },
                         GridItem("蜜兔会", "crown", gold: true) { comingSoon() },
                     ])
@@ -111,6 +115,12 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showMyEvents) {
             GroupEventListView(mode: "my")
+        }
+        .fullScreenCover(isPresented: $showGiftCenter, onDismiss: { vm.load() }) {
+            GiftCenterView()
+        }
+        .fullScreenCover(isPresented: $showMyGifts) {
+            MyGiftsView()
         }
     }
 

@@ -50,6 +50,10 @@ final class PayPasswordGuard: ObservableObject {
                 if case .business(let code, _) = e, code == PAY_PASSWORD_NOT_SET_CODE {
                     visible = false
                     showNotSetGuide = true
+                } else if case .business(let code, _) = e, code == WALLET_INSUFFICIENT_BALANCE_CODE {
+                    // 兔币余额不足（送礼/红包/解锁）→ 关密码弹窗，通知页面弹充值引导
+                    visible = false
+                    NotificationCenter.default.post(name: .jjtInsufficientBalance, object: nil)
                 } else {
                     errorText = e.errorDescription
                 }

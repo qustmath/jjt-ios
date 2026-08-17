@@ -17,6 +17,7 @@ struct HomeView: View {
     @State private var detailPostId: Int64?
     @State private var detailEventId: Int64?
     @State private var showEventList = false
+    @State private var showGiftCenter = false
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
     @State private var mituGlow = false
     @State private var mituShine = false
@@ -109,6 +110,9 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showEventList) {
             GroupEventListView(mode: "all")
+        }
+        .fullScreenCover(isPresented: $showGiftCenter) {
+            GiftCenterView()
         }
         .onAppear {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
@@ -499,6 +503,7 @@ struct HomeView: View {
                     ForEach(entries) { e in
                         Button {
                             if e.name == "组局" { showEventList = true }
+                            else if e.name == "礼物中心" { showGiftCenter = true }
                             else if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
                         } label: {
                             VStack(spacing: 0) {
