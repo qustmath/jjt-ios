@@ -214,7 +214,7 @@ final class ChatViewModel: ObservableObject {
     private func parseMessages(_ raws: [V2TIMMessage]) -> [ChatMessage] {
         // 过滤发送失败/已撤回（对齐安卓），SDK 历史新→旧，reverse 成旧→新
         let swiftArr = raws as [V2TIMMessage]
-        return swiftArr.filter { $0.status != .STATUS_SEND_FAIL && $0.status != .STATUS_LOCAL_REVOKED }
+        return swiftArr.filter { $0.status != .MSG_STATUS_SEND_FAIL && $0.status != .MSG_STATUS_LOCAL_REVOKED }
             .reversed()
             .compactMap { v2ToChat($0) }
     }

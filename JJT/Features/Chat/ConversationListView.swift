@@ -202,7 +202,7 @@ final class ConversationListViewModel: ObservableObject {
         do {
             let list = try await ImManager.shared.conversationList()
             var items = list.map { conv -> ConversationItem in
-                let isGroup = conv.type == .V2TIM_GROUP
+                let isGroup = conv.type == .GROUP
                 let lastMsg = Self.lastMessageText(conv.lastMessage)
                 return ConversationItem(
                     id: conv.conversationID,
