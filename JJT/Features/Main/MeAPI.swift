@@ -60,6 +60,7 @@ struct UpdateUserReq: Encodable {
     var avatar: String? = nil
     var mark: String? = nil
     var profileBg: String? = nil
+    var avatarFrame: String? = nil
 }
 
 struct TaskItem: Decodable {

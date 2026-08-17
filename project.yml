@@ -22,6 +22,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
         NSLocationWhenInUseUsageDescription: 用于在首页展示你所在的城市
+        # 拉起支付宝收银台（充值）
+        LSApplicationQueriesSchemes: [alipays]
         # 对齐安卓 usesCleartextTraffic=true：历史数据存在 http 图片（OSS/CDN），
         # ATS 默认拦截会导致轮播/头像全黑；提审时在审核备注里说明即可
         NSAppTransportSecurity:

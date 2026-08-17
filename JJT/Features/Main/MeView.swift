@@ -16,6 +16,8 @@ struct MeView: View {
     @State private var showLogoutConfirm = false
     @State private var showProfile = false
     @State private var showFriends = false
+    @State private var showWallet = false
+    @State private var showMemberCenter = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -47,7 +49,7 @@ struct MeView: View {
                         GridItem("蜜兔会", "crown", gold: true) { comingSoon() },
                     ])
                     gridSection(title: "我的服务", en: "SERVICES", items: [
-                        GridItem("我的钱包", "wallet.pass", gold: true) { comingSoon() },
+                        GridItem("我的钱包", "wallet.pass", gold: true) { showWallet = true },
                         GridItem("收藏", "star") { comingSoon() },
                         GridItem("我的点赞", "heart") { comingSoon() },
                         GridItem("票夹", "ticket", gold: true) { comingSoon() },
@@ -99,6 +101,12 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showFriends, onDismiss: { vm.load() }) {
             FriendListView()
+        }
+        .fullScreenCover(isPresented: $showWallet, onDismiss: { vm.load() }) {
+            WalletHomeView()
+        }
+        .fullScreenCover(isPresented: $showMemberCenter, onDismiss: { vm.load() }) {
+            MemberCenterView()
         }
     }
 
@@ -239,7 +247,7 @@ struct MeView: View {
         .background(Color(red: 0x0C/255, green: 0x0C/255, blue: 0x10/255).opacity(0.9))
         .clipShape(Capsule())
         .overlay(Capsule().stroke(color.opacity(0.65), lineWidth: 1))
-        .onTapGesture { comingSoon("会员中心") }
+        .onTapGesture { showMemberCenter = true }
     }
 
     private var upgradeBadge: some View {
@@ -254,7 +262,7 @@ struct MeView: View {
         .padding(.vertical, 3)
         .background(LinearGradient(colors: [Noir.crimson, Noir.crimsonHot], startPoint: .leading, endPoint: .trailing))
         .clipShape(Capsule())
-        .onTapGesture { comingSoon("会员中心") }
+        .onTapGesture { showMemberCenter = true }
     }
 
     private func badgeIcon(_ badge: BadgeHallItem) -> some View {
