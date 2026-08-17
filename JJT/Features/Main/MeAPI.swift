@@ -59,6 +59,7 @@ struct UpdateUserReq: Encodable {
     var nickname: String? = nil
     var avatar: String? = nil
     var mark: String? = nil
+    var profileBg: String? = nil
 }
 
 struct TaskItem: Decodable {
@@ -77,6 +78,8 @@ struct BadgeHallItem: Decodable {
 }
 
 struct AchievementHallResp: Decodable {
+    let litStages: Int?
+    let totalStages: Int?
     let mountedIds: [Int64]?
     let badges: [BadgeHallItem]?
 }

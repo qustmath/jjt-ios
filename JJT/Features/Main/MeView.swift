@@ -14,6 +14,8 @@ struct MeView: View {
     @State private var editingField: EditField?
     @State private var editInput = ""
     @State private var showLogoutConfirm = false
+    @State private var showProfile = false
+    @State private var showFriends = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -39,7 +41,7 @@ struct MeView: View {
                     quizCard
                     storeCard
                     gridSection(title: "社交", en: "SOCIAL", items: [
-                        GridItem("好友", "person.2") { comingSoon() },
+                        GridItem("好友", "person.2") { showFriends = true },
                         GridItem("群聊", "bubble.left.and.bubble.right") { switchTab(2) },
                         GridItem("我的组局", "calendar") { comingSoon() },
                         GridItem("蜜兔会", "crown", gold: true) { comingSoon() },
@@ -91,6 +93,12 @@ struct MeView: View {
         .confirmationDialog("确定退出登录吗？", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
             Button("退出登录", role: .destructive) { appState.logout() }
             Button("取消", role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $showProfile) {
+            UserProfileView(userId: TokenManager.shared.userId ?? 0)
+        }
+        .fullScreenCover(isPresented: $showFriends, onDismiss: { vm.load() }) {
+            FriendListView()
         }
     }
 
@@ -207,7 +215,7 @@ struct MeView: View {
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .contentShape(Rectangle())
-            .onTapGesture { comingSoon("个人主页") }
+            .onTapGesture { showProfile = true }
 
             Text("点击头像进入个人主页")
                 .font(.system(size: 10))
