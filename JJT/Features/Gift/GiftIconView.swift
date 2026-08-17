@@ -1,36 +1,47 @@
 import SwiftUI
 
-/// 礼物统一渲染（对齐安卓 GiftIcon）：svga → SvgaView 动效；glb → 静态兜底（iOS 暂无 3D 引擎）；
-/// 普通图片 → AsyncImage；内置渲染键 gift2d:/gift3d: → 图标兜底
+/// 礼物统一渲染（对齐安卓 GiftIcon）：icon 五种形态——
+/// 1. `gift2d:xxx` → 程序化 2D 动效（Gift2DRender）
+/// 2. `gift3d:xxx` → 内置 GLB 3D 模型（Gift3DView）
+/// 3. `*.svga` URL → SVGA 动效
+/// 4. `*.glb` URL → 3D 模型（下载缓存后渲染）
+/// 5. 其他 http(s) URL → 普通图片；空 → 兜底图标
+///
+/// [scale] 单礼物显示缩放（iconScale/100）：以盒子中心放大，不裁切、不影响布局（对齐安卓 graphicsLayer scale）
 struct GiftIconView: View {
     let icon: String?
     var size: CGFloat = 56
-    /// iconScale 百分比缩放（100=原始）
     var scale: CGFloat = 1.0
+    /// 3D 是否可交互（拖动旋转），舞台场景用
+    var interactive3D: Bool = false
 
     var body: some View {
         let kind = giftRenderKindOf(icon)
         Group {
-            if let kind, kind.0 == "svga" {
-                SvgaView(url: kind.1)
-            } else if let kind, kind.0 == "glb" {
-                // GLB 3D 素材：iOS 端暂无 3D 引擎，占位图标
-                Image(systemName: "rotate.3d")
-                    .font(.system(size: size * 0.4))
-                    .foregroundStyle(Noir.gold.opacity(0.6))
-            } else if let icon, icon.hasPrefix("http"), let url = URL(string: icon) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFit()
-                    } else {
-                        placeholderIcon
+            switch kind?.0 {
+            case "2d":
+                Gift2DRender(id: kind!.1, size: size)
+            case "3d", "glb":
+                Gift3DView(source: kind!.1, interactive: interactive3D)
+                    .frame(width: size, height: size)
+            case "svga":
+                SvgaView(url: kind!.1)
+            default:
+                if let icon, icon.hasPrefix("http"), let url = URL(string: icon) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFit()
+                        } else {
+                            placeholderIcon
+                        }
                     }
+                } else {
+                    placeholderIcon
                 }
-            } else {
-                placeholderIcon
             }
         }
-        .frame(width: size * scale, height: size * scale)
+        .frame(width: size, height: size)
+        .scaleEffect(scale)
         .allowsHitTesting(false)
     }
 
@@ -86,7 +97,8 @@ struct GiftSendOverlay: View {
                     GiftIconView(
                         icon: (gift.animationUrl?.isEmpty == false ? gift.animationUrl : gift.icon),
                         size: 220,
-                        scale: CGFloat(gift.iconScale ?? 100) / 100
+                        scale: CGFloat(gift.iconScale ?? 100) / 100,
+                        interactive3D: true
                     )
                 }
                 .padding(.bottom, 28)
