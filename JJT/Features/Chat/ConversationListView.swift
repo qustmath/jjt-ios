@@ -7,6 +7,8 @@ struct ConversationListView: View {
     @StateObject private var vm = ConversationListViewModel()
     @State private var chatTarget: ChatTarget?
     @State private var peerProfileId: Int64?
+    /// 0=私聊 1=群聊（对齐安卓 ConversationScreen 双 tab）
+    @State private var tab = 0
 
     /// 跳转目标（fullScreenCover 用 Binding 呈现）
     struct ChatTarget {
@@ -36,33 +38,14 @@ struct ConversationListView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 12)
 
-                if vm.isLoading, vm.conversations.isEmpty {
-                    Spacer()
-                    ProgressView().tint(Noir.gold)
-                    Spacer()
-                } else if vm.conversations.isEmpty {
-                    Spacer()
-                    VStack(spacing: 12) {
-                        Image(systemName: "bubble.left.and.bubble.right")
-                            .font(.system(size: 40))
-                            .foregroundStyle(Noir.gold.opacity(0.5))
-                        Text("暂无私语")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.35))
-                    }
-                    Spacer()
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 10) {
-                            ForEach(vm.conversations) { conv in
-                                conversationRow(conv)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
-                    }
-                    .refreshable { await vm.load() }
+                tabBar
+                Rectangle().fill(Noir.goldLine).frame(height: 1).opacity(0.4)
+
+                TabView(selection: $tab) {
+                    conversationPage(isGroup: false).tag(0)
+                    conversationPage(isGroup: true).tag(1)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .onAppear {
@@ -86,6 +69,75 @@ struct ConversationListView: View {
         }
     }
 
+    // MARK: - 私聊/群聊 tab（绯红下划线，对齐安卓）
+
+    private var tabBar: some View {
+        HStack(spacing: 24) {
+            tabButton(index: 0, label: "私聊")
+            tabButton(index: 1, label: "群聊")
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+    }
+
+    private func tabButton(index: Int, label: String) -> some View {
+        let selected = tab == index
+        return Button {
+            withAnimation { tab = index }
+        } label: {
+            VStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: 15, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Noir.crimsonHot : Color.white.opacity(0.4))
+                Rectangle()
+                    .fill(selected
+                          ? LinearGradient(colors: [Noir.crimson, Noir.crimsonHot], startPoint: .leading, endPoint: .trailing)
+                          : LinearGradient(colors: [.clear], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: 24, height: 2.5)
+                    .clipShape(RoundedRectangle(cornerRadius: 2))
+            }
+            .padding(.bottom, 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 会话分页
+
+    @ViewBuilder
+    private func conversationPage(isGroup: Bool) -> some View {
+        let filtered = vm.conversations.filter { $0.isGroup == isGroup }
+        if vm.isLoading, vm.conversations.isEmpty {
+            VStack {
+                Spacer()
+                ProgressView().tint(Noir.gold)
+                Spacer()
+            }
+        } else if filtered.isEmpty {
+            VStack(spacing: 12) {
+                Spacer()
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 40))
+                    .foregroundStyle(Noir.gold.opacity(0.5))
+                Text(isGroup ? "暂无群聊，去圈子逛逛吧" : "暂无私语")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.35))
+                Spacer()
+            }
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(filtered) { conv in
+                        conversationRow(conv)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+            .refreshable { await vm.load() }
+        }
+    }
+
     private func conversationRow(_ conv: ConversationItem) -> some View {
         HStack(spacing: 12) {
             AppAvatar(url: conv.faceUrl, size: 46,
@@ -100,6 +152,16 @@ struct ConversationListView: View {
                         .font(.system(size: 14.5, weight: .semibold))
                         .foregroundStyle(Noir.ivory)
                         .lineLimit(1)
+                    if conv.isOfficial {
+                        Text("官方")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(LinearGradient(colors: [Noir.goldPale, Noir.gold],
+                                                       startPoint: .leading, endPoint: .trailing))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
                     Spacer()
                     Text(conv.timeText)
                         .font(.system(size: 10))
@@ -133,7 +195,10 @@ struct ConversationListView: View {
         .onTapGesture { chatTarget = ChatTarget(peerId: conv.peerId, isGroup: conv.isGroup, title: conv.showName) }
         .contextMenu {
             Button(conv.pinned ? "取消置顶" : "置顶") { vm.togglePin(conv) }
-            Button("删除会话", role: .destructive) { vm.delete(conv) }
+            // 官方号不能删会话（不能取关，对齐安卓禁止滑动删除）
+            if !conv.isOfficial {
+                Button("删除会话", role: .destructive) { vm.delete(conv) }
+            }
         }
     }
 }
@@ -150,6 +215,8 @@ struct ConversationItem: Identifiable {
     var unreadCount: Int
     var timeText: String
     var pinned: Bool
+    /// 官方号（1001 荆棘兔 / 1002 客服 / 1003 VIP客服）
+    var isOfficial: Bool = false
     // 头像框（后端补全）
     var avatarFrame: String?
     var avatarFrameScale: Double = 1.0
@@ -196,6 +263,11 @@ final class ConversationListViewModel: ObservableObject {
         await load()
     }
 
+    /// 官方号（数字 ID：1001 荆棘兔 / 1002 客服 / 1003 VIP客服），注册即自动关注，会话始终显示
+    private static let officialAccounts: [(id: String, name: String)] = [
+        ("1001", "荆棘兔"), ("1002", "客服"), ("1003", "VIP客服")
+    ]
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
@@ -216,8 +288,24 @@ final class ConversationListViewModel: ObservableObject {
                     pinned: conv.isPinned
                 )
             }
-            // 单聊：用后端昵称/头像/头像框覆盖 IM showName（对齐安卓 enrichUserInfo）
-            let c2cIds = items.filter { !$0.isGroup }.compactMap { Int64($0.peerId) }
+            // 官方号会话始终显示（无 IM 会话时补一条空会话）
+            for official in Self.officialAccounts where !items.contains(where: { !$0.isGroup && $0.peerId == official.id }) {
+                items.append(ConversationItem(
+                    id: "c2c_\(official.id)", peerId: official.id, isGroup: false,
+                    showName: official.name, faceUrl: nil, lastMessage: "",
+                    unreadCount: 0, timeText: "", pinned: false, isOfficial: true
+                ))
+            }
+            // 已有 IM 会话的官方号补 isOfficial 标记与固定名称
+            items = items.map { item in
+                guard !item.isGroup, let official = Self.officialAccounts.first(where: { $0.id == item.peerId }) else { return item }
+                var item = item
+                item.isOfficial = true
+                if item.showName.isEmpty || item.showName == item.peerId { item.showName = official.name }
+                return item
+            }
+            // 单聊：用后端昵称/头像/头像框覆盖 IM showName（官方号除外，对齐安卓 enrichUserInfo）
+            let c2cIds = items.filter { !$0.isGroup && !$0.isOfficial }.compactMap { Int64($0.peerId) }
             if !c2cIds.isEmpty, let users = try? await UserAPI.getUserInfoList(ids: c2cIds) {
                 let map = Dictionary<String, UserInfoResp>(uniqueKeysWithValues: users.map { (String($0.id), $0) })
                 items = items.map { item in

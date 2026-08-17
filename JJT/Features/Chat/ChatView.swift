@@ -23,6 +23,8 @@ struct ChatView: View {
     @State private var openPacketId: Int64?
     @State private var detailPostId: Int64?
     @State private var peerProfileId: Int64?
+    /// 已滚到的最新消息 id（区分首次瞬时定位 vs 后续动画滚动）
+    @State private var lastScrolledMsg: String?
 
     private enum PanelKind { case actions, stickers }
 
@@ -179,8 +181,18 @@ struct ChatView: View {
                 .padding(.vertical, 10)
             }
             .onChange(of: vm.messages.last?.localId) { _, last in
-                if let last {
-                    withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                // 新消息（尾部追加）才滚到底；加载更早历史（头部前插）last 不变，不打扰阅读位置
+                // 首次进会话瞬时定位到底——动画会被布局/图片加载打断而停在半空（对齐安卓 firstScroll）
+                guard let last else { return }
+                let first = lastScrolledMsg == nil
+                lastScrolledMsg = last
+                // 延迟到下一 runloop，等 LazyVStack 布局完成再滚
+                DispatchQueue.main.async {
+                    if first {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    } else {
+                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                    }
                 }
             }
         }
