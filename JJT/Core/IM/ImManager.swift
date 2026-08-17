@@ -262,18 +262,18 @@ private final class SDKListener: NSObject, V2TIMSDKListener {
 }
 
 private final class AdvancedMsgListener: NSObject, V2TIMAdvancedMsgListener {
-    func onRecvNewMessage(_ msg: V2TIMMessage?) {
+    func onRecvNewMessage(msg: V2TIMMessage?) {
         guard let msg else { return }
         NotificationCenter.default.post(name: .jjtIMNewMessage, object: msg)
     }
 }
 
 private final class ConversationListener: NSObject, V2TIMConversationListener {
-    func onTotalUnreadMessageCountChanged(_ totalUnreadCount: UInt64) {
+    func onTotalUnreadMessageCountChanged(totalUnreadCount: UInt64) {
         NotificationCenter.default.post(name: .jjtIMUnreadChanged, object: Int(totalUnreadCount))
     }
 
-    func onConversationChanged(_ conversationList: [V2TIMConversation]?) {
+    func onConversationChanged(conversationList: [V2TIMConversation]?) {
         // 会话内容变化 → 会话列表页重拉
         NotificationCenter.default.post(name: .jjtIMDataRefresh, object: nil)
     }
