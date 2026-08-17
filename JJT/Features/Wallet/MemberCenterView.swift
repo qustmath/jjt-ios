@@ -400,11 +400,11 @@ struct MemberCenterView: View {
                         vm.upgrade {
                             // 余额不足 → 引导充值
                             vm.closePurchase()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showRecharge = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { () -> Void in showRecharge = true }
                         }
                     } else {
                         vm.closePurchase()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showRecharge = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { () -> Void in showRecharge = true }
                     }
                 } label: {
                     Text(vm.purchasing ? "晋升中…" : (sufficient ? "确认晋升" : "余额不足 · 去充值"))

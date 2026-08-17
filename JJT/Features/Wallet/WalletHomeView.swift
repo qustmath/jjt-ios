@@ -41,11 +41,10 @@ struct WalletHomeView: View {
             if let type = walletType {
                 WalletView(walletType: type, onRecharge: {
                     walletType = nil
-                    // 等 cover 关闭动画结束再开充值
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showRecharge = true }
+                    reopenAfterDismiss { showRecharge = true }
                 }, onWithdraw: {
                     walletType = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showWithdraw = true }
+                    reopenAfterDismiss { showWithdraw = true }
                 })
             }
         }
@@ -288,6 +287,11 @@ struct WalletHomeView: View {
     }
 
     // MARK: - 通用
+
+    /// 等 cover 关闭动画结束再打开下一个页面
+    private func reopenAfterDismiss(_ action: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: action)
+    }
 
     private func sectionHeader<Action: View>(_ title: String, _ en: String,
                                              @ViewBuilder action: () -> Action = { EmptyView() }) -> some View {
