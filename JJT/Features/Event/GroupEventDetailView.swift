@@ -10,6 +10,7 @@ struct GroupEventDetailView: View {
     @StateObject private var vm = GroupEventDetailViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var peerProfileId: Int64?
+    @State private var groupChatTarget: (id: String, title: String)?
 
     private static let EVENT_TYPES = [0: "聚餐", 1: "饮酒", 2: "KTV", 3: "运动", 4: "桌游", 5: "其他"]
     private static let EVENT_STATUS = [-1: "筹备中", 0: "组局中", 1: "已满", 2: "已取消", 3: "已结束"]
@@ -110,6 +111,15 @@ struct GroupEventDetailView: View {
         )) {
             if let id = peerProfileId {
                 UserProfileView(userId: id)
+            }
+        }
+        // 沟通群群聊
+        .fullScreenCover(isPresented: Binding(
+            get: { groupChatTarget != nil },
+            set: { if !$0 { groupChatTarget = nil } }
+        )) {
+            if let t = groupChatTarget {
+                ChatView(peerId: t.id, isGroup: true, title: t.title)
             }
         }
     }
@@ -361,7 +371,12 @@ struct GroupEventDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.gold.opacity(0.4), lineWidth: 1))
             .contentShape(Rectangle())
-            .onTapGesture { jjtShowToast("密语功能建设中，敬请期待") }
+            .onTapGesture {
+                let gid = detail.imGroupIdStr ?? detail.imGroupId.map(String.init) ?? ""
+                if !gid.isEmpty {
+                    groupChatTarget = (gid, detail.imGroupName ?? detail.title ?? "组局群")
+                }
+            }
         } else if detail.joined == true, detail.hasGroup == true, detail.isInGroup != true {
             luxButton(vm.isJoiningGroup ? "加入中…" : "加入沟通群", loading: vm.isJoiningGroup) {
                 vm.joinGroup()

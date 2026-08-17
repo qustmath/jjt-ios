@@ -93,6 +93,12 @@ enum UserAPI {
         try await APIClient.shared.get("app-api/member/user/get")
     }
 
+    /// 批量获取用户信息（聊天头像框/段位补全等）
+    static func getUserInfoList(ids: [Int64]) async throws -> [UserInfoResp] {
+        let joined = ids.map(String.init).joined(separator: ",")
+        return try await APIClient.shared.get("app-api/member/user/list", query: ["ids": joined])
+    }
+
     /// 更新资料（昵称/头像/签名）
     static func updateUserInfo(_ req: UpdateUserReq) async throws -> Bool {
         try await APIClient.shared.put("app-api/member/user/update", body: req)

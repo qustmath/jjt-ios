@@ -25,7 +25,7 @@ struct MainTabView: View {
             TabView(selection: $selection) {
                 HomeView().tag(0)
                 SquareView().tag(1)
-                PlaceholderPage(title: "密语", en: "MESSAGES", icon: "bubble.left.and.bubble.right").tag(2)
+                ConversationListView().tag(2)
                 MeView().tag(3)
             }
             // 分页容器：左右滑跟手切换主 tab（对齐安卓 HorizontalPager）

@@ -12,7 +12,8 @@ struct GiftCenterView: View {
     @StateObject private var payGuard = PayPasswordGuard()
     @Environment(\.dismiss) private var dismiss
 
-    @State private var giftTab = "3d"
+    // 默认 2D tab：3D 模型（GLTFSceneKit 老库）在用户切 tab 时才加载，降低进页即崩风险
+    @State private var giftTab = "2d"
     @State private var confirmGift: GiftItem?
     @State private var showPaySettings = false
     @State private var showRecharge = false

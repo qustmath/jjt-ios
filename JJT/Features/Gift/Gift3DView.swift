@@ -88,15 +88,42 @@ struct Gift3DView: UIViewRepresentable {
 
     // MARK: - 模型加载
 
+    /// GLTFSceneKit 是 2018 年的老库，解析放在主线程 + 全局串行（并发解析疑似崩溃源）
     private static func loadScene(_ source: String) async -> SCNScene? {
-        if source.hasPrefix("http") {
-            guard let file = await GiftAssetCache.download(source, ext: "glb") else { return nil }
-            return try? GLTFSceneSource(url: file).scene()
+        await GLBLoadQueue.shared.enqueue {
+            if source.hasPrefix("http") {
+                guard let file = await GiftAssetCache.download(source, ext: "glb") else { return nil }
+                return try? GLTFSceneSource(url: file).scene()
+            }
+            // 内置资产（JJT/Resources/gifts/*.glb）
+            guard let url = Bundle.main.url(forResource: source, withExtension: "glb", subdirectory: "gifts")
+                ?? Bundle.main.url(forResource: source, withExtension: "glb") else { return nil }
+            return try? GLTFSceneSource(url: url).scene()
         }
-        // 内置资产（JJT/Resources/gifts/*.glb）
-        guard let url = Bundle.main.url(forResource: source, withExtension: "glb", subdirectory: "gifts")
-            ?? Bundle.main.url(forResource: source, withExtension: "glb") else { return nil }
-        return try? GLTFSceneSource(url: url).scene()
+    }
+}
+
+/// GLB 解析全局串行队列（主线程执行）
+@MainActor
+final class GLBLoadQueue {
+    static let shared = GLBLoadQueue()
+    private var running = false
+    private var waiters: [() -> Void] = []
+
+    func enqueue<T>(_ work: @escaping () async -> T?) async -> T? {
+        if running {
+            await withCheckedContinuation { cont in
+                waiters.append { cont.resume() }
+            }
+        }
+        running = true
+        let result = await work()
+        running = false
+        if !waiters.isEmpty {
+            let next = waiters.removeFirst()
+            next()
+        }
+        return result
     }
 }
 

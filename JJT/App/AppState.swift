@@ -1,4 +1,5 @@
 import SwiftUI
+import Bugly
 
 /// 全局应用状态：登录态路由（登录页 ↔ 主界面）
 @MainActor
@@ -19,12 +20,14 @@ final class AppState: ObservableObject {
     func didLogin(_ resp: LoginResp) {
         guard let at = resp.accessToken, let rt = resp.refreshToken, let uid = resp.userId else { return }
         TokenManager.shared.save(accessToken: at, refreshToken: rt, userId: uid)
+        Bugly.setUserIdentifier(String(uid))
         isLoggedIn = true
     }
 
     func logout() {
         Task {
             await AuthAPI.logout()
+            ImManager.shared.logout()
             TokenManager.shared.clear()
             await MainActor.run { isLoggedIn = false }
         }

@@ -21,6 +21,7 @@ struct UserProfileView: View {
     @State private var followListTab: Int?     // 0=粉丝 1=关注（nil 关闭）
     @State private var showGiftPanel = false
     @State private var showGiftWall = false
+    @State private var showChat = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -107,6 +108,10 @@ struct UserProfileView: View {
         // 礼物墙（他人）
         .fullScreenCover(isPresented: $showGiftWall) {
             GiftWallView(userId: userId)
+        }
+        // 私信
+        .fullScreenCover(isPresented: $showChat) {
+            ChatView(peerId: String(userId), isGroup: false, title: vm.profile?.nickname)
         }
     }
 
@@ -332,7 +337,7 @@ struct UserProfileView: View {
                     }
                     .buttonStyle(.plain)
 
-                    outlineButton("私信") { jjtShowToast("密语功能建设中，敬请期待") }
+                    outlineButton("私信") { showChat = true }
                     outlineButton("送礼", gold: true) { showGiftPanel = true }
                     FriendApplyButton(targetUserId: p.id)
                 }
