@@ -205,7 +205,7 @@ final class ConversationListViewModel: ObservableObject {
                 let isGroup = conv.type == .GROUP
                 let lastMsg = Self.lastMessageText(conv.lastMessage)
                 return ConversationItem(
-                    id: conv.conversationID,
+                    id: conv.conversationID ?? (isGroup ? "group_\(conv.groupID ?? "")" : "c2c_\(conv.userID ?? "")"),
                     peerId: isGroup ? (conv.groupID ?? "") : (conv.userID ?? ""),
                     isGroup: isGroup,
                     showName: conv.showName ?? "",
