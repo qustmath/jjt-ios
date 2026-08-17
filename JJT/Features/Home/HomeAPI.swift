@@ -55,12 +55,26 @@ struct PostInfo: Decodable, Identifiable {
 
 struct GroupEventInfo: Decodable, Identifiable {
     let id: Int64
+    let userId: Int64?
+    let coverImage: String?
     let title: String?
+    let eventType: Int?
     let eventTime: String?
     let location: String?
+    let cityCode: Int?
+    let storeId: Int64?
+    let storeName: String?
     let participantLimit: Int?
     let currentCount: Int?
     let rabbitCoinPrice: Int?
+    let status: Int?              // -1 筹备中 0 组局中 1 已满 2 已取消 3 已结束
+    let organizerId: Int64?
+    let organizerName: String?
+    let organizerAvatar: String?
+    let joined: Bool?
+    let isOrganizer: Bool?
+    let hasGroup: Bool?
+    let allowQuit: Int?
 }
 
 /// 通用分页壳

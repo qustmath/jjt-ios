@@ -15,6 +15,8 @@ struct HomeView: View {
     @State private var showDiagnostics = false
     @State private var bannerIndex = 0
     @State private var detailPostId: Int64?
+    @State private var detailEventId: Int64?
+    @State private var showEventList = false
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
     @State private var mituGlow = false
     @State private var mituShine = false
@@ -55,7 +57,7 @@ struct HomeView: View {
 
                     if !vm.hotGroupEvents.isEmpty {
                         Spacer().frame(height: 36)
-                        SectionTitle(en: "SCHEDULE", title: "组局日程", actionText: "全部") { showToast("敬请期待") }
+                        SectionTitle(en: "SCHEDULE", title: "组局日程", actionText: "全部") { showEventList = true }
                         Spacer().frame(height: 4)
                         partyScheduleList
                     }
@@ -95,6 +97,18 @@ struct HomeView: View {
             if let id = detailPostId {
                 PostDetailView(postId: id)
             }
+        }
+        // 组局：日程行 → 详情；「全部」/目录入口 → 列表
+        .fullScreenCover(isPresented: Binding(
+            get: { detailEventId != nil },
+            set: { if !$0 { detailEventId = nil } }
+        ), onDismiss: { vm.load() }) {
+            if let id = detailEventId {
+                GroupEventDetailView(eventId: id)
+            }
+        }
+        .fullScreenCover(isPresented: $showEventList) {
+            GroupEventListView(mode: "all")
         }
         .onAppear {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
@@ -484,7 +498,8 @@ struct HomeView: View {
                 HStack(spacing: 20) {
                     ForEach(entries) { e in
                         Button {
-                            if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
+                            if e.name == "组局" { showEventList = true }
+                            else if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
                         } label: {
                             VStack(spacing: 0) {
                                 ZStack {
@@ -617,7 +632,7 @@ struct HomeView: View {
     private var partyScheduleList: some View {
         VStack(spacing: 0) {
             ForEach(vm.hotGroupEvents.prefix(3)) { event in
-                Button { showToast("敬请期待") } label: {
+                Button { detailEventId = event.id } label: {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 4) {
                             let (date, week) = Self.formatEventDate(event.eventTime)
