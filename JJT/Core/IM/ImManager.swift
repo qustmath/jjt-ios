@@ -47,7 +47,7 @@ final class ImManager: NSObject {
         }
         let userId = String(TokenManager.shared.userId ?? 0)
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            V2TIMManager.sharedInstance().login(userId, userSig: userSig) {
+            V2TIMManager.sharedInstance().login(userID: userId, userSig: userSig) {
                 self.isLoggedIn = true
                 self.registerGlobalListeners()
                 cont.resume()
@@ -61,12 +61,12 @@ final class ImManager: NSObject {
         if msgListener == nil {
             let l = AdvancedMsgListener()
             msgListener = l
-            V2TIMManager.sharedInstance().addAdvancedMsgListener(l)
+            V2TIMManager.sharedInstance().addAdvancedMsgListener(listener: l)
         }
         if convListener == nil {
             let l = ConversationListener()
             convListener = l
-            V2TIMManager.sharedInstance().addConversationListener(l)
+            V2TIMManager.sharedInstance().addConversationListener(listener: l)
         }
     }
 
@@ -100,7 +100,7 @@ final class ImManager: NSObject {
 
     func conversationList() async throws -> [V2TIMConversation] {
         try await withCheckedThrowingContinuation { cont in
-            V2TIMManager.sharedInstance().getConversationList(0, count: 100) { list, _, _ in
+            V2TIMManager.sharedInstance().getConversationList(nextSeq: 0, count: 100) { list, _, _ in
                 cont.resume(returning: list ?? [])
             } fail: { code, msg in
                 cont.resume(throwing: APIError.business(code: Int(code), message: msg ?? "获取会话失败"))
@@ -119,7 +119,7 @@ final class ImManager: NSObject {
     }
 
     func markRead(conversationID: String) {
-        V2TIMManager.sharedInstance().cleanConversationUnreadMessageCount(conversationID, cleanTimestamp: 0, cleanSequence: 0) {} fail: { (_, _: String?) in }
+        V2TIMManager.sharedInstance().cleanConversationUnreadMessageCount(conversationID: conversationID, cleanTimestamp: 0, cleanSequence: 0) {} fail: { (_, _: String?) in }
     }
 
     func deleteConversation(_ conversationID: String) async throws {
