@@ -134,7 +134,7 @@ struct MeView: View {
                 ZStack(alignment: .bottomTrailing) {
                     AppAvatar(url: vm.user?.avatar, size: 88,
                               frameURL: vm.user?.avatarFrame,
-                              frameScale: vm.user?.avatarFrameScale.map(CGFloat.init) ?? 1.25)
+                              frameScale: vm.user?.avatarFrameScale.map { CGFloat($0) } ?? 1.25)
                         .frame(width: 104, height: 104)
 
                     PhotosPicker(selection: $avatarItem, matching: .images) {
