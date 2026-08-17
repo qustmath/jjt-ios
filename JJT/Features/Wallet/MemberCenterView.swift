@@ -630,7 +630,7 @@ final class MemberCenterViewModel: ObservableObject {
     }
 
     /// 更换头像框（url 为空串 = 摘下）
-    func selectFrame(url: String, onDone: () -> Void) {
+    func selectFrame(url: String, onDone: @escaping () -> Void) {
         guard !frameSaving else { return }
         frameSaving = true
         Task {
