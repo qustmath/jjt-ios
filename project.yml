@@ -14,6 +14,13 @@ targets:
     platform: iOS
     sources:
       - path: JJT
+        excludes:
+          # Resources 单独按文件夹引用打包（保持目录结构，避免黑白表情包同名文件扁平化冲突）
+          - "Resources/**"
+      - path: JJT/Resources/stickers
+        type: folder
+      - path: JJT/Resources/gifts
+        type: folder
     info:
       path: JJT/Info.plist
       properties:
