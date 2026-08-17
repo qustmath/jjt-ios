@@ -4,8 +4,8 @@ use_frameworks!
 target 'JJT' do
   # SVGA 动效播放（会员头像框等），对齐安卓 com.opensource.svgaplayer
   pod 'SVGAPlayer', '~> 2.5'
-  # GLB 3D 礼物渲染（SceneKit 场景源）
-  pod 'GLTFSceneKit', '~> 0.4'
+  # GLB 3D 礼物渲染（SceneKit 场景源；未发布 trunk，直接指 git）
+  pod 'GLTFSceneKit', :git => 'https://github.com/magicien/GLTFSceneKit.git', :branch => 'master'
 end
 
 post_install do |installer|
