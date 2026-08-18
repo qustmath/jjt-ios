@@ -348,16 +348,22 @@ struct CouponCenterView: View {
 
             Spacer()
 
-            // 领取按钮
+            // 领取按钮（背景分支用 Group 包，避免三元异构类型触发编译器推断崩溃）
             Button { vm.take(c) } label: {
                 Text(c.canTake == true ? "领取" : "已领取")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(c.canTake == true ? .white : .white.opacity(0.35))
                     .padding(.horizontal, 18)
                     .padding(.vertical, 8)
-                    .background(c.canTake == true
-                        ? Capsule().fill(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine], startPoint: .leading, endPoint: .trailing))
-                        : Capsule().fill(Color.white.opacity(0.08)))
+                    .background(
+                        Group {
+                            if c.canTake == true {
+                                Capsule().fill(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine], startPoint: .leading, endPoint: .trailing))
+                            } else {
+                                Capsule().fill(Color.white.opacity(0.08))
+                            }
+                        }
+                    )
             }
             .disabled(c.canTake != true)
             .padding(.trailing, 14)
