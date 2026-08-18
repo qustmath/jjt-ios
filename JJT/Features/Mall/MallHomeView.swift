@@ -7,6 +7,7 @@ struct MallHomeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var detailSpuId: Int64?
     @State private var showCart = false
+    @State private var showCouponCenter = false
     @State private var keyword = ""
 
     var body: some View {
@@ -130,6 +131,9 @@ struct MallHomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.crimson.opacity(0.3), lineWidth: 1))
         .padding(.horizontal, 16)
+        .contentShape(Rectangle())
+        .onTapGesture { showCouponCenter = true }
+        .fullScreenCover(isPresented: $showCouponCenter) { CouponCenterView() }
     }
 
     // MARK: - 排序栏

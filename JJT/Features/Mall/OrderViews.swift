@@ -2,6 +2,17 @@ import SwiftUI
 
 // MARK: - 订单模型与 API（对齐安卓 OrderApi；价格为分）
 
+/// 兼容字段：后端时间字段有时返回字符串、有时返回 epoch 毫秒数字（Gson 会自动转，Swift 需手动）
+private func decodeFlexString<K: CodingKey>(_ container: KeyedDecodingContainer<K>, for key: K) -> String? {
+    if let s = try? container.decodeIfPresent(String.self, forKey: key) { return s }
+    if let n = try? container.decodeIfPresent(Int64.self, forKey: key) {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.string(from: Date(timeIntervalSince1970: TimeInterval(n) / 1000))
+    }
+    return nil
+}
+
 struct OrderItemInfo: Decodable, Identifiable {
     let id: Int64
     let spuId: Int64?
@@ -23,6 +34,22 @@ struct OrderListItem: Decodable, Identifiable {
     let payOrderId: Int64?
     let payPrice: Int?
     let items: [OrderItemInfo]?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, no, status, productCount, createTime, payOrderId, payPrice, items
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int64.self, forKey: .id)
+        no = try c.decodeIfPresent(String.self, forKey: .no)
+        status = try c.decodeIfPresent(Int.self, forKey: .status)
+        productCount = try c.decodeIfPresent(Int.self, forKey: .productCount)
+        createTime = decodeFlexString(c, for: .createTime)
+        payOrderId = try c.decodeIfPresent(Int64.self, forKey: .payOrderId)
+        payPrice = try c.decodeIfPresent(Int.self, forKey: .payPrice)
+        items = try c.decodeIfPresent([OrderItemInfo].self, forKey: .items)
+    }
 }
 
 struct OrderDetail: Decodable {
@@ -49,6 +76,41 @@ struct OrderDetail: Decodable {
     let rabbitCoinPrice: Int?
     let radishCoinPrice: Int?
     let items: [OrderItemInfo]?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, no, status, createTime, userRemark, payStatus, payOrderId, payTime, payExpireTime
+        case totalPrice, discountPrice, deliveryPrice, payPrice
+        case logisticsName, logisticsNo, deliveryTime
+        case receiverName, receiverMobile, receiverAreaName, receiverDetailAddress
+        case rabbitCoinPrice, radishCoinPrice, items
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int64.self, forKey: .id)
+        no = try c.decodeIfPresent(String.self, forKey: .no)
+        status = try c.decodeIfPresent(Int.self, forKey: .status)
+        createTime = decodeFlexString(c, for: .createTime)
+        userRemark = try c.decodeIfPresent(String.self, forKey: .userRemark)
+        payStatus = try c.decodeIfPresent(Bool.self, forKey: .payStatus)
+        payOrderId = try c.decodeIfPresent(Int64.self, forKey: .payOrderId)
+        payTime = decodeFlexString(c, for: .payTime)
+        payExpireTime = decodeFlexString(c, for: .payExpireTime)
+        totalPrice = try c.decodeIfPresent(Int.self, forKey: .totalPrice)
+        discountPrice = try c.decodeIfPresent(Int.self, forKey: .discountPrice)
+        deliveryPrice = try c.decodeIfPresent(Int.self, forKey: .deliveryPrice)
+        payPrice = try c.decodeIfPresent(Int.self, forKey: .payPrice)
+        logisticsName = try c.decodeIfPresent(String.self, forKey: .logisticsName)
+        logisticsNo = try c.decodeIfPresent(String.self, forKey: .logisticsNo)
+        deliveryTime = decodeFlexString(c, for: .deliveryTime)
+        receiverName = try c.decodeIfPresent(String.self, forKey: .receiverName)
+        receiverMobile = try c.decodeIfPresent(String.self, forKey: .receiverMobile)
+        receiverAreaName = try c.decodeIfPresent(String.self, forKey: .receiverAreaName)
+        receiverDetailAddress = try c.decodeIfPresent(String.self, forKey: .receiverDetailAddress)
+        rabbitCoinPrice = try c.decodeIfPresent(Int.self, forKey: .rabbitCoinPrice)
+        radishCoinPrice = try c.decodeIfPresent(Int.self, forKey: .radishCoinPrice)
+        items = try c.decodeIfPresent([OrderItemInfo].self, forKey: .items)
+    }
 }
 
 struct ExpressTrack: Decodable, Identifiable {

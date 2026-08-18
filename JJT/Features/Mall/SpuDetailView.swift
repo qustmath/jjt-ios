@@ -37,7 +37,7 @@ struct SpuDetailView: View {
                 ProgressView().tint(Noir.crimson)
             }
 
-            // 悬浮返回
+            // 悬浮返回 / 收藏
             VStack {
                 HStack {
                     Button { dismiss() } label: {
@@ -52,6 +52,17 @@ struct SpuDetailView: View {
                     .padding(.leading, 16)
                     .padding(.top, 56)
                     Spacer()
+                    Button { vm.toggleFavorite() } label: {
+                        ZStack {
+                            Circle().fill(Color.black.opacity(0.45))
+                            Image(systemName: vm.isFavorite ? "heart.fill" : "heart")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(vm.isFavorite ? Noir.crimsonHot : .white)
+                        }
+                        .frame(width: 36, height: 36)
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.top, 56)
                 }
                 Spacer()
             }
@@ -557,12 +568,27 @@ struct HtmlView: UIViewRepresentable {
 final class SpuDetailViewModel: ObservableObject {
     @Published var spu: SpuDetail?
     @Published var isLoading = false
+    @Published var isFavorite = false
 
     func load(id: Int64) {
         isLoading = true
         Task {
             defer { isLoading = false }
             spu = try? await MallAPI.spuDetail(id: id)
+            isFavorite = (try? await FavoriteAPI.exists(spuId: id)) ?? false
+        }
+    }
+
+    /// 收藏/取消收藏（对齐安卓 toggleFavorite，乐观更新失败回滚）
+    func toggleFavorite() {
+        guard let id = spu?.id else { return }
+        let old = isFavorite
+        isFavorite.toggle()
+        Task {
+            let ok = old
+                ? try? await FavoriteAPI.remove(spuId: id)
+                : try? await FavoriteAPI.add(spuId: id)
+            if ok == nil { isFavorite = old }
         }
     }
 

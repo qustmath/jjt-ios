@@ -89,6 +89,11 @@ final class APIClient {
         try await request(path, method: "DELETE", query: query, body: nil as EmptyBody?, retryOnAuth: true)
     }
 
+    /// DELETE 带 body（安卓 @HTTP hasBody 同款，商品取消收藏用）
+    func delete<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        try await request(path, method: "DELETE", query: nil, body: body, retryOnAuth: true)
+    }
+
     // MARK: - 核心请求
 
     private struct EmptyBody: Encodable {}

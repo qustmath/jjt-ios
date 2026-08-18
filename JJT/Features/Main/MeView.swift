@@ -35,6 +35,8 @@ struct MeView: View {
     @State private var showAddress = false
     @State private var showMall = false
     @State private var showOrders = false
+    @State private var showCouponCenter = false
+    @State private var showFavorites = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -79,8 +81,8 @@ struct MeView: View {
                         GridItem("商城", "storefront") { showMall = true },
                         GridItem("我的订单", "bag") { showOrders = true },
                         GridItem("收货地址", "mappin") { showAddress = true },
-                        GridItem("优惠券", "ticket") { comingSoon() },
-                        GridItem("我的收藏", "heart") { comingSoon() },
+                        GridItem("优惠券", "ticket") { showCouponCenter = true },
+                        GridItem("我的收藏", "heart") { showFavorites = true },
                     ])
                     moreSection
                     footer
@@ -181,6 +183,12 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showOrders) {
             OrderListView()
+        }
+        .fullScreenCover(isPresented: $showCouponCenter) {
+            CouponCenterView()
+        }
+        .fullScreenCover(isPresented: $showFavorites) {
+            FavoriteView()
         }
     }
 
