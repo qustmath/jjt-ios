@@ -390,54 +390,11 @@ struct HomeView: View {
     // MARK: - 蜜兔会 · 独立奢华入口（静态版，呼吸/流光动画后续加回）
 
     private var mituEntrance: some View {
-        Button { showVipClub = true } label: {
+        let cardW = screenWidth - 40
+        return Button { showVipClub = true } label: {
+            // 文字内容层独占固定卡片框。装饰层全部下沉到 background——
+            // background 不参与父视图尺寸协商，从机制上杜绝装饰层撑爆/挤压文字层
             ZStack {
-                Image("MituBg")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: screenWidth - 40, height: 190)
-                    .clipped()
-                // 右上氛围光斑（对齐安卓：160dp 径向金光 alpha 0.18）
-                RadialGradient(colors: [Noir.gold.opacity(0.18), .clear],
-                               center: .center, startRadius: 0, endRadius: 80)
-                    .frame(width: 160, height: 160)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .allowsHitTesting(false)
-                // 底部压暗
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: Color(red: 0x0A/255, green: 0x08/255, blue: 0x04/255).opacity(0.45), location: 0.45),
-                    .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
-                ], startPoint: .top, endPoint: .bottom)
-
-                // 氛围光斑（对齐安卓 topEnd 径向金光）
-                VStack {
-                    HStack {
-                        Spacer()
-                        Circle()
-                            .fill(RadialGradient(colors: [Noir.gold.opacity(0.18), .clear],
-                                                 center: .center, startRadius: 0, endRadius: 80))
-                            .frame(width: 160, height: 160)
-                    }
-                    Spacer()
-                }
-                .allowsHitTesting(false)
-
-                // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
-                // 宽度用已知常量（卡片宽 = 屏宽 - 40），不放 GeometryReader——
-                // 其在 ScrollView 内有引发布局错乱的前科
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
-                    .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
-                    .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
-                    .init(color: .clear, location: 1),
-                ], startPoint: .leading, endPoint: .trailing)
-                .frame(width: (screenWidth - 40) / 3, height: 190 * 3)
-                .rotationEffect(.degrees(-18))
-                .offset(x: mituShine ? (screenWidth - 40) * 1.4 : -(screenWidth - 40) * 0.5, y: -190)
-                .allowsHitTesting(false)
-
                 // 仅邀约制 徽章（vip-sheen 白色扫光 2.8s；徽章宽约 130pt，固定值避免 GeometryReader）
                 VStack {
                     HStack {
@@ -505,13 +462,48 @@ struct HomeView: View {
                     .padding(20)
                 }
             }
-            .frame(width: screenWidth - 40, height: 190)
-            .background(LinearGradient(colors: [Color(red: 0x2E/255, green: 0x0A/255, blue: 0x14/255), Color(red: 0x10/255, green: 0x06/255, blue: 0x0A/255), Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .frame(width: cardW, height: 190)
+            .background {
+                // 装饰层：兜底渐变 → 底图 → 右上光斑 → 底部压暗 → 流光
+                ZStack {
+                    LinearGradient(colors: [Color(red: 0x2E/255, green: 0x0A/255, blue: 0x14/255), Color(red: 0x10/255, green: 0x06/255, blue: 0x0A/255), Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Image("MituBg")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: cardW, height: 190)
+                        .clipped()
+                    // 右上氛围光斑（对齐安卓：160dp 径向金光 alpha 0.18）
+                    RadialGradient(colors: [Noir.gold.opacity(0.18), .clear],
+                                   center: .center, startRadius: 0, endRadius: 80)
+                        .frame(width: 160, height: 160)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    // 底部压暗
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: Color(red: 0x0A/255, green: 0x08/255, blue: 0x04/255).opacity(0.45), location: 0.45),
+                        .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
+                    ], startPoint: .top, endPoint: .bottom)
+                    // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
+                        .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
+                        .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
+                        .init(color: .clear, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: cardW / 3, height: 190 * 3)
+                    .rotationEffect(.degrees(-18))
+                    .offset(x: mituShine ? cardW * 1.4 : -cardW * 0.5, y: -190)
+                }
+                .frame(width: cardW, height: 190)
+                .clipped()
+                .allowsHitTesting(false)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.goldLight.opacity(0.45), lineWidth: 1))
             .cornerFrame(Noir.goldLight.opacity(0.9))
             // 金色呼吸辉光（对齐安卓：卡片后放大 1.09×1.12 的金色渐变层 blur 22，
-            // 快亮慢暗；此前用 shadow 在深色底上几乎不可见，等同没有）
+            // 快亮慢暗；放在 clipShape 之后的 background 里，不被圆角裁掉）
             .background {
                 RoundedRectangle(cornerRadius: 34)
                     .fill(LinearGradient(colors: [Noir.gold, Noir.goldDeep],

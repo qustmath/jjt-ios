@@ -7,8 +7,12 @@ struct AboutView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// 版本 + build 号（如 1.0.0 (41)）：TestFlight 各包营销版本号相同，
+    /// 只有 build 号能区分——反馈问题前以此页为准确认实际安装的包
     private var versionName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(v) (\(b))"
     }
 
     var body: some View {

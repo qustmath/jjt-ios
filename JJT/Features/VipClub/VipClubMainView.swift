@@ -17,18 +17,30 @@ struct VipClubMainView: View {
     private var isMember: Bool { status == "member" }
 
     var body: some View {
-        ZStack {
-            Color(red: 0x07/255, green: 0x07/255, blue: 0x08/255).ignoresSafeArea()
-            // 蜜兔会底图 + 渐变压暗（对齐安卓 VipClubMainScreen：图 opacity 0.9）
-            // 必须 frame+clipped：scaledToFill 的图片会向上报告超出屏幕的尺寸，
-            // 不夹住会把整个 ZStack 撑得比屏宽，内容和返回键全被挤出屏幕
-            Image("MituBg")
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-                .opacity(0.9)
-                .ignoresSafeArea()
+        VStack(spacing: 0) {
+            topBar
+            if isLoading {
+                Spacer()
+                ProgressView().tint(Noir.gold)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        header
+                        brandSection
+                        privilegesSection
+                        enterHallButton
+                        applySection
+                    }
+                    .padding(.bottom, 48)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 背景三层（压暗渐变 > 底图 > 深色底）全部走 .background：
+        // background 不参与内容尺寸协商，scaledToFill 底图从机制上
+        // 不可能再把页面撑超屏宽（此前与内容同层 ZStack 协商是溢出根因）
+        .background {
             LinearGradient(stops: [
                 .init(color: .black.opacity(0.55), location: 0),
                 .init(color: .black.opacity(0.35), location: 0.3),
@@ -36,26 +48,16 @@ struct VipClubMainView: View {
                 .init(color: Color(red: 0x07/255, green: 0x07/255, blue: 0x08/255), location: 1),
             ], startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                topBar
-                if isLoading {
-                    Spacer()
-                    ProgressView().tint(Noir.gold)
-                    Spacer()
-                } else {
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            header
-                            brandSection
-                            privilegesSection
-                            enterHallButton
-                            applySection
-                        }
-                        .padding(.bottom, 48)
-                    }
-                }
-            }
+        }
+        .background {
+            Image("MituBg")
+                .resizable()
+                .scaledToFill()
+                .opacity(0.9)
+                .ignoresSafeArea()
+        }
+        .background {
+            Color(red: 0x07/255, green: 0x07/255, blue: 0x08/255).ignoresSafeArea()
         }
         .onAppear { load() }
         .fullScreenCover(isPresented: $showMembers) {
