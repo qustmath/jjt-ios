@@ -494,7 +494,7 @@ final class AchievementHallViewModel: ObservableObject {
             eggRolled = true
             if Int.random(in: 0..<100) < 20 {
                 Task {
-                    if let egg = try? await BadgeAPI.triggerEgg(), let egg {
+                    if let egg = try? await BadgeAPI.triggerEgg() {
                         EggBus.emit(egg)
                         hall = try? await BadgeAPI.achievementHall()
                     }
