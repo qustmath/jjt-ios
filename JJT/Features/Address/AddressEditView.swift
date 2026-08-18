@@ -262,7 +262,7 @@ final class AddressEditViewModel: ObservableObject {
                 }
                 success = true
             } catch {
-                error = error.localizedDescription
+                self.error = error.localizedDescription
             }
         }
     }
