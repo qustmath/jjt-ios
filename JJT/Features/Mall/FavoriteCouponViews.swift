@@ -368,13 +368,19 @@ struct CouponCenterView: View {
     }
 
     private func discountText(_ c: CouponTemplate) -> String {
-        switch c.discountType {
-        case 1: return "¥\(fenToYuan(c.discountPrice))"
-        case 2:
-            let p = Double(c.discountPercent ?? 100) / 10.0
-            return p.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(p))折" : "\(p)折"
-        default: return c.name ?? "优惠券"
+        let type = c.discountType ?? 0
+        if type == 1 {
+            return "¥\(fenToYuan(c.discountPrice))"
         }
+        if type == 2 {
+            let p = Double(c.discountPercent ?? 100) / 10.0
+            let rounded = p.rounded()
+            if p == rounded {
+                return "\(Int(rounded))折"
+            }
+            return String(format: "%.1f折", p)
+        }
+        return c.name ?? "优惠券"
     }
 }
 

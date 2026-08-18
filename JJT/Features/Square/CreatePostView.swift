@@ -368,8 +368,8 @@ final class CreatePostViewModel: ObservableObject {
     func loadForEdit(_ postId: Int64) {
         Task {
             guard let post = try? await SocialAPI.postDetail(id: postId) else { return }
-            let content = post.content ?? ""
-            let lines = content.components(separatedBy: "\n")
+            let raw = post.content ?? ""
+            let lines = raw.components(separatedBy: "\n")
             title = lines.first ?? ""
             content = lines.dropFirst().joined(separator: "\n")
             topics = (post.topics ?? []).joined(separator: " ")
