@@ -515,7 +515,7 @@ struct OrderDetailView: View {
         }
     }
 
-    private func line(_ label: String, fen: Int) -> some View {
+    private func line(_ label: String, fen: Int?) -> some View {
         HStack {
             Text(label).font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
             Spacer()
