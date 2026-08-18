@@ -31,6 +31,7 @@ struct MeView: View {
     @State private var showBadgeWall = false
     @State private var showQuiz = false
     @State private var showVipClub = false
+    @State private var showTicketWallet = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -67,7 +68,7 @@ struct MeView: View {
                         GridItem("我的钱包", "wallet.pass", gold: true) { showWallet = true },
                         GridItem("收藏", "star") { comingSoon() },
                         GridItem("我的点赞", "heart") { comingSoon() },
-                        GridItem("票夹", "ticket", gold: true) { comingSoon() },
+                        GridItem("票夹", "ticket", gold: true) { showTicketWallet = true },
                         GridItem("历史记录", "clock.arrow.circlepath") { comingSoon() },
                         GridItem("排行榜", "trophy") { comingSoon() },
                     ])
@@ -165,6 +166,9 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showVipClub) {
             VipClubMainView()
+        }
+        .fullScreenCover(isPresented: $showTicketWallet) {
+            TicketWalletView()
         }
     }
 

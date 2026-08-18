@@ -19,6 +19,22 @@ struct MainTabView: View {
     @State private var selection = 0
     @State private var toast: String?
     @State private var showCreatePost = false
+    // 运营弹窗 DeepLink 跳转目标
+    @State private var deepLink: DeepLinkTarget?
+
+    /// 运营弹窗/banner 的跳转目标（对齐安卓 handleDeepLink 子集）
+    enum DeepLinkTarget: Identifiable {
+        case wheel, activity(Int64), post(Int64), friend(Int64), group(String)
+        var id: String {
+            switch self {
+            case .wheel: return "wheel"
+            case .activity(let aid): return "activity_\(aid)"
+            case .post(let pid): return "post_\(pid)"
+            case .friend(let uid): return "friend_\(uid)"
+            case .group(let gid): return "group_\(gid)"
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -50,10 +66,40 @@ struct MainTabView: View {
 
             // 全局彩蛋弹窗（对齐安卓根部 EggPopup）
             EggPopupHost()
+
+            // 运营启动弹窗（对齐安卓 StartupPopup：position=1，频次控制）
+            StartupPopupHost()
         }
         // 每日活跃上报（每日首次生效，对齐安卓启动调用）
         .task {
             _ = try? await TaskAPI.dailyActive()
+        }
+        // 运营弹窗/banner DeepLink 统一跳转
+        .onReceive(NotificationCenter.default.publisher(for: .jjtDeepLink)) { note in
+            guard let obj = note.object as? [String: Any], let t = obj["t"] as? String else { return }
+            switch t {
+            case "wheel":
+                deepLink = .wheel
+            case "activity":
+                if let aid = (obj["aid"] as? NSNumber)?.int64Value { deepLink = .activity(aid) }
+            case "post":
+                if let pid = (obj["pid"] as? NSNumber)?.int64Value { deepLink = .post(pid) }
+            case "friend":
+                if let uid = (obj["uid"] as? NSNumber)?.int64Value { deepLink = .friend(uid) }
+            case "group":
+                if let gid = obj["gid"] as? String { deepLink = .group(gid) }
+            default:
+                showToast("敬请期待")
+            }
+        }
+        .fullScreenCover(item: $deepLink) { target in
+            switch target {
+            case .wheel: WheelView()
+            case .activity(let aid): ActivityView(activityId: aid)
+            case .post(let pid): PostDetailView(postId: pid)
+            case .friend(let uid): UserProfileView(userId: uid)
+            case .group(let gid): ChatView(peerId: gid, isGroup: true, title: nil)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .jjtSwitchTab)) { note in
             if let tag = note.object as? Int {

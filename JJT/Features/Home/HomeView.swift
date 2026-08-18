@@ -19,7 +19,6 @@ struct HomeView: View {
     @State private var showEventList = false
     @State private var showGiftCenter = false
     @State private var showSearchGroup = false
-    @State private var showWheel = false
     @State private var showQuiz = false
     @State private var showVipClub = false
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
@@ -121,9 +120,6 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showSearchGroup) {
             SearchGroupView()
         }
-        .fullScreenCover(isPresented: $showWheel) {
-            WheelView()
-        }
         .fullScreenCover(isPresented: $showQuiz) {
             QuizListView()
         }
@@ -146,17 +142,13 @@ struct HomeView: View {
         NotificationCenter.default.post(name: .jjtSwitchTab, object: tag)
     }
 
-    /// banner 点击：解析 linkTarget DeepLink（{"t":"wheel"} → 转盘；{"t":"activity","aid":N} 待活动页）。
+    /// banner 点击：linkTarget DeepLink 统一交给 MainTabView 处理（wheel/activity/post/friend/group）
     private func handleBannerTap(_ banner: BannerInfo) {
         guard let target = banner.linkTarget, !target.isEmpty,
               let data = target.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let t = obj["t"] as? String else { return }
-        if t == "wheel" {
-            showWheel = true
-        } else {
-            showToast("敬请期待")
-        }
+              obj["t"] is String else { return }
+        NotificationCenter.default.post(name: .jjtDeepLink, object: obj)
     }
 
     private func showToast(_ text: String) {
@@ -394,6 +386,19 @@ struct HomeView: View {
                     .init(color: Color(red: 0x0A/255, green: 0x08/255, blue: 0x04/255).opacity(0.45), location: 0.45),
                     .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
                 ], startPoint: .top, endPoint: .bottom)
+
+                // 氛围光斑（对齐安卓 topEnd 径向金光）
+                VStack {
+                    HStack {
+                        Spacer()
+                        Circle()
+                            .fill(RadialGradient(colors: [Noir.gold.opacity(0.18), .clear],
+                                                 center: .center, startRadius: 0, endRadius: 80))
+                            .frame(width: 160, height: 160)
+                    }
+                    Spacer()
+                }
+                .allowsHitTesting(false)
 
                 // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
                 // 宽度用已知常量（卡片宽 = 屏宽 - 40），不放 GeometryReader——

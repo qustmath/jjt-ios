@@ -19,12 +19,12 @@ struct VipClubMainView: View {
     var body: some View {
         ZStack {
             Color(red: 0x07/255, green: 0x07/255, blue: 0x08/255).ignoresSafeArea()
-            // 酒金光晕氛围（安卓用 mitu_bg 实景图，iOS 暂以光晕代替）
-            Circle()
-                .fill(RadialGradient(colors: [Noir.gold.opacity(0.14), .clear],
-                                     center: .center, startRadius: 0, endRadius: 220))
-                .frame(width: 440, height: 440)
-                .offset(y: -260)
+            // 蜜兔会底图 + 渐变压暗（对齐安卓 VipClubMainScreen：图 opacity 0.9）
+            Image("MituBg")
+                .resizable()
+                .scaledToFill()
+                .opacity(0.9)
+                .ignoresSafeArea()
             LinearGradient(stops: [
                 .init(color: .black.opacity(0.55), location: 0),
                 .init(color: .black.opacity(0.35), location: 0.3),
@@ -33,19 +33,23 @@ struct VipClubMainView: View {
             ], startPoint: .top, endPoint: .bottom)
             .ignoresSafeArea()
 
-            if isLoading {
-                ProgressView().tint(Noir.gold)
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        topBar
-                        header
-                        brandSection
-                        privilegesSection
-                        enterHallButton
-                        applySection
+            VStack(spacing: 0) {
+                topBar
+                if isLoading {
+                    Spacer()
+                    ProgressView().tint(Noir.gold)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            header
+                            brandSection
+                            privilegesSection
+                            enterHallButton
+                            applySection
+                        }
+                        .padding(.bottom, 48)
                     }
-                    .padding(.bottom, 48)
                 }
             }
         }
@@ -168,7 +172,7 @@ struct VipClubMainView: View {
                                    startPoint: .topLeading, endPoint: .bottomTrailing))
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.gold.opacity(0.35), lineWidth: 1))
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 28)
         .padding(.top, 40)
     }
 
@@ -188,7 +192,7 @@ struct VipClubMainView: View {
             privilegeItem("diamond", "高定礼遇工坊", "定制专属 3D 礼物与头像框，可镌刻名字，独一无二，永不复刻")
             privilegeItem("sparkles", "优先与新权", "新功能优先体验 · 广场流量加权 · 线下展会贵宾通道与专属席位")
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 28)
         .padding(.top, 40)
     }
 
@@ -240,7 +244,7 @@ struct VipClubMainView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 28)
         .padding(.top, 40)
     }
 
@@ -270,7 +274,7 @@ struct VipClubMainView: View {
                     .background(Color(red: 0x14/255, green: 0x10/255, blue: 0x06/255).opacity(0.6))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.gold.opacity(0.3), lineWidth: 1))
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
             default:
                 Button { showApply = true } label: {
                     Text("申 请 入 会 资 格 审 核")
@@ -284,7 +288,7 @@ struct VipClubMainView: View {
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.gold.opacity(0.6), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 28)
             }
         }
         .padding(.top, 40)

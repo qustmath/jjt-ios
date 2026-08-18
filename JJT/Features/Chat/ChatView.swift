@@ -11,6 +11,7 @@ struct ChatView: View {
     var onBack: (() -> Unit)? = nil
 
     @StateObject private var vm = ChatViewModel()
+    @StateObject private var prank = PrankState()
     @Environment(\.dismiss) private var dismiss
 
     @State private var input = ""
@@ -43,8 +44,13 @@ struct ChatView: View {
                 if panel == .actions { actionPanel }
                 if panel == .stickers { stickerPanel }
             }
+            // 整蛊：特效选择窗 + 购买确认（对齐安卓 PrankOverlay）
+            PrankOverlayHost(prank: prank)
         }
-        .onAppear { vm.initIm(peerId: peerId, isGroup: isGroup) }
+        .onAppear {
+            vm.initIm(peerId: peerId, isGroup: isGroup)
+            prank.loadEffects()
+        }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
             set: { if !$0 { vm.clearError() } }
@@ -268,11 +274,13 @@ struct ChatView: View {
         HStack(alignment: .top, spacing: 8) {
             if msg.isMine { Spacer(minLength: 40) }
             if !msg.isMine {
-                AppAvatar(url: msg.senderAvatar, size: 36,
-                          frameURL: msg.senderAvatarFrame,
-                          frameScale: msg.senderAvatarFrameScale)
-                    .frame(width: 36, height: 36)
-                    .onTapGesture { peerProfileId = Int64(msg.senderId) }
+                // 整蛊头像：3 秒连击 5 下弹特效窗；单击（380ms 判定）进主页（对齐安卓）
+                PrankAvatar(url: msg.senderAvatar, size: 36,
+                            frameURL: msg.senderAvatarFrame,
+                            frameScale: msg.senderAvatarFrameScale,
+                            tapKey: msg.senderId, targetId: msg.localId, prank: prank) {
+                    peerProfileId = Int64(msg.senderId)
+                }
             }
             VStack(alignment: msg.isMine ? .trailing : .leading, spacing: 3) {
                 if isGroup, !msg.isMine {
