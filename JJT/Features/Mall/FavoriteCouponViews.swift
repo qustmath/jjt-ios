@@ -314,7 +314,9 @@ struct CouponCenterView: View {
     }
 
     private func couponCard(_ c: CouponTemplate) -> some View {
-        HStack(spacing: 0) {
+        let wineBg = Color(red: 0.36, green: 0.04, blue: 0.09).opacity(0.5)
+        let darkBg = Color(red: 0.08, green: 0.03, blue: 0.04).opacity(0.7)
+        return HStack(spacing: 0) {
             // 左侧票面
             VStack(alignment: .leading, spacing: 4) {
                 Text(discountText(c))
@@ -360,7 +362,7 @@ struct CouponCenterView: View {
             .disabled(c.canTake != true)
             .padding(.trailing, 14)
         }
-        .background(LinearGradient(colors: [Color(red: 0x5C/255, green: 0x0A/255, blue: 0x16/255).opacity(0.5), Color(red: 0x14/255, green: 0x08/255, blue: 0x0A/255).opacity(0.7)], startPoint: .leading, endPoint: .trailing))
+        .background(LinearGradient(colors: [wineBg, darkBg], startPoint: .leading, endPoint: .trailing))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Noir.crimson.opacity(0.3), lineWidth: 1))
     }

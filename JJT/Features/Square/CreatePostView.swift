@@ -2,7 +2,11 @@ import SwiftUI
 import PhotosUI
 
 /// 发布帖子 — 对齐安卓 CreatePostScreen（v1：图片帖；视频发布需转码/截帧，后续迁移）
+/// editPostId 非空为编辑模式：回填原帖内容，保存走 update
 struct CreatePostView: View {
+
+    /// 编辑模式的帖子 id；nil = 新发布
+    var editPostId: Int64? = nil
 
     @StateObject private var vm = CreatePostViewModel()
     @Environment(\.dismiss) private var dismiss
@@ -19,13 +23,13 @@ struct CreatePostView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(Noir.textDim)
                     Spacer()
-                    Text("发布")
+                    Text(editPostId == nil ? "发布" : "编辑作品")
                         .font(.system(size: 16, weight: .semibold, design: .serif))
                         .tracking(3)
                         .foregroundStyle(Noir.goldText)
                     Spacer()
-                    Button { vm.publish() } label: {
-                        Text(vm.isPublishing ? "发布中…" : (vm.isUploading ? "图片上传中…" : "发布"))
+                    Button { vm.publish(editPostId: editPostId) } label: {
+                        Text(vm.isPublishing ? "保存中…" : (vm.isUploading ? "图片上传中…" : (editPostId == nil ? "发布" : "保存")))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 20)
@@ -78,6 +82,9 @@ struct CreatePostView: View {
                 }
             }
         }
+        .onAppear {
+            if let editPostId { vm.loadForEdit(editPostId) }
+        }
         .onChange(of: pickedItems) { _, items in
             vm.addImages(items)
             pickedItems = []
@@ -110,13 +117,26 @@ struct CreatePostView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: 10), count: 3), spacing: 10) {
                 ForEach(vm.images) { item in
                     ZStack(alignment: .topTrailing) {
-                        Image(uiImage: item.image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: cellW, height: cellW)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, lineWidth: 1))
+                        Group {
+                            if let remote = item.remoteURL {
+                                // 编辑模式回填的远端图
+                                AsyncImage(url: webImageURL(remote)) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().scaledToFill()
+                                    } else {
+                                        Noir.noir3
+                                    }
+                                }
+                            } else {
+                                Image(uiImage: item.image)
+                                    .resizable()
+                                    .scaledToFill()
+                            }
+                        }
+                        .frame(width: cellW, height: cellW)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, lineWidth: 1))
 
                         // 上传状态
                         if item.url == nil && !item.failed {
@@ -275,6 +295,8 @@ final class CreatePostViewModel: ObservableObject {
     struct ImageItem: Identifiable {
         let id = UUID()
         let image: UIImage
+        /// 编辑模式下回填的远端图（无需上传）
+        var remoteURL: String?
         /// 上传完成的远端 URL；nil = 上传中
         var url: String?
         var failed = false
@@ -342,7 +364,34 @@ final class CreatePostViewModel: ObservableObject {
         }
     }
 
-    func publish() {
+    /// 编辑模式：加载原帖回填（对齐安卓 loadForEdit；首行为标题，其余为正文）
+    func loadForEdit(_ postId: Int64) {
+        Task {
+            guard let post = try? await SocialAPI.postDetail(id: postId) else { return }
+            let content = post.content ?? ""
+            let lines = content.components(separatedBy: "\n")
+            title = lines.first ?? ""
+            content = lines.dropFirst().joined(separator: "\n")
+            topics = (post.topics ?? []).joined(separator: " ")
+            location = post.location ?? ""
+            if let price = post.paidPrice, price > 0 {
+                paidEnabled = true
+                paidPrice = "\(price)"
+            }
+            images = (post.images ?? []).map { url in
+                ImageItem(image: placeholderImage(), remoteURL: url, url: url)
+            }
+        }
+    }
+
+    private func placeholderImage() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { ctx in
+            UIColor.darkGray.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+    }
+
+    func publish(editPostId: Int64? = nil) {
         // 标题 + 正文合并为 content（首行即标题，与详情页解析一致）
         let full = title.trimmingCharacters(in: .whitespaces).isEmpty
             ? content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -359,21 +408,40 @@ final class CreatePostViewModel: ObservableObject {
         isPublishing = true
         Task {
             do {
-                _ = try await SocialAPI.createPost(CreatePostReq(
-                    mediaType: "image",
-                    images: images.compactMap(\.url),
-                    video: nil,
-                    videoCover: nil,
-                    content: full,
-                    topics: topicList.isEmpty ? nil : topicList,
-                    location: location.isEmpty ? nil : location,
-                    latitude: nil,
-                    longitude: nil,
-                    cityCode: nil,
-                    cityName: nil,
-                    paidPrice: paidEnabled ? Int(paidPrice) : nil,
-                    previewSeconds: nil
-                ))
+                if let editPostId {
+                    _ = try await SocialAPI.updatePost(UpdatePostReq(
+                        id: editPostId,
+                        mediaType: "image",
+                        images: images.compactMap(\.url),
+                        video: nil,
+                        videoCover: nil,
+                        content: full,
+                        topics: topicList.isEmpty ? nil : topicList,
+                        location: location.isEmpty ? nil : location,
+                        latitude: nil,
+                        longitude: nil,
+                        cityCode: nil,
+                        cityName: nil,
+                        paidPrice: paidEnabled ? Int(paidPrice) : nil,
+                        previewSeconds: nil
+                    ))
+                } else {
+                    _ = try await SocialAPI.createPost(CreatePostReq(
+                        mediaType: "image",
+                        images: images.compactMap(\.url),
+                        video: nil,
+                        videoCover: nil,
+                        content: full,
+                        topics: topicList.isEmpty ? nil : topicList,
+                        location: location.isEmpty ? nil : location,
+                        latitude: nil,
+                        longitude: nil,
+                        cityCode: nil,
+                        cityName: nil,
+                        paidPrice: paidEnabled ? Int(paidPrice) : nil,
+                        previewSeconds: nil
+                    ))
+                }
                 isPublishing = false
                 created = true
             } catch {

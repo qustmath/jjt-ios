@@ -15,6 +15,8 @@ struct PostDetailView: View {
     @State private var isSending = false
     @State private var toast: String?
     @State private var previewIndex: Int?
+    @State private var showEditor = false
+    @State private var showDeleteConfirm = false
     @FocusState private var inputFocused: Bool
 
     init(postId: Int64) {
@@ -68,6 +70,19 @@ struct PostDetailView: View {
             }
         }
         .onAppear { if vm.post == nil { vm.load() } }
+        .fullScreenCover(isPresented: $showEditor, onDismiss: { vm.load() }) {
+            CreatePostView(editPostId: vm.postId)
+        }
+        .confirmationDialog("确定删除这条帖子吗？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                Task {
+                    _ = try? await SocialAPI.deletePost(id: vm.postId)
+                    NotificationCenter.default.post(name: .jjtPostCreated, object: nil)
+                    dismiss()
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
         .fullScreenCover(isPresented: Binding(
             get: { previewIndex != nil },
             set: { if !$0 { previewIndex = nil } }
@@ -151,10 +166,15 @@ struct PostDetailView: View {
                 .allowsHitTesting(false)
             }
 
-            // 悬浮返回 / 分享
+            // 悬浮返回 / 编辑 / 删除 / 分享
             HStack {
                 floatingButton(systemImage: "chevron.left") { dismiss() }
                 Spacer()
+                // 自己的帖子：编辑 + 删除（对齐安卓 onEdit/deletePost）
+                if post.userId == TokenManager.shared.userId {
+                    floatingButton(systemImage: "pencil") { showEditor = true }
+                    floatingButton(systemImage: "trash") { showDeleteConfirm = true }
+                }
                 floatingButton(systemImage: "square.and.arrow.up") { showToast("分享敬请期待") }
             }
             .padding(.horizontal, 16)

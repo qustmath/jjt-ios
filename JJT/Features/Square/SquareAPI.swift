@@ -47,6 +47,24 @@ struct CreatePostReq: Encodable {
     let previewSeconds: Int?
 }
 
+/// 编辑帖子请求（对齐安卓 UpdatePostReq：字段同 CreatePostReq + id）
+struct UpdatePostReq: Encodable {
+    let id: Int64
+    let mediaType: String
+    let images: [String]?
+    let video: String?
+    let videoCover: String?
+    let content: String
+    let topics: [String]?
+    let location: String?
+    let latitude: Double?
+    let longitude: Double?
+    let cityCode: String?
+    let cityName: String?
+    let paidPrice: Int?
+    let previewSeconds: Int?
+}
+
 /// 发帖成功通知（广场列表收到后刷新）
 extension Notification.Name {
     static let jjtPostCreated = Notification.Name("jjtPostCreated")
@@ -90,6 +108,16 @@ enum SocialAPI {
     /// 发布帖子
     static func createPost(_ req: CreatePostReq) async throws -> PostInfo {
         try await APIClient.shared.post("app-api/social/post/create", body: req)
+    }
+
+    /// 编辑自己的帖子（body 同 CreatePostReq + id）
+    static func updatePost(_ req: UpdatePostReq) async throws -> PostInfo {
+        try await APIClient.shared.post("app-api/social/post/update", body: req)
+    }
+
+    /// 删除自己的帖子
+    static func deletePost(id: Int64) async throws -> Bool {
+        try await APIClient.shared.delete("app-api/social/post/delete", query: ["id": "\(id)"])
     }
 
     /// 组局城市列表（cityCode ↔ 城市名映射，同城 tab 定位后反查 cityCode 用）
