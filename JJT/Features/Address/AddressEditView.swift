@@ -185,7 +185,13 @@ final class AddressEditViewModel: ObservableObject {
     @Published var pickerStep = 0 // 0=省 1=市 2=区
 
     var canSave: Bool {
-        !name.isEmpty && !mobile.isEmpty && !detailAddress.isEmpty && areaId != nil
+        !name.isEmpty && !detailAddress.isEmpty && areaId != nil
+            && mobile.range(of: #"^1[3-9]\d{9}$"#, options: .regularExpression) != nil
+    }
+
+    /// 手机号校验提示（canSave 为 false 时的具体原因）
+    var mobileValid: Bool {
+        mobile.range(of: #"^1[3-9]\d{9}$"#, options: .regularExpression) != nil
     }
 
     /// 并发加载地区树 + （编辑时）地址详情，编辑按 areaId 反查三级回填
@@ -243,7 +249,9 @@ final class AddressEditViewModel: ObservableObject {
 
     func save() {
         guard canSave else {
-            error = areaId == nil ? "请选择所在地区" : "请填写完整信息"
+            if !mobileValid { error = "请填写正确的手机号" }
+            else if areaId == nil { error = "请选择所在地区" }
+            else { error = "请填写完整信息" }
             return
         }
         isSaving = true

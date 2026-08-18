@@ -246,27 +246,25 @@ struct SpuDetailView: View {
 
     private func bottomBar(_ spu: SpuDetail) -> some View {
         HStack(spacing: 12) {
-            HStack(spacing: 0) {
-                Button { showSkuSheet = true } label: {
-                    Text("加入购物车")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Noir.goldPale)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(
-                            Capsule()
-                                .stroke(Noir.gold.opacity(0.5), lineWidth: 1)
-                                .background(Capsule().fill(Color.clear))
-                        )
-                }
-                Button { showSkuSheet = true } label: {
-                    Text("立即购买")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Capsule().fill(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine], startPoint: .leading, endPoint: .trailing)))
-                }
+            Button { showSkuSheet = true } label: {
+                Text("加入购物车")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Noir.goldPale)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(
+                        Capsule()
+                            .stroke(Noir.gold.opacity(0.5), lineWidth: 1)
+                            .background(Capsule().fill(Color.clear))
+                    )
+            }
+            Button { showSkuSheet = true } label: {
+                Text("立即购买")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(Capsule().fill(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine], startPoint: .leading, endPoint: .trailing)))
             }
         }
         .padding(.horizontal, 20)
@@ -321,9 +319,9 @@ struct SkuSheet: View {
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
-                            // 头部：图 + 价格 + 库存
+                            // 头部：图 + 价格 + 库存（sku.picUrl 可能为空串，须回退 SPU 图）
                             HStack(spacing: 14) {
-                                AsyncImage(url: webImageURL(matchedSku?.picUrl ?? spu.picUrl)) { phase in
+                                AsyncImage(url: webImageURL(matchedSku?.picUrl.flatMap { $0.isEmpty ? nil : $0 } ?? spu.picUrl)) { phase in
                                     if let image = phase.image {
                                         image.resizable().scaledToFill()
                                     } else {

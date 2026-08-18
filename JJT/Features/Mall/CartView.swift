@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 购物车 — 对齐安卓 CartScreen（勾选/步进/删除/全选/结算）
+/// 购物车 — 对齐安卓 CartScreen（勾选/步进/删除/全选）
 /// 结算链路（settlement/下单/支付）下一轮迁移，本期按钮占位
 struct CartView: View {
 
@@ -15,7 +15,7 @@ struct CartView: View {
             VStack(spacing: 0) {
                 topBar
 
-                if vm.isLoading {
+                if vm.isLoading && vm.items.isEmpty {
                     Spacer()
                     ProgressView().tint(Noir.crimson)
                     Spacer()
@@ -31,17 +31,24 @@ struct CartView: View {
                     }
                     Spacer()
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(vm.items) { item in
-                                CartItemRow(item: item,
-                                            onToggle: { vm.toggleSelected(item) },
-                                            onCount: { vm.updateCount(item, count: $0) },
-                                            onDelete: { vm.delete(item) })
-                            }
+                    // 用 List 才有 swipeActions（ScrollView+LazyVStack 不支持滑动删除）
+                    List {
+                        ForEach(vm.items) { item in
+                            CartItemRow(item: item,
+                                        onToggle: { vm.toggleSelected(item) },
+                                        onCount: { vm.updateCount(item, count: $0) })
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) { vm.delete(item) } label: {
+                                        Label("删除", systemImage: "trash")
+                                    }
+                                }
                         }
-                        .padding(16)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .refreshable { vm.load() }
 
                     bottomBar
@@ -154,7 +161,6 @@ private struct CartItemRow: View {
     let item: MallCartItem
     let onToggle: () -> Void
     let onCount: (Int) -> Void
-    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -162,7 +168,8 @@ private struct CartItemRow: View {
                 NoirCheck(checked: item.selected ?? false)
             }
 
-            AsyncImage(url: webImageURL(item.sku?.picUrl ?? item.spu?.picUrl)) { phase in
+            // sku.picUrl 可能是空串，须回退 spu 图（实测后端行为）
+            AsyncImage(url: webImageURL(item.sku?.picUrl.flatMap { $0.isEmpty ? nil : $0 } ?? item.spu?.picUrl)) { phase in
                 if let image = phase.image {
                     image.resizable().scaledToFill()
                 } else {
@@ -212,11 +219,6 @@ private struct CartItemRow: View {
         .background(Color(red: 0x14/255, green: 0x14/255, blue: 0x19/255))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.05), lineWidth: 1))
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive, action: onDelete) {
-                Label("删除", systemImage: "trash")
-            }
-        }
     }
 }
 
@@ -253,7 +255,7 @@ private struct CartListResp: Decodable {
 private struct UpdateCountReq: Encodable { let id: Int64; let count: Int }
 private struct UpdateSelectedReq: Encodable { let ids: [Int64]; let selected: Bool }
 
-// MARK: - ViewModel
+// MARK: - ViewModel（乐观更新，不整页重拉——修屏闪）
 
 @MainActor
 final class CartViewModel: ObservableObject {
@@ -275,36 +277,38 @@ final class CartViewModel: ObservableObject {
     }
 
     func toggleSelected(_ item: MallCartItem) {
-        let newVal = !(item.selected ?? false)
+        guard let i = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[i].selected = !(item.selected ?? false)
         Task {
             _ = try? await APIClient.shared.put("app-api/trade/cart/update-selected",
-                                                body: UpdateSelectedReq(ids: [item.id], selected: newVal)) as Bool
-            load()
+                                                body: UpdateSelectedReq(ids: [item.id], selected: items[i].selected ?? true)) as Bool
         }
     }
 
     func toggleSelectAll() {
         let newVal = !allSelected
+        for i in items.indices { items[i].selected = newVal }
         Task {
             _ = try? await APIClient.shared.put("app-api/trade/cart/update-selected",
                                                 body: UpdateSelectedReq(ids: items.map(\.id), selected: newVal)) as Bool
-            load()
         }
     }
 
     func updateCount(_ item: MallCartItem, count: Int) {
-        guard count >= 1 else { return }
+        guard count >= 1, let i = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[i].count = count
         Task {
             _ = try? await APIClient.shared.put("app-api/trade/cart/update-count",
                                                 body: UpdateCountReq(id: item.id, count: count)) as Bool
-            load()
         }
     }
 
     func delete(_ item: MallCartItem) {
+        let backup = items
+        items.removeAll { $0.id == item.id }
         Task {
-            _ = try? await APIClient.shared.delete("app-api/trade/cart/delete", query: ["ids": "\(item.id)"]) as Bool
-            load()
+            let ok = try? await APIClient.shared.delete("app-api/trade/cart/delete", query: ["ids": "\(item.id)"]) as Bool
+            if ok == nil { items = backup }
         }
     }
 }

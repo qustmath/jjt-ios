@@ -18,10 +18,24 @@ struct MallHomeView: View {
                 couponBanner
                 sortBar
                 Rectangle().fill(Noir.goldLine).frame(height: 1)
-                gridSection
+                // 排序 tab 分页容器：左右滑切换（对齐安卓与广场 tab 一致的体验）
+                TabView(selection: $vm.sort) {
+                    ForEach(MallHomeViewModel.Sort.allCases, id: \.self) { s in
+                        gridSection.tag(s)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
-        .onAppear { vm.load() }
+        .onAppear {
+            vm.load()
+            vm.refreshCartCount()
+        }
+        .onChange(of: vm.sort) { _, s in vm.load(sort: s) }
+        // 加购成功 → 刷新购物车角标
+        .onReceive(NotificationCenter.default.publisher(for: .jjtCartChanged)) { _ in
+            vm.refreshCartCount()
+        }
         .fullScreenCover(isPresented: Binding(
             get: { detailSpuId != nil },
             set: { if !$0 { detailSpuId = nil } }
@@ -134,7 +148,7 @@ struct MallHomeView: View {
                               : LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing))
                         .frame(width: 20, height: 2.5)
                 }
-                .onTapGesture { vm.load(sort: s) }
+                .onTapGesture { vm.sort = s }
             }
             Spacer()
         }
