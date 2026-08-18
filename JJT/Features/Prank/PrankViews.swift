@@ -108,7 +108,7 @@ struct PrankAvatar: View {
     let tapKey: String
     let targetId: String
     @ObservedObject var prank: PrankState
-    var onSingleTap: @escaping () -> Void
+    var onSingleTap: () -> Void
 
     @State private var fxT: Double = 0
 
