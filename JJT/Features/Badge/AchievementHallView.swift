@@ -320,34 +320,78 @@ struct AchievementHallView: View {
     }
 
     private func medalCell(_ badge: BadgeHallItem) -> some View {
-        let tier = hallTierOf(badge)
+        let catColor = HALL_CAT_META.first { $0.key == badge.cat }?.color ?? Noir.gold
         let lit = (badge.stage ?? 0) > 0
-        return VStack(spacing: 5) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Noir.noir2)
-                    .overlay(RoundedRectangle(cornerRadius: 14)
-                        .stroke(lit ? hallTierColor(tier).opacity(0.6) : Color.white.opacity(0.08),
-                                lineWidth: lit ? 1.5 : 1))
-                HallMedalIcon(badge: badge, size: 44)
-                    .saturation(lit ? 1 : 0)
-                    .opacity(lit ? 1 : 0.45)
+        let concealed = badge.hidden == true && !lit
+        return VStack(spacing: 0) {
+            if concealed {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.04))
+                        .frame(width: 40, height: 40)
+                        .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                    Text("?")
+                        .font(.system(size: 13, design: .serif))
+                        .italic()
+                        .foregroundStyle(.white.opacity(0.2))
+                }
+                .padding(.bottom, 6)
+                Text("未知彩蛋")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.25))
+            } else {
+                ZStack(alignment: .topTrailing) {
+                    HallMedalIcon(badge: badge, size: 44)
+                        .saturation(lit ? 1 : 0)
+                        .opacity(lit ? 1 : 0.45)
+                    if badge.sealed == true {
+                        Text("绝版")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundStyle(Color(red: 0x0A/255, green: 0x0A/255, blue: 0x0D/255))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(LinearGradient(colors: [Noir.gold, Noir.goldLight], startPoint: .leading, endPoint: .trailing))
+                            .clipShape(Capsule())
+                            .offset(x: 8, y: -4)
+                    }
+                }
+                .padding(.bottom, 6)
+                // 名称 + 阶（罗马数字跟在名称后面）
+                HStack(spacing: 3) {
+                    Text(badge.name ?? "")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(lit ? Noir.ivory.opacity(0.85) : .white.opacity(0.3))
+                        .lineLimit(1)
+                    if lit, let s = badge.stage, s > 0, s <= 10 {
+                        Text(HALL_NUMERALS[s - 1])
+                            .font(.system(size: 8.5, weight: .semibold, design: .serif))
+                            .foregroundStyle(catColor)
+                    }
+                }
+                // 十阶微进度（对齐安卓 MedalCell 段位分段条）
+                if (badge.stages ?? 1) > 1 {
+                    HStack(spacing: 2) {
+                        ForEach(0..<min(badge.stages ?? 1, 10), id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(i < (badge.stage ?? 0) ? catColor : Color.white.opacity(0.1))
+                                .frame(width: 7, height: 3)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
             }
-            .frame(height: 62)
-            Text(badge.hidden == true && !lit ? "？？？" : (badge.name ?? ""))
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(lit ? Noir.ivory : .white.opacity(0.35))
-                .lineLimit(1)
-            Text(lit && (badge.stage ?? 0) > 0 && (badge.stage ?? 0) <= 10 ? HALL_NUMERALS[(badge.stage ?? 1) - 1] : "未点亮")
-                .font(.system(size: 8.5))
-                .foregroundStyle(lit ? hallTierColor(tier) : .white.opacity(0.2))
         }
         .frame(maxWidth: .infinity)
-        .padding(6)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
+        .background(lit ? catColor.opacity(0.07) : Color.white.opacity(0.025))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16)
+            .stroke(lit ? catColor.opacity(0.33) : Color.white.opacity(0.07), lineWidth: 1))
         .contentShape(Rectangle())
         .onTapGesture {
             // 点未知彩蛋：可能惊醒「琥珀里的虫」（对齐安卓）
-            if badge.hidden == true && (badge.stage ?? 0) == 0 { EggTrigger.report("unknown") }
+            if concealed { EggTrigger.report("unknown") }
             detailId = badge.id
         }
     }
@@ -538,6 +582,7 @@ final class AchievementHallViewModel: ObservableObject {
                     _ = try await BadgeAPI.mount(badgeId: badge.id)
                 }
                 jjtShowToast(target ? "已挂载到头像侧边" : "已从头像卸下")
+                NotificationCenter.default.post(name: .jjtBadgesChanged, object: nil)
             } catch {
                 jjtShowToast(error.localizedDescription)
             }

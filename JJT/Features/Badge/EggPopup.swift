@@ -4,6 +4,8 @@ import SwiftUI
 
 extension Notification.Name {
     static let jjtEggUnlocked = Notification.Name("jjt.eggUnlocked")
+    /// 勋章挂载/卸下成功（我的页挂载勋章行据此刷新）
+    static let jjtBadgesChanged = Notification.Name("jjt.badgesChanged")
 }
 
 enum EggBus {

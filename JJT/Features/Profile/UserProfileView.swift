@@ -227,8 +227,6 @@ struct UserProfileView: View {
                               frameURL: vm.profile?.avatarFrame,
                               frameScale: vm.profile?.avatarFrameScale.map { CGFloat($0) } ?? 1.25)
                         .frame(width: 108, height: 108)
-                        .background(Noir.noir)
-                        .clipShape(Circle())
 
                     if isSelf {
                         PhotosPicker(selection: $avatarItem, matching: .images) {

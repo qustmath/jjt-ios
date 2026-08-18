@@ -37,6 +37,27 @@ struct FollowUser: Decodable, Identifiable {
     let levelInTier: Int?
 
     var id: Int64 { userId }
+
+    // createTime 是 LocalDateTime → 后端序列化为毫秒时间戳数字，需宽容解码（与红包同款）
+    private enum CodingKeys: String, CodingKey {
+        case userId, nickname, avatar, mark, isMutual, createTime
+        case avatarFrame, avatarFrameScale, vipLevel, vipLevelColor, levelInTier
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try c.decode(Int64.self, forKey: .userId)
+        nickname = try c.decodeIfPresent(String.self, forKey: .nickname)
+        avatar = try c.decodeIfPresent(String.self, forKey: .avatar)
+        mark = try c.decodeIfPresent(String.self, forKey: .mark)
+        isMutual = try c.decodeIfPresent(Bool.self, forKey: .isMutual)
+        createTime = try c.decodeLenientString(forKey: .createTime)
+        avatarFrame = try c.decodeIfPresent(String.self, forKey: .avatarFrame)
+        avatarFrameScale = try c.decodeIfPresent(Double.self, forKey: .avatarFrameScale)
+        vipLevel = try c.decodeIfPresent(String.self, forKey: .vipLevel)
+        vipLevelColor = try c.decodeIfPresent(String.self, forKey: .vipLevelColor)
+        levelInTier = try c.decodeIfPresent(Int.self, forKey: .levelInTier)
+    }
 }
 
 struct FollowPage: Decodable {
@@ -50,6 +71,19 @@ struct FriendApplyInfo: Decodable, Identifiable {
     let nickname: String?
     let avatar: String?
     let createTime: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, peerUserId, nickname, avatar, createTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int64.self, forKey: .id)
+        peerUserId = try c.decode(Int64.self, forKey: .peerUserId)
+        nickname = try c.decodeIfPresent(String.self, forKey: .nickname)
+        avatar = try c.decodeIfPresent(String.self, forKey: .avatar)
+        createTime = try c.decodeLenientString(forKey: .createTime)
+    }
 }
 
 struct IntimateRelation: Decodable, Identifiable {

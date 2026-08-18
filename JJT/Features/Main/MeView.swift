@@ -29,6 +29,7 @@ struct MeView: View {
     @State private var showInvite = false
     @State private var showTaskCenter = false
     @State private var showBadgeWall = false
+    @State private var showQuiz = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -89,6 +90,10 @@ struct MeView: View {
             }
         }
         .onAppear { vm.load() }
+        // 成就殿堂挂载/卸下勋章后刷新挂载行（TabView 页面常驻，onAppear 不一定再触发）
+        .onReceive(NotificationCenter.default.publisher(for: .jjtBadgesChanged)) { _ in
+            vm.load()
+        }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
             set: { if !$0 { vm.clearError() } }
@@ -153,6 +158,9 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showBadgeWall) {
             BadgeWallView()
+        }
+        .fullScreenCover(isPresented: $showQuiz) {
+            QuizListView()
         }
     }
 
@@ -402,7 +410,7 @@ struct MeView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Noir.crimsonHot)
             }
-        } onTap: { comingSoon("属性测试") }
+        } onTap: { showQuiz = true }
     }
 
     // MARK: - 门店会员卡

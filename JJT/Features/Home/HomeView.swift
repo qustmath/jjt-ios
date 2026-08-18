@@ -19,6 +19,7 @@ struct HomeView: View {
     @State private var showEventList = false
     @State private var showGiftCenter = false
     @State private var showSearchGroup = false
+    @State private var showWheel = false
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
     @State private var mituGlow = false
     @State private var mituShine = false
@@ -118,6 +119,9 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showSearchGroup) {
             SearchGroupView()
         }
+        .fullScreenCover(isPresented: $showWheel) {
+            WheelView()
+        }
         .onAppear {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
             if appearedOnce { vm.load(force: true) } else { vm.load() }
@@ -134,14 +138,17 @@ struct HomeView: View {
         NotificationCenter.default.post(name: .jjtSwitchTab, object: tag)
     }
 
-    /// banner 点击：解析 linkTarget DeepLink（{"t":"wheel"} / {"t":"activity","aid":N}）。
-    /// 转盘/活动页 iOS 端未迁移，先提示；页面就绪后在此接线。
+    /// banner 点击：解析 linkTarget DeepLink（{"t":"wheel"} → 转盘；{"t":"activity","aid":N} 待活动页）。
     private func handleBannerTap(_ banner: BannerInfo) {
         guard let target = banner.linkTarget, !target.isEmpty,
               let data = target.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              obj["t"] is String else { return }
-        showToast("敬请期待")
+              let t = obj["t"] as? String else { return }
+        if t == "wheel" {
+            showWheel = true
+        } else {
+            showToast("敬请期待")
+        }
     }
 
     private func showToast(_ text: String) {

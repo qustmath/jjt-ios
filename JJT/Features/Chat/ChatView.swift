@@ -508,6 +508,8 @@ struct ChatView: View {
         input = ""
         vm.sendText(t, quote: quote)
         quote = nil
+        // 发送后收起键盘（对齐安卓/微信行为）
+        inputFocused = false
     }
 
     // MARK: - 功能面板
