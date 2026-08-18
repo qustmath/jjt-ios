@@ -21,6 +21,10 @@ struct MeView: View {
     @State private var showMyEvents = false
     @State private var showGiftCenter = false
     @State private var showMyGifts = false
+    @State private var showSettings = false
+    @State private var showAccountSecurity = false
+    @State private var showRealname = false
+    @State private var showAbout = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -122,6 +126,18 @@ struct MeView: View {
         .fullScreenCover(isPresented: $showMyGifts) {
             MyGiftsView()
         }
+        .fullScreenCover(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .fullScreenCover(isPresented: $showAccountSecurity, onDismiss: { vm.load() }) {
+            AccountSecurityView()
+        }
+        .fullScreenCover(isPresented: $showRealname) {
+            RealnameVerifyView()
+        }
+        .fullScreenCover(isPresented: $showAbout) {
+            AboutView()
+        }
     }
 
     // MARK: - 顶栏
@@ -135,7 +151,7 @@ struct MeView: View {
                 .foregroundStyle(Noir.gold.opacity(0.6))
             Spacer()
             iconButton("qrcode.viewfinder") { comingSoon() }
-            iconButton("gearshape") { comingSoon() }
+            iconButton("gearshape") { showSettings = true }
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -488,12 +504,12 @@ struct MeView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(title: "更多服务", en: "MORE")
             VStack(spacing: 0) {
-                moreRow("实名认证", "checkmark.shield") { comingSoon() }
+                moreRow("实名认证", "checkmark.shield") { showRealname = true }
                 moreRow("我的二维码", "qrcode") { comingSoon() }
                 moreRow("邀请好友", "person.badge.plus") { comingSoon() }
-                moreRow("账号安全", "lock") { comingSoon() }
-                moreRow("设置", "gearshape") { comingSoon() }
-                moreRow("关于我们", "info.circle") { comingSoon() }
+                moreRow("账号安全", "lock") { showAccountSecurity = true }
+                moreRow("设置", "gearshape") { showSettings = true }
+                moreRow("关于我们", "info.circle") { showAbout = true }
                 moreRow("退出登录", "rectangle.portrait.and.arrow.right", tint: Noir.crimsonHot, divider: false) {
                     showLogoutConfirm = true
                 }

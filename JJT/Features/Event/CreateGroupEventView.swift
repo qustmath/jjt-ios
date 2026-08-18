@@ -10,6 +10,7 @@ struct CreateGroupEventView: View {
 
     @StateObject private var vm = CreateGroupEventViewModel()
     @Environment(\.dismiss) private var dismiss
+    @State private var showRealname = false
 
     private struct EventTypeOption: Identifiable {
         let type: Int
@@ -128,11 +129,14 @@ struct CreateGroupEventView: View {
         )) {
             Button("去认证") {
                 vm.needRealname = false
-                jjtShowToast("实名认证页建设中，敬请期待")
+                showRealname = true
             }
             Button("取消", role: .cancel) { vm.needRealname = false }
         } message: {
             Text("发起组局需要先完成实名认证")
+        }
+        .fullScreenCover(isPresented: $showRealname) {
+            RealnameVerifyView()
         }
         // 城市选择
         .sheet(isPresented: $vm.showCityPicker) {

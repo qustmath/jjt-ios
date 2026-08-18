@@ -91,14 +91,19 @@ struct Gift3DView: UIViewRepresentable {
     /// GLTFSceneKit 是 2018 年的老库，解析放在主线程 + 全局串行（并发解析疑似崩溃源）
     private static func loadScene(_ source: String) async -> SCNScene? {
         await GLBLoadQueue.shared.enqueue {
+            let url: URL?
             if source.hasPrefix("http") {
-                guard let file = await GiftAssetCache.download(source, ext: "glb") else { return nil }
-                return try? GLTFSceneSource(url: file).scene()
+                url = await GiftAssetCache.download(source, ext: "glb")
+            } else {
+                // 内置资产（JJT/Resources/gifts/*.glb）
+                url = Bundle.main.url(forResource: source, withExtension: "glb", subdirectory: "gifts")
+                    ?? Bundle.main.url(forResource: source, withExtension: "glb")
             }
-            // 内置资产（JJT/Resources/gifts/*.glb）
-            guard let url = Bundle.main.url(forResource: source, withExtension: "glb", subdirectory: "gifts")
-                ?? Bundle.main.url(forResource: source, withExtension: "glb") else { return nil }
-            return try? GLTFSceneSource(url: url).scene()
+            guard let url else { return nil }
+            // 必须绕开 GLTFSceneSource：其 init(url:) 走 self.init() 空构造（URL 不进基类），
+            // 且只覆写 scene(options:)；无参 .scene() 落到基类 -[SCNSceneSource scene]
+            // → C3DSceneSourceGetURL 读空指针 → SIGSEGV。直接用 GLTFUnarchiver 解析。
+            return try? GLTFUnarchiver(url: url).loadScene()
         }
     }
 }

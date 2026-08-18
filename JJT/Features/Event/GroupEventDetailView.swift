@@ -11,6 +11,7 @@ struct GroupEventDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var peerProfileId: Int64?
     @State private var groupChatTarget: (id: String, title: String)?
+    @State private var showRealname = false
 
     private static let EVENT_TYPES = [0: "聚餐", 1: "饮酒", 2: "KTV", 3: "运动", 4: "桌游", 5: "其他"]
     private static let EVENT_STATUS = [-1: "筹备中", 0: "组局中", 1: "已满", 2: "已取消", 3: "已结束"]
@@ -52,11 +53,14 @@ struct GroupEventDetailView: View {
         )) {
             Button("去认证") {
                 vm.clearNeedRealname()
-                jjtShowToast("实名认证页建设中，敬请期待")
+                showRealname = true
             }
             Button("取消", role: .cancel) { vm.clearNeedRealname() }
         } message: {
             Text("报名组局需要先完成实名认证，是否前往认证？")
+        }
+        .fullScreenCover(isPresented: $showRealname) {
+            RealnameVerifyView()
         }
         // 报名弹窗
         .alert("报名入局", isPresented: Binding(

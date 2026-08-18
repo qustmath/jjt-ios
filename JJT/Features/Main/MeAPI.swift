@@ -52,7 +52,9 @@ struct UserInfoResp: Decodable {
     let giftCoin: Int?
     let earnings: FlexibleDecimal?
     let storeMember: StoreMemberInfo?
-    let realnameStatus: Int?
+    let realnameStatus: Int?       // 1=已通过（对齐安卓页面行为）
+    let realName: String?          // 已认证时服务端返回脱敏姓名
+    let idCardMasked: String?      // 已认证时服务端返回脱敏身份证
 }
 
 struct UpdateUserReq: Encodable {
