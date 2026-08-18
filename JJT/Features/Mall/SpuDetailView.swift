@@ -12,6 +12,7 @@ struct SpuDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showSkuSheet = false
     @State private var toast: String?
+    @State private var checkoutItem: CheckoutView.Item?
 
     var body: some View {
         ZStack {
@@ -73,11 +74,24 @@ struct SpuDetailView: View {
         .onAppear { vm.load(id: spuId) }
         .sheet(isPresented: $showSkuSheet) {
             if let spu = vm.spu {
-                SkuSheet(spu: spu) { msg in
-                    showSkuSheet = false
-                    if let msg { showToast(msg) }
-                    vm.refreshCartCount()
-                }
+                SkuSheet(spu: spu,
+                         onDone: { msg in
+                             showSkuSheet = false
+                             if let msg { showToast(msg) }
+                             vm.refreshCartCount()
+                         },
+                         onBuyNow: { skuId, count in
+                             showSkuSheet = false
+                             checkoutItem = CheckoutView.Item(skuId: skuId, count: count, cartId: nil)
+                         })
+            }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { checkoutItem != nil },
+            set: { if !$0 { checkoutItem = nil } }
+        )) {
+            if let item = checkoutItem {
+                CheckoutView(items: [item])
             }
         }
     }
@@ -279,6 +293,8 @@ struct SkuSheet: View {
     let spu: SpuDetail
     /// 完成回调（message 非空为提示文案）
     let onDone: (String?) -> Void
+    /// 立即购买：不走加购，直接带 skuId+count 去结算
+    let onBuyNow: (Int64, Int) -> Void
 
     @State private var selected: [String: String] = [:] // propertyName → valueName
     @State private var count = 1
@@ -415,9 +431,13 @@ struct SkuSheet: View {
     }
 
     private func submit(buyNow: Bool) {
-        // 无 SKU 商品：用第一个 sku 或直接加购
         guard let sku = matchedSku ?? spu.skus?.first else {
             onDone("该商品暂不可购买")
+            return
+        }
+        // 立即购买：直接结算，不进购物车（对齐安卓）
+        if buyNow {
+            onBuyNow(sku.id, count)
             return
         }
         isSubmitting = true
@@ -425,7 +445,7 @@ struct SkuSheet: View {
             do {
                 _ = try await MallAPI.cartAdd(skuId: sku.id, count: count)
                 isSubmitting = false
-                onDone(buyNow ? "已加入购物车，去结算" : "已加入购物车")
+                onDone("已加入购物车")
             } catch {
                 isSubmitting = false
                 onDone(error.localizedDescription)

@@ -7,6 +7,7 @@ struct CartView: View {
     @StateObject private var vm = CartViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var toast: String?
+    @State private var checkoutItems: [CheckoutView.Item]?
 
     var body: some View {
         ZStack {
@@ -71,6 +72,18 @@ struct CartView: View {
             }
         }
         .onAppear { vm.load() }
+        .fullScreenCover(isPresented: Binding(
+            get: { checkoutItems != nil },
+            set: { if !$0 { checkoutItems = nil } }
+        )) {
+            if let items = checkoutItems {
+                CheckoutView(items: items)
+            }
+        }
+        // 下单/支付完成 → 刷新购物车
+        .onReceive(NotificationCenter.default.publisher(for: .jjtOrderChanged)) { _ in
+            vm.load()
+        }
     }
 
     private func showToast(_ text: String) {
@@ -122,7 +135,11 @@ struct CartView: View {
             Text("¥\(fenToYuan(vm.totalPriceFen))")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Noir.crimsonHot)
-            Button { showToast("结算下单即将上线") } label: {
+            Button {
+                // 勾选商品按 cartId 走结算（对齐安卓）
+                checkoutItems = vm.items.filter { $0.selected == true }
+                    .map { CheckoutView.Item(skuId: nil, count: nil, cartId: $0.id) }
+            } label: {
                 Text("结算(\(vm.selectedCount))")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)

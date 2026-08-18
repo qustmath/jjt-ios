@@ -34,6 +34,7 @@ struct MeView: View {
     @State private var showTicketWallet = false
     @State private var showAddress = false
     @State private var showMall = false
+    @State private var showOrders = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -76,7 +77,7 @@ struct MeView: View {
                     ])
                     gridSection(title: "商城服务", en: "BOUTIQUE", items: [
                         GridItem("商城", "storefront") { showMall = true },
-                        GridItem("我的订单", "bag") { comingSoon() },
+                        GridItem("我的订单", "bag") { showOrders = true },
                         GridItem("收货地址", "mappin") { showAddress = true },
                         GridItem("优惠券", "ticket") { comingSoon() },
                         GridItem("我的收藏", "heart") { comingSoon() },
@@ -177,6 +178,9 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showMall) {
             MallHomeView()
+        }
+        .fullScreenCover(isPresented: $showOrders) {
+            OrderListView()
         }
     }
 
