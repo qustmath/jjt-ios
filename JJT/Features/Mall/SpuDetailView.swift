@@ -90,8 +90,17 @@ struct SpuDetailView: View {
             get: { checkoutItem != nil },
             set: { if !$0 { checkoutItem = nil } }
         )) {
-            if let item = checkoutItem {
-                CheckoutView(items: [item])
+            if let item = checkoutItem, let spu = vm.spu {
+                // 对齐安卓：虚拟商品强制自提；实物不支持快递则默认自提（#123/#124）
+                let isVirtual = (spu.productType ?? 0) == 1
+                let types = spu.deliveryTypes ?? []
+                let defaultDelivery = isVirtual ? 2 : (!types.isEmpty && !types.contains(1) ? 2 : 1)
+                CheckoutView(
+                    items: [item],
+                    deliveryType: defaultDelivery,
+                    pickUpStoreIds: spu.pickUpStoreIds ?? [],
+                    radishCoinRate: spu.radishCoinDeductMaxRate ?? 0
+                )
             }
         }
     }

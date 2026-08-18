@@ -50,7 +50,9 @@ struct SpuDetail: Decodable {
     let skus: [SpuDetailSku]?
     let salesCount: Int?
     let deliveryTypes: [Int]?
+    let pickUpStoreIds: [Int64]?
     let productType: Int?
+    let radishCoinDeductMaxRate: Int?
 }
 
 struct MallCategory: Decodable, Identifiable {
