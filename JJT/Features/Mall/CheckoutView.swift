@@ -59,6 +59,7 @@ struct CheckoutView: View {
                         }
                         .padding(16)
                     }
+                    .scrollDismissesKeyboard(.interactively)
 
                     submitBar
                 }
@@ -91,7 +92,10 @@ struct CheckoutView: View {
             set: { if !$0 { payOrder = nil } }
         )) {
             if let p = payOrder {
-                PayView(payOrderId: p.id, priceFen: p.price) {
+                PayView(payOrderId: p.id, priceFen: p.price,
+                        totalFen: vm.settlement?.price?.totalPrice,
+                        rabbitCoinFen: vm.settlement?.price?.rabbitCoinPrice,
+                        radishCoinFen: vm.settlement?.price?.radishCoinPrice) {
                     payOrder = nil
                     NotificationCenter.default.post(name: .jjtOrderChanged, object: nil)
                     dismiss()
@@ -99,6 +103,14 @@ struct CheckoutView: View {
             }
         }
         .onChange(of: vm.errorMessage) { _, msg in if let msg { showToast(msg); vm.errorMessage = nil } }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
     }
 
     private func showToast(_ text: String) {

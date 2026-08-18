@@ -6,10 +6,15 @@ struct PayView: View {
 
     let payOrderId: Int64
     let priceFen: Int
+    /// 金额明细预览（结算页传入；订单详情过来时也可能带）
+    var totalFen: Int? = nil
+    var rabbitCoinFen: Int? = nil
+    var radishCoinFen: Int? = nil
     /// 支付完成（成功或用户放弃返回）回调
     let onFinish: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var status: PayStatus = .idle
     @State private var errorMessage: String?
 
@@ -74,9 +79,25 @@ struct PayView: View {
                     }
                 default:
                     VStack(spacing: 14) {
-                        Text("¥\(fenToYuan(priceFen))")
-                            .font(.system(size: 36, weight: .bold, design: .serif))
-                            .foregroundStyle(Noir.goldText)
+                        // 金额明细预览（对齐安卓收银台：总额/抵扣/实付一目了然）
+                        VStack(spacing: 8) {
+                            if let totalFen {
+                                previewLine("订单总额", "¥\(fenToYuan(totalFen))")
+                            }
+                            if let r = rabbitCoinFen, r > 0 {
+                                previewLine("兔币抵扣", "-¥\(fenToYuan(r))", highlight: true)
+                            }
+                            if let r = radishCoinFen, r > 0 {
+                                previewLine("萝贝抵扣", "-¥\(fenToYuan(r))", highlight: true)
+                            }
+                            previewLine("现金支付", "¥\(fenToYuan(priceFen))", bold: true)
+                        }
+                        .padding(16)
+                        .background(Color.white.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Noir.hairlineGold, lineWidth: 1))
+                        .padding(.horizontal, 40)
+
                         Text("支付宝")
                             .font(.system(size: 14))
                             .foregroundStyle(Noir.ivory)
@@ -98,6 +119,22 @@ struct PayView: View {
                 Spacer()
                 Spacer()
             }
+        }
+        // 从支付宝返回 App → 立即轮询一次支付结果（对齐充值页做法）
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, status == .waitingResult { pollResult() }
+        }
+    }
+
+    private func previewLine(_ label: String, _ value: String, highlight: Bool = false, bold: Bool = false) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.5))
+            Spacer()
+            Text(value)
+                .font(.system(size: bold ? 16 : 12, weight: bold ? .bold : .regular))
+                .foregroundStyle(highlight ? Noir.crimsonHot : (bold ? Noir.goldLight : Noir.ivory))
         }
     }
 
@@ -123,9 +160,15 @@ struct PayView: View {
                 let resp: PaySubmitResp = try await APIClient.shared.post(
                     "app-api/pay/order/submit",
                     body: PaySubmitReq(id: payOrderId, channelCode: "juheba_alipay"))
-                // 收银台地址 → 拉起（支付宝/浏览器）
-                if let content = resp.displayContent, let url = URL(string: content) {
-                    await UIApplication.shared.open(url)
+                // 收银台地址 → alipays:// scheme 拉起支付宝 App（对齐充值页做法），失败回退浏览器
+                if let content = resp.displayContent {
+                    let scheme = "alipays://platformapi/startapp?appId=20000067&url=" +
+                        (content.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? content)
+                    if let u = URL(string: scheme), await UIApplication.shared.canOpenURL(u) {
+                        await UIApplication.shared.open(u)
+                    } else if let u = URL(string: content) {
+                        await UIApplication.shared.open(u)
+                    }
                 }
                 status = .waitingResult
                 pollResult()

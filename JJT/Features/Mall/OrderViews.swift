@@ -46,6 +46,8 @@ struct OrderDetail: Decodable {
     let receiverMobile: String?
     let receiverAreaName: String?
     let receiverDetailAddress: String?
+    let rabbitCoinPrice: Int?
+    let radishCoinPrice: Int?
     let items: [OrderItemInfo]?
 }
 
@@ -497,8 +499,11 @@ struct OrderDetailView: View {
             get: { payOrder != nil },
             set: { if !$0 { payOrder = nil } }
         )) {
-            if let p = payOrder {
-                PayView(payOrderId: p.id, priceFen: p.price) {
+            if let p = payOrder, let o = vm.order {
+                PayView(payOrderId: p.id, priceFen: p.price,
+                        totalFen: o.totalPrice,
+                        rabbitCoinFen: o.rabbitCoinPrice,
+                        radishCoinFen: o.radishCoinPrice) {
                     payOrder = nil
                     NotificationCenter.default.post(name: .jjtOrderChanged, object: nil)
                     vm.load(id: orderId)

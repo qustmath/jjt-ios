@@ -73,11 +73,20 @@ struct AddressEditView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
         }
         .onAppear { vm.load(id: addressId) }
         .onChange(of: vm.success) { _, ok in if ok { onSaved() } }
         .sheet(isPresented: $vm.showPicker) { areaPicker }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
             set: { if !$0 { vm.error = nil } }

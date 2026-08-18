@@ -51,6 +51,7 @@ struct CreatePostView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 40)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
 
             if let err = vm.errorMessage {
@@ -82,6 +83,14 @@ struct CreatePostView: View {
             if created {
                 NotificationCenter.default.post(name: .jjtPostCreated, object: nil)
                 dismiss()
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
             }
         }
     }

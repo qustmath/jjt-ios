@@ -184,6 +184,9 @@ private struct CartItemRow: View {
             Button(action: onToggle) {
                 NoirCheck(checked: item.selected ?? false)
             }
+            // List 行内按钮必须 borderless，否则行内点击会误路由到首个按钮
+            // （症状：点加减时勾选框状态被切换）
+            .buttonStyle(.borderless)
 
             // sku.picUrl 可能是空串，须回退 spu 图（实测后端行为）
             AsyncImage(url: webImageURL(item.sku?.picUrl.flatMap { $0.isEmpty ? nil : $0 } ?? item.spu?.picUrl)) { phase in
@@ -216,6 +219,7 @@ private struct CartItemRow: View {
                         Button { onCount(item.count - 1) } label: {
                             Image(systemName: "minus").font(.system(size: 11)).frame(width: 26, height: 26)
                         }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(Noir.ivory)
                         Text("\(item.count)")
                             .font(.system(size: 12, weight: .medium))
@@ -224,6 +228,7 @@ private struct CartItemRow: View {
                         Button { onCount(item.count + 1) } label: {
                             Image(systemName: "plus").font(.system(size: 11)).frame(width: 26, height: 26)
                         }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(Noir.ivory)
                     }
                     .background(Color.white.opacity(0.05))
