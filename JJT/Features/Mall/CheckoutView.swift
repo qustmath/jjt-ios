@@ -378,7 +378,7 @@ final class CheckoutViewModel: ObservableObject {
     }
 
     func createOrder(items: [CheckoutView.Item], remark: String,
-                     onCreated: (Int64, Int64?, Int) -> Void) {
+                     onCreated: @escaping (Int64, Int64?, Int) -> Void) {
         guard let addressId = settlement?.address?.id else {
             errorMessage = "请选择收货地址"
             return
