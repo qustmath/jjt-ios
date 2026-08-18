@@ -25,7 +25,7 @@ struct CreatePostView: View {
                         .foregroundStyle(Noir.goldText)
                     Spacer()
                     Button { vm.publish() } label: {
-                        Text(vm.isPublishing ? "发布中…" : "发布")
+                        Text(vm.isPublishing ? "发布中…" : (vm.isUploading ? "图片上传中…" : "发布"))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 20)
@@ -52,6 +52,9 @@ struct CreatePostView: View {
                     .padding(.bottom, 40)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                // 发布中锁定整个表单，不可再编辑（对齐需求：发布时不可再编辑作品）
+                .disabled(vm.isPublishing)
+                .opacity(vm.isPublishing ? 0.5 : 1)
             }
 
             if let err = vm.errorMessage {
@@ -287,6 +290,11 @@ final class CreatePostViewModel: ObservableObject {
     @Published var isPublishing = false
     @Published var errorMessage: String?
     @Published var created = false
+
+    /// 有图片正在上传（占位未上传完且未失败）
+    var isUploading: Bool {
+        images.contains { $0.url == nil && !$0.failed }
+    }
 
     var canPublish: Bool {
         let full = (title + content).trimmingCharacters(in: .whitespacesAndNewlines)
