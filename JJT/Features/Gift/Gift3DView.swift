@@ -100,10 +100,11 @@ struct Gift3DView: UIViewRepresentable {
                     ?? Bundle.main.url(forResource: source, withExtension: "glb")
             }
             guard let url else { return nil }
-            // 必须绕开 GLTFSceneSource：其 init(url:) 走 self.init() 空构造（URL 不进基类），
-            // 且只覆写 scene(options:)；无参 .scene() 落到基类 -[SCNSceneSource scene]
-            // → C3DSceneSourceGetURL 读空指针 → SIGSEGV。直接用 GLTFUnarchiver 解析。
-            return try? GLTFUnarchiver(url: url).loadScene()
+            // 必须显式调 scene(options:)：GLTFSceneSource init(url:) 走 self.init() 空构造
+            // （URL 不进基类），无参 .scene() 落到基类 -[SCNSceneSource scene]
+            // → C3DSceneSourceGetURL 读空指针 → SIGSEGV；
+            // scene(options:) 是 GLTFSceneSource 的公开覆写，走自己的 GLTFUnarchiver，安全。
+            return try? GLTFSceneSource(url: url).scene(options: nil)
         }
     }
 }
