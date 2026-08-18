@@ -93,10 +93,18 @@ struct BindGroupReq: Encodable { let eventId: Int64; let imGroupId: Int64 }
 
 // MARK: - 群组（组局沟通群用，完整群功能在密语阶段补齐）
 
-struct GroupInfo: Decodable {
+struct GroupInfo: Decodable, Identifiable {
     let id: Int64
     let imGroupId: String?
     let name: String?
+    let ownerUserId: Int64?
+    let avatar: String?
+    let maxMemberCount: Int?
+    let notice: String?
+    let status: Int?
+    let banned: Bool?
+    let mutedAll: Bool?
+    let joinApproval: Bool?
     let memberCount: Int64?
     let joined: Bool?
 }
@@ -111,6 +119,11 @@ enum GroupAPI {
         try await APIClient.shared.post("app-api/im/group/create", body: CreateGroupReq(name: name, memberUserIds: []))
     }
 
+    /// 建群（带初始成员，对齐安卓 CreateGroupReq）
+    static func create(name: String, memberUserIds: [Int64]) async throws -> GroupInfo {
+        try await APIClient.shared.post("app-api/im/group/create", body: CreateGroupReq(name: name, memberUserIds: memberUserIds))
+    }
+
     /// 返回 String（如需要审批的提示语）
     static func join(groupId: Int64) async throws -> String? {
         try await APIClient.shared.post("app-api/im/group/join", query: ["groupId": String(groupId)])
@@ -121,8 +134,113 @@ enum GroupAPI {
         try await APIClient.shared.get("app-api/im/group/get", query: ["imGroupId": imGroupId])
     }
 
+    static func list() async throws -> [GroupInfo] {
+        try await APIClient.shared.get("app-api/im/group/list")
+    }
+
     static func members(groupId: Int64) async throws -> [GroupMember] {
         try await APIClient.shared.get("app-api/im/group/members", query: ["groupId": String(groupId)])
+    }
+
+    // MARK: - 群资料
+
+    static func update(id: Int64, name: String? = nil, notice: String? = nil, avatar: String? = nil) async throws -> GroupInfo {
+        struct Req: Encodable { let id: Int64; let name: String?; let notice: String?; let avatar: String? }
+        return try await APIClient.shared.put("app-api/im/group/update", body: Req(id: id, name: name, notice: notice, avatar: avatar))
+    }
+
+    // MARK: - 成员管理（对齐安卓 GroupApi）
+
+    static func kick(groupId: Int64, userIds: [Int64]) async throws -> Bool {
+        struct Req: Encodable { let groupId: Int64; let memberUserIds: [Int64] }
+        return try await APIClient.shared.post("app-api/im/group/kicking", body: Req(groupId: groupId, memberUserIds: userIds))
+    }
+
+    static func muteMember(groupId: Int64, userId: Int64, mutedSeconds: Int = 3600) async throws -> Bool {
+        struct Req: Encodable { let id: Int64; let userId: Int64; let mutedSeconds: Int }
+        return try await APIClient.shared.put("app-api/im/group/mute-member", body: Req(id: groupId, userId: userId, mutedSeconds: mutedSeconds))
+    }
+
+    static func unmuteMember(groupId: Int64, userId: Int64) async throws -> Bool {
+        struct Req: Encodable { let id: Int64; let userId: Int64; let mutedSeconds: Int }
+        return try await APIClient.shared.put("app-api/im/group/cancel-mute-member", body: Req(id: groupId, userId: userId, mutedSeconds: 0))
+    }
+
+    static func addAdmin(groupId: Int64, userIds: [Int64]) async throws -> Bool {
+        struct Req: Encodable { let id: Int64; let userIds: [Int64] }
+        return try await APIClient.shared.put("app-api/im/group/add-admin", body: Req(id: groupId, userIds: userIds))
+    }
+
+    static func removeAdmin(groupId: Int64, userIds: [Int64]) async throws -> Bool {
+        struct Req: Encodable { let id: Int64; let userIds: [Int64] }
+        return try await APIClient.shared.put("app-api/im/group/remove-admin", body: Req(id: groupId, userIds: userIds))
+    }
+
+    static func transferOwner(groupId: Int64, newOwnerUserId: Int64) async throws -> Bool {
+        struct Req: Encodable { let id: Int64; let newOwnerUserId: Int64 }
+        return try await APIClient.shared.put("app-api/im/group/transfer-owner", body: Req(id: groupId, newOwnerUserId: newOwnerUserId))
+    }
+
+    static func muteAll(groupId: Int64, mutedAll: Bool) async throws -> Bool {
+        struct Req: Encodable { let id: Int64; let mutedAll: Bool }
+        return try await APIClient.shared.put("app-api/im/group/mute-all", body: Req(id: groupId, mutedAll: mutedAll))
+    }
+
+    static func setJoinApproval(groupId: Int64, enable: Bool) async throws -> Bool {
+        try await APIClient.shared.put("app-api/im/group/join-approval", query: ["groupId": String(groupId), "enable": String(enable)])
+    }
+
+    static func dissolve(groupId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/im/group/dissolve", query: ["groupId": String(groupId)])
+    }
+
+    static func quit(groupId: Int64) async throws -> Bool {
+        try await APIClient.shared.delete("app-api/im/group/quit", query: ["groupId": String(groupId)])
+    }
+
+    // MARK: - 邀请 / 搜索 / 热门
+
+    static func invite(groupId: Int64, userIds: [Int64]) async throws -> Bool {
+        struct Req: Encodable { let groupId: Int64; let memberUserIds: [Int64] }
+        return try await APIClient.shared.post("app-api/im/group/invite", body: Req(groupId: groupId, memberUserIds: userIds))
+    }
+
+    static func hot() async throws -> [GroupInfo] {
+        try await APIClient.shared.get("app-api/im/group/hot")
+    }
+
+    static func search(keyword: String) async throws -> [GroupInfo] {
+        try await APIClient.shared.get("app-api/im/group/search", query: ["keyword": keyword])
+    }
+
+    // MARK: - 加群审批
+
+    static func requests(groupId: Int64) async throws -> [GroupRequest] {
+        try await APIClient.shared.get("app-api/im/group/requests", query: ["groupId": String(groupId)])
+    }
+
+    static func agreeRequest(requestId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/im/group/request/agree", query: ["requestId": String(requestId)])
+    }
+
+    static func refuseRequest(requestId: Int64, reason: String = "") async throws -> Bool {
+        try await APIClient.shared.post("app-api/im/group/request/refuse", query: ["requestId": String(requestId), "reason": reason])
+    }
+}
+
+struct GroupRequest: Decodable, Identifiable {
+    let id: Int64
+    let groupId: Int64
+    let userId: Int64
+    let nickname: String?
+    let avatar: String?
+    let handleStatus: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, groupId, userId
+        case nickname = "userNickname"
+        case avatar = "userAvatar"
+        case handleStatus = "handleResult"
     }
 }
 

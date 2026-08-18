@@ -106,6 +106,15 @@ final class ChatViewModel: ObservableObject {
 
         // 单聊：拉对方资料
         if !isGroup, let peerIdLong = Int64(peerId) {
+            // 缓存立即填充：顶栏头像框/段位即时显示（对齐安卓 UserDisplayCache）
+            if let d = UserDisplayCache.getMap([peerIdLong])[peerIdLong] {
+                peerName = d.nickname ?? peerName
+                peerAvatar = d.avatar ?? peerAvatar
+                peerAvatarFrame = d.avatarFrame
+                peerAvatarFrameScale = d.avatarFrameScale
+                peerLevelName = d.levelName
+                peerLevelNum = d.levelNum
+            }
             Task {
                 if let users = try? await UserAPI.getUserInfoList(ids: [peerIdLong]),
                    let user = users.first {
@@ -113,6 +122,7 @@ final class ChatViewModel: ObservableObject {
                     peerAvatar = user.avatar
                     peerAvatarFrame = user.avatarFrame
                     peerAvatarFrameScale = user.avatarFrameScale ?? 1.0
+                    UserDisplayCache.putAll([user.toCachedDisplay()])
                 }
                 if let profile = try? await UserAPI.getProfile(userId: peerIdLong) {
                     peerLevelName = profile.level?.name
@@ -454,8 +464,12 @@ final class ChatViewModel: ObservableObject {
         let foreignIds = Array(Set(messages.map(\.senderId)
             .filter { !$0.isEmpty && $0 != myId }
             .compactMap { Int64($0) }))
+        // 缓存做底：气泡头像框即时显示（对齐安卓）；网络覆盖 + 回写缓存
+        let cached = UserDisplayCache.getMap(foreignIds)
+        if !cached.isEmpty { applySenderDisplays(cached) }
         var userMap: [Int64: UserInfoResp] = [:]
         if !foreignIds.isEmpty, let users = try? await UserAPI.getUserInfoList(ids: foreignIds) {
+            UserDisplayCache.putAll(users.map { $0.toCachedDisplay() })
             userMap = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
         }
         messages = messages.map { m in
@@ -471,6 +485,19 @@ final class ChatViewModel: ObservableObject {
                 m.senderLevelName = u.level?.name
                 m.senderLevelNum = u.level?.levelInTier
             }
+            return m
+        }
+    }
+
+    /// 用缓存的展示信息先刷一遍气泡（网络返回前的即时帧）
+    private func applySenderDisplays(_ map: [Int64: CachedDisplay]) {
+        messages = messages.map { m in
+            guard !m.isMine, let uid = Int64(m.senderId), let d = map[uid] else { return m }
+            var m = m
+            m.senderAvatarFrame = d.avatarFrame
+            m.senderAvatarFrameScale = d.avatarFrameScale
+            m.senderLevelName = d.levelName
+            m.senderLevelNum = d.levelNum
             return m
         }
     }

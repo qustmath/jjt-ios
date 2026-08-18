@@ -2,6 +2,7 @@ import SwiftUI
 import SceneKit
 import GLTFSceneKit
 import CryptoKit
+import Bugly
 
 /// 3D 礼物渲染（对齐安卓 Gift3DRender：glb + 自转 0.7rad/s + 上下浮动 + heart3d 心跳）
 /// source：内置资产名（diamond/crown3d/heart3d/chalice/serpent）或后台上传的 glb URL
@@ -52,7 +53,8 @@ struct Gift3DView: UIViewRepresentable {
             await MainActor.run {
                 guard let view, let root = view.scene?.rootNode else { return }
                 let holder = SCNNode()
-                let model = modelScene.rootNode
+                // 缓存场景被多视图共享，根节点必须 clone（一个 node 只能有一个 parent）
+                let model = modelScene.rootNode.clone()
                 // 归一化：最大边缩到 ~1.6，居中到原点
                 let (bmin, bmax) = model.boundingBox
                 let dim = max(bmax.x - bmin.x, max(bmax.y - bmin.y, bmax.z - bmin.z))
@@ -88,9 +90,15 @@ struct Gift3DView: UIViewRepresentable {
 
     // MARK: - 模型加载
 
+    /// 已解析场景缓存：同一 glb 只解析一次（进 3D tab 网格多格复用，避免重复解析放大崩溃面）
+    private static var sceneCache: [String: SCNScene] = [:]
+    /// 「死亡留声机」：解析前落盘模型名，成功后清除；若 App 在解析中崩溃，下次启动上报 Bugly 定位元凶
+    private static let lastGLBKey = "jjt.lastGLBLoad"
+
     /// GLTFSceneKit 是 2018 年的老库，解析放在主线程 + 全局串行（并发解析疑似崩溃源）
-    private static func loadScene(_ source: String) async -> SCNScene? {
+    static func loadScene(_ source: String) async -> SCNScene? {
         await GLBLoadQueue.shared.enqueue {
+            if let cached = sceneCache[source] { return cached }
             let url: URL?
             if source.hasPrefix("http") {
                 url = await GiftAssetCache.download(source, ext: "glb")
@@ -104,8 +112,22 @@ struct Gift3DView: UIViewRepresentable {
             // （URL 不进基类），无参 .scene() 落到基类 -[SCNSceneSource scene]
             // → C3DSceneSourceGetURL 读空指针 → SIGSEGV；
             // scene(options:) 是 GLTFSceneSource 的公开覆写，走自己的 GLTFUnarchiver，安全。
-            return try? GLTFSceneSource(url: url).scene(options: nil)
+            UserDefaults.standard.set(source, forKey: lastGLBKey)
+            let scene = try? GLTFSceneSource(url: url).scene(options: nil)
+            UserDefaults.standard.removeObject(forKey: lastGLBKey)
+            if let scene { sceneCache[source] = scene }
+            return scene
         }
+    }
+
+    /// 启动时调用：上次解析 3D 模型途中崩溃 → 非致命上报 Bugly（带出模型名）
+    static func reportPendingCrashMarker() {
+        guard let source = UserDefaults.standard.string(forKey: lastGLBKey) else { return }
+        UserDefaults.standard.removeObject(forKey: lastGLBKey)
+        Bugly.report(NSException(
+            name: NSExceptionName("GLBLoadCrash"),
+            reason: "上次启动在解析 3D 礼物模型「\(source)」时崩溃（SIGSEGV）",
+            userInfo: ["source": source]))
     }
 }
 

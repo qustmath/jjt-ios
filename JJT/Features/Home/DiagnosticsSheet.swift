@@ -17,6 +17,8 @@ struct DiagnosticsSheet: View {
     @State private var rows: [Row] = []
     @State private var testing = false
     @State private var buglyTestMsg: String?
+    @State private var glbRows: [(name: String, result: String)] = []
+    @State private var glbTesting = false
 
     var body: some View {
         NavigationStack {
@@ -50,6 +52,21 @@ struct DiagnosticsSheet: View {
                         Text(buglyTestMsg)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                }
+                // 3D 礼物模型逐个加载实测（定位具体哪个 glb 触发 SIGSEGV；
+                // 若测试中途闪退，Bugly 崩溃报告 + 下次启动的 GLBLoadCrash 错误会指出元凶模型）
+                Section("3D 模型实测") {
+                    Button(glbTesting ? "测试中…" : "逐个加载内置 3D 模型") {
+                        Task { await testGLB() }
+                    }
+                    .disabled(glbTesting)
+                    ForEach(glbRows, id: \.name) { row in
+                        LabeledContent(row.name) {
+                            Text(row.result)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(row.result.hasPrefix("✅") ? .green : (row.result.hasPrefix("…") ? .secondary : .red))
+                        }
                     }
                 }
                 Section("图片实测") {
@@ -110,6 +127,18 @@ struct DiagnosticsSheet: View {
         }
         testing = false
         await testAll()
+    }
+
+    /// 逐个解析内置 glb（与礼物中心同一加载链路），报每个模型的成败
+    private func testGLB() async {
+        glbTesting = true
+        let models = ["diamond", "crown3d", "heart3d", "chalice", "serpent"]
+        glbRows = models.map { ($0, "…") }
+        for (i, name) in models.enumerated() {
+            let scene = await Gift3DView.loadScene(name)
+            glbRows[i].result = scene != nil ? "✅ 解析成功" : "❌ 解析失败（返回 nil）"
+        }
+        glbTesting = false
     }
 
     /// 逐个实测：归一化 URL → 真实请求，记录状态码/字节数/错误

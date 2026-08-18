@@ -105,6 +105,15 @@ enum UserAPI {
     static func updateUserInfo(_ req: UpdateUserReq) async throws -> Bool {
         try await APIClient.shared.put("app-api/member/user/update", body: req)
     }
+
+    /// 获取我的邀请码（历史用户首次取码懒生成兜底）
+    static func getInviteCode() async throws -> InviteCodeResp {
+        try await APIClient.shared.get("app-api/member/user/invite-code")
+    }
+}
+
+struct InviteCodeResp: Decodable {
+    let inviteCode: String?
 }
 
 enum TaskAPI {

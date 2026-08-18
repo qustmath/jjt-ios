@@ -23,6 +23,8 @@ struct ChatView: View {
     @State private var openPacketId: Int64?
     @State private var detailPostId: Int64?
     @State private var peerProfileId: Int64?
+    /// 群设置（仅群聊）
+    @State private var showGroupSettings = false
     /// 已滚到的最新消息 id（区分首次瞬时定位 vs 后续动画滚动）
     @State private var lastScrolledMsg: String?
     /// 输入框焦点（键盘与功能面板互斥：点 + 收键盘展开面板，点输入框收面板弹键盘）
@@ -105,6 +107,10 @@ struct ChatView: View {
                 UserProfileView(userId: id)
             }
         }
+        // 群设置（仅群聊）
+        .fullScreenCover(isPresented: $showGroupSettings) {
+            GroupSettingsView(imGroupId: peerId)
+        }
         .onChange(of: photoItem) { _, item in sendPickedImage(item) }
         .photosPicker(isPresented: $showSystemPicker, selection: $photoItem, matching: .images)
     }
@@ -144,6 +150,19 @@ struct ChatView: View {
                     }
                 }
                 Spacer()
+                // 群设置入口（仅群聊，对齐安卓 ChatScreen 顶栏）
+                if isGroup {
+                    Button { showGroupSettings = true } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Noir.gold.opacity(0.75))
+                            .frame(width: 34, height: 34)
+                            .background(Color.white.opacity(0.05))
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Noir.hairlineGold, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)

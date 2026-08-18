@@ -25,6 +25,8 @@ struct MeView: View {
     @State private var showAccountSecurity = false
     @State private var showRealname = false
     @State private var showAbout = false
+    @State private var showMyQrCode = false
+    @State private var showInvite = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -137,6 +139,12 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showAbout) {
             AboutView()
+        }
+        .fullScreenCover(isPresented: $showMyQrCode) {
+            MyQrCodeView()
+        }
+        .fullScreenCover(isPresented: $showInvite) {
+            InviteView()
         }
     }
 
@@ -505,8 +513,8 @@ struct MeView: View {
             sectionHeader(title: "更多服务", en: "MORE")
             VStack(spacing: 0) {
                 moreRow("实名认证", "checkmark.shield") { showRealname = true }
-                moreRow("我的二维码", "qrcode") { comingSoon() }
-                moreRow("邀请好友", "person.badge.plus") { comingSoon() }
+                moreRow("我的二维码", "qrcode") { showMyQrCode = true }
+                moreRow("邀请好友", "person.badge.plus") { showInvite = true }
                 moreRow("账号安全", "lock") { showAccountSecurity = true }
                 moreRow("设置", "gearshape") { showSettings = true }
                 moreRow("关于我们", "info.circle") { showAbout = true }

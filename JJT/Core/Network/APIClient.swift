@@ -81,6 +81,10 @@ final class APIClient {
         try await request(path, method: "PUT", query: nil, body: body, retryOnAuth: true)
     }
 
+    func put<T: Decodable>(_ path: String, query: [String: String]) async throws -> T {
+        try await request(path, method: "PUT", query: query, body: nil as EmptyBody?, retryOnAuth: true)
+    }
+
     func delete<T: Decodable>(_ path: String, query: [String: String]? = nil) async throws -> T {
         try await request(path, method: "DELETE", query: query, body: nil as EmptyBody?, retryOnAuth: true)
     }

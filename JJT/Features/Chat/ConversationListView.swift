@@ -9,6 +9,8 @@ struct ConversationListView: View {
     @State private var peerProfileId: Int64?
     /// 0=私聊 1=群聊（对齐安卓 ConversationScreen 双 tab）
     @State private var tab = 0
+    @State private var showCreateGroup = false
+    @State private var showSearchGroup = false
 
     /// 跳转目标（fullScreenCover 用 Binding 呈现）
     struct ChatTarget {
@@ -67,6 +69,12 @@ struct ConversationListView: View {
                 UserProfileView(userId: id)
             }
         }
+        .fullScreenCover(isPresented: $showCreateGroup, onDismiss: { Task { await vm.load() } }) {
+            CreateGroupView()
+        }
+        .fullScreenCover(isPresented: $showSearchGroup, onDismiss: { Task { await vm.load() } }) {
+            SearchGroupView()
+        }
     }
 
     // MARK: - 私聊/群聊 tab（绯红下划线，对齐安卓）
@@ -76,6 +84,26 @@ struct ConversationListView: View {
             tabButton(index: 0, label: "私聊")
             tabButton(index: 1, label: "群聊")
             Spacer()
+            // 群聊 tab：搜索群 + 建群（对齐安卓群聊 tab 操作钮）
+            if tab == 1 {
+                Button { showSearchGroup = true } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Noir.gold.opacity(0.7))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                Button { showCreateGroup = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(LinearGradient(colors: [Noir.crimson, Noir.wine],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -306,7 +334,23 @@ final class ConversationListViewModel: ObservableObject {
             }
             // 单聊：用后端昵称/头像/头像框覆盖 IM showName（官方号除外，对齐安卓 enrichUserInfo）
             let c2cIds = items.filter { !$0.isGroup && !$0.isOfficial }.compactMap { Int64($0.peerId) }
+            // 缓存立即填充：头像框即时显示，不等 1 秒网络往返（对齐安卓 UserDisplayCache）
+            let cached = UserDisplayCache.getMap(c2cIds)
+            if !cached.isEmpty {
+                items = items.map { item in
+                    guard !item.isGroup, let uid = Int64(item.peerId), let d = cached[uid] else { return item }
+                    var item = item
+                    if item.showName.isEmpty || item.showName == item.peerId, let n = d.nickname {
+                        item.showName = n
+                    }
+                    if item.faceUrl == nil { item.faceUrl = d.avatar }
+                    item.avatarFrame = d.avatarFrame
+                    item.avatarFrameScale = d.avatarFrameScale
+                    return item
+                }
+            }
             if !c2cIds.isEmpty, let users = try? await UserAPI.getUserInfoList(ids: c2cIds) {
+                UserDisplayCache.putAll(users.map { $0.toCachedDisplay() })
                 let map = Dictionary<String, UserInfoResp>(uniqueKeysWithValues: users.map { (String($0.id), $0) })
                 items = items.map { item in
                     guard let u = map[item.peerId] else { return item }
