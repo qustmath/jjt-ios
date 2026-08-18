@@ -195,7 +195,9 @@ final class ChatViewModel: ObservableObject {
         let parsed = parseMessages(raws)
         let existingIds = Set(messages.compactMap(\.msgId))
         let historyOnly = parsed.filter { $0.msgId == nil || !existingIds.contains($0.msgId!) }
-        messages = historyOnly + messages
+        // 历史快照里可能含刚发的消息（本地乐观副本 msgId=nil）：先认领盖章，避免一上一下双条
+        let merged = historyOnly.filter { !claimOptimistic($0) }
+        messages = merged + messages
         hasMoreHistory = raws.count >= 20
         await enrichSenders()
     }
@@ -448,9 +450,23 @@ final class ChatViewModel: ObservableObject {
         guard belongs else { return }
         if let mid = msg.msgID, messages.contains(where: { $0.msgId == mid }) { return }
         guard let chatMsg = v2ToChat(msg) else { return }
+        // 自己刚发的消息回执/同步：认领本地乐观消息（否则一上一下双条，重进才收敛）
+        if claimOptimistic(chatMsg) { return }
         messages.append(chatMsg)
         markRead()
         Task { await enrichSenders() }
+    }
+
+    /// 用带 msgId 的正式消息认领本地乐观消息（isMine && msgId==nil && 同文同类）：
+    /// 命中则把 msgId 盖章到本地那条上（保持原位），返回 true 表示无需再插入
+    @discardableResult
+    private func claimOptimistic(_ m: ChatMessage) -> Bool {
+        guard let mid = m.msgId else { return false }
+        guard let idx = messages.lastIndex(where: {
+            $0.msgId == nil && $0.isMine && $0.text == m.text && $0.kind == m.kind
+        }) else { return false }
+        messages[idx].msgId = mid
+        return true
     }
 
     private func appendMine(_ m: ChatMessage) {

@@ -214,8 +214,7 @@ struct GroupSettingsView: View {
             // 进群申请（群主/管理员）
             if vm.myRole == 1 || vm.myRole == 2 {
                 actionRow("进群申请", "person.text.rectangle", badge: vm.pendingRequestCount) {
-                    vm.loadRequests()
-                    vm.showRequests.toggle()
+                    Task { await vm.tapRequests() }
                 }
             }
             if vm.showRequests, !vm.requests.isEmpty {
@@ -281,10 +280,10 @@ struct GroupSettingsView: View {
         }
     }
 
-    /// 待处理申请列表（内嵌展开）
+    /// 待处理申请列表（内嵌展开；handleStatus 缺省按待处理 0 计）
     private var requestsList: some View {
         VStack(spacing: 0) {
-            ForEach(vm.requests.filter { $0.handleStatus == 0 }) { req in
+            ForEach(vm.requests.filter { ($0.handleStatus ?? 0) == 0 }) { req in
                 HStack(spacing: 10) {
                     AppAvatar(url: req.avatar, size: 30)
                         .frame(width: 30, height: 30)
@@ -508,7 +507,7 @@ final class GroupSettingsViewModel: ObservableObject {
     }
 
     var pendingRequestCount: Int {
-        requests.filter { $0.handleStatus == 0 }.count
+        requests.filter { ($0.handleStatus ?? 0) == 0 }.count
     }
 
     func load(imGroupId: String) {
@@ -588,6 +587,18 @@ final class GroupSettingsViewModel: ObservableObject {
     func loadRequests() {
         guard let g = group else { return }
         Task { await loadRequestsAsync(g.id) }
+    }
+
+    /// 点击「进群申请」：拉完后有则展开、无则提示（修点击无反应——空列表时界面毫无变化）
+    func tapRequests() async {
+        guard let g = group else { return }
+        await loadRequestsAsync(g.id)
+        if pendingRequestCount == 0 {
+            showRequests = false
+            jjtShowToast("暂无待处理申请")
+        } else {
+            showRequests = true
+        }
     }
 
     private func loadRequestsAsync(_ groupId: Int64) async {

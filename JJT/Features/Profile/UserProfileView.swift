@@ -22,6 +22,7 @@ struct UserProfileView: View {
     @State private var showGiftPanel = false
     @State private var showGiftWall = false
     @State private var showChat = false
+    @State private var showAchievementHall = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -112,6 +113,10 @@ struct UserProfileView: View {
         // 私信
         .fullScreenCover(isPresented: $showChat) {
             ChatView(peerId: String(userId), isGroup: false, title: vm.profile?.nickname)
+        }
+        // 成就殿堂（本人）
+        .fullScreenCover(isPresented: $showAchievementHall) {
+            AchievementHallView()
         }
     }
 
@@ -349,7 +354,7 @@ struct UserProfileView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         entryCard("成就勋章", "\(vm.hallLit)/\(vm.hallTotal)", "medal", gold: true) {
-                            jjtShowToast("成就殿堂建设中，敬请期待")
+                            showAchievementHall = true
                         }
                     }
                 }

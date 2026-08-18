@@ -70,7 +70,11 @@ struct ConversationListView: View {
             }
         }
         .fullScreenCover(isPresented: $showCreateGroup, onDismiss: { Task { await vm.load() } }) {
-            CreateGroupView()
+            // 建群成功：关闭建群页，由会话页打开新群聊天（对齐安卓 popUpTo 行为）
+            CreateGroupView(onCreated: { imGroupId, name in
+                showCreateGroup = false
+                chatTarget = ChatTarget(peerId: imGroupId, isGroup: true, title: name)
+            })
         }
         .fullScreenCover(isPresented: $showSearchGroup, onDismiss: { Task { await vm.load() } }) {
             SearchGroupView()

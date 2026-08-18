@@ -27,6 +27,8 @@ struct MeView: View {
     @State private var showAbout = false
     @State private var showMyQrCode = false
     @State private var showInvite = false
+    @State private var showTaskCenter = false
+    @State private var showBadgeWall = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -146,6 +148,12 @@ struct MeView: View {
         .fullScreenCover(isPresented: $showInvite) {
             InviteView()
         }
+        .fullScreenCover(isPresented: $showTaskCenter, onDismiss: { vm.load() }) {
+            TaskCenterView()
+        }
+        .fullScreenCover(isPresented: $showBadgeWall) {
+            BadgeWallView()
+        }
     }
 
     // MARK: - 顶栏
@@ -250,7 +258,7 @@ struct MeView: View {
                             }
                         }
                         .padding(.top, 2)
-                        .onTapGesture { comingSoon() }
+                        .onTapGesture { showBadgeWall = true }
                     }
                 }
                 Spacer(minLength: 0)
@@ -370,7 +378,7 @@ struct MeView: View {
                     .frame(width: 36, height: 36)
                     .overlay(Circle().stroke(Noir.goldLight.opacity(0.55), lineWidth: 1))
             }
-        } onTap: { comingSoon("任务中心") }
+        } onTap: { showTaskCenter = true }
     }
 
     // MARK: - 属性测试卡

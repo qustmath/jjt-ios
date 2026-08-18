@@ -47,6 +47,13 @@ struct MainTabView: View {
                         .transition(.opacity)
                 }
             }
+
+            // 全局彩蛋弹窗（对齐安卓根部 EggPopup）
+            EggPopupHost()
+        }
+        // 每日活跃上报（每日首次生效，对齐安卓启动调用）
+        .task {
+            _ = try? await TaskAPI.dailyActive()
         }
         .onReceive(NotificationCenter.default.publisher(for: .jjtSwitchTab)) { note in
             if let tag = note.object as? Int {

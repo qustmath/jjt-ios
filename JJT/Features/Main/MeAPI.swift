@@ -65,26 +65,90 @@ struct UpdateUserReq: Encodable {
     var avatarFrame: String? = nil
 }
 
-struct TaskItem: Decodable {
+struct TaskItem: Decodable, Identifiable {
     let taskId: Int64
     let name: String?
+    let description: String?
     let type: String?          // DAILY / NEWBIE / ACHIEVEMENT
+    let checkType: String?     // COUNT / CONDITION
     let currentCount: Int?
     let threshold: Int?
     let status: String?        // IN_PROGRESS / CLAIMABLE / CLAIMED
+    let rewardAmount: Int64?
+    let rewardBadgeId: Int64?  // 有值表示该任务奖励勋章
+    let autoClaim: Bool?
+
+    var id: Int64 { taskId }
 }
 
-struct BadgeHallItem: Decodable {
+struct BadgeHallItem: Decodable, Identifiable {
     let id: Int64
+    let cat: String?
     let name: String?
+    let description: String?
     let icon: String?          // URL 或 lucide:图标名
+    let rarity: String?
+    let stages: Int?
+    let targets: [Int64]?
+    let condTemplate: String?
+    let score: Int?
+    let reward: Int?
+    let hidden: Bool?
+    let sealed: Bool?
+    let stage: Int?            // 已点亮阶数（0=未点亮）
+    let stageDates: [String]?
+    let progress: Int64?       // 当前行为进度值
+    let mounted: Bool?
+}
+
+struct BadgeCatStat: Decodable {
+    let cat: String
+    let name: String?
+    let got: Int
+    let total: Int
 }
 
 struct AchievementHallResp: Decodable {
+    let totalScore: Int64?
     let litStages: Int?
     let totalStages: Int?
+    let carrotBalance: Int64?
     let mountedIds: [Int64]?
+    let cats: [BadgeCatStat]?
     let badges: [BadgeHallItem]?
+}
+
+/// 勋章墙项（对齐安卓 BadgeItem）
+struct BadgeItem: Decodable, Identifiable {
+    let id: Int64
+    let name: String
+    let description: String?
+    let icon: String?
+    let rarity: String?        // COMMON / RARE / EPIC / LEGENDARY
+    let owned: Bool
+    let acquiredAt: String?
+    let progress: Int?         // 未获得时有值
+    let threshold: Int?
+}
+
+/// 隐藏彩蛋解锁结果（对齐安卓 EggUnlockResp）
+struct EggUnlockResp: Decodable {
+    let id: Int64
+    let name: String
+    let icon: String?
+    let score: Int
+    let reward: Int
+}
+
+struct SignInResult: Decodable {
+    let continuousDays: Int
+    let rewardAmount: Int64
+    let signDate: String?
+}
+
+struct SignInStatus: Decodable {
+    let signedToday: Bool
+    let continuousDays: Int
 }
 
 // MARK: - API
@@ -120,10 +184,50 @@ enum TaskAPI {
     static func taskList() async throws -> [TaskItem] {
         try await APIClient.shared.get("app-api/member/task/list")
     }
+
+    static func claim(taskId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/member/task/claim", query: ["taskId": String(taskId)])
+    }
+
+    static func signIn() async throws -> SignInResult {
+        try await APIClient.shared.post("app-api/member/sign-in/do", query: [:])
+    }
+
+    static func signInStatus() async throws -> SignInStatus {
+        try await APIClient.shared.get("app-api/member/sign-in/status")
+    }
+
+    /// 每日活跃上报（App 启动时调用，每日首次生效）
+    static func dailyActive() async throws -> Bool {
+        try await APIClient.shared.post("app-api/member/sign-in/daily-active", query: [:])
+    }
 }
 
 enum BadgeAPI {
     static func achievementHall() async throws -> AchievementHallResp {
         try await APIClient.shared.get("app-api/member/badge/hall")
+    }
+
+    /// 我的勋章墙（含未获得+进度）
+    static func badgeWall() async throws -> [BadgeItem] {
+        try await APIClient.shared.get("app-api/member/badge/wall")
+    }
+
+    /// 他人勋章墙（仅已获得）
+    static func userBadgeWall(userId: Int64) async throws -> [BadgeItem] {
+        try await APIClient.shared.get("app-api/member/badge/user-wall", query: ["userId": String(userId)])
+    }
+
+    static func mount(badgeId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/member/badge/mount", query: ["badgeId": String(badgeId)])
+    }
+
+    static func unmount(badgeId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/member/badge/unmount", query: ["badgeId": String(badgeId)])
+    }
+
+    /// 尝试解锁隐藏彩蛋（key 精准触发；空则随机掉落兜底）
+    static func triggerEgg(key: String? = nil) async throws -> EggUnlockResp? {
+        try await APIClient.shared.post("app-api/member/badge/egg/trigger", query: key.map { ["key": $0] } ?? [:])
     }
 }

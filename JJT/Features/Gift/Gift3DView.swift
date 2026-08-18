@@ -94,10 +94,14 @@ struct Gift3DView: UIViewRepresentable {
     private static var sceneCache: [String: SCNScene] = [:]
     /// 「死亡留声机」：解析前落盘模型名，成功后清除；若 App 在解析中崩溃，下次启动上报 Bugly 定位元凶
     private static let lastGLBKey = "jjt.lastGLBLoad"
+    /// 崩溃黑名单：解析某模型崩溃过的 source 持久化拉黑（防同一模型反复崩，礼物格退化为不渲染）
+    private static let blacklistKey = "jjt.glbBlacklist"
 
     /// GLTFSceneKit 是 2018 年的老库，解析放在主线程 + 全局串行（并发解析疑似崩溃源）
     static func loadScene(_ source: String) async -> SCNScene? {
         await GLBLoadQueue.shared.enqueue {
+            let blacklist = UserDefaults.standard.stringArray(forKey: blacklistKey) ?? []
+            if blacklist.contains(source) { return nil }
             if let cached = sceneCache[source] { return cached }
             let url: URL?
             if source.hasPrefix("http") {
@@ -120,13 +124,18 @@ struct Gift3DView: UIViewRepresentable {
         }
     }
 
-    /// 启动时调用：上次解析 3D 模型途中崩溃 → 非致命上报 Bugly（带出模型名）
+    /// 启动时调用：上次解析 3D 模型途中崩溃 → 非致命上报 Bugly（带出模型名）+ 拉黑该模型
     static func reportPendingCrashMarker() {
         guard let source = UserDefaults.standard.string(forKey: lastGLBKey) else { return }
         UserDefaults.standard.removeObject(forKey: lastGLBKey)
+        var blacklist = UserDefaults.standard.stringArray(forKey: blacklistKey) ?? []
+        if !blacklist.contains(source) {
+            blacklist.append(source)
+            UserDefaults.standard.set(blacklist, forKey: blacklistKey)
+        }
         Bugly.report(NSException(
             name: NSExceptionName("GLBLoadCrash"),
-            reason: "上次启动在解析 3D 礼物模型「\(source)」时崩溃（SIGSEGV）",
+            reason: "上次启动在解析 3D 礼物模型「\(source)」时崩溃（SIGSEGV），已加入黑名单",
             userInfo: ["source": source]))
     }
 }
