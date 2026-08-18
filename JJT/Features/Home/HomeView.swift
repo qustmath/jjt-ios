@@ -25,6 +25,8 @@ struct HomeView: View {
     @State private var mituGlow = false
     @State private var mituShine = false
     @State private var badgeSheen = false
+    // 铃铛未读红点（IM 未读总数 > 0）
+    @State private var hasUnread = false
 
     /// 屏幕宽（竖屏锁定，按场景窗口取）
     private var screenWidth: CGFloat {
@@ -130,10 +132,16 @@ struct HomeView: View {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
             if appearedOnce { vm.load(force: true) } else { vm.load() }
             appearedOnce = true
+            // 未读红点：进首页拉一次总数（实时变化走下方 jjtIMUnreadChanged 监听）
+            Task { hasUnread = await ImManager.shared.totalUnreadCount() > 0 }
             // 城市定位（拒绝/失败不显示位置块，对齐安卓）
             if city == nil {
                 Task { city = await CityLocator.shared.currentCity() }
             }
+        }
+        // IM SDK 未读总数变化 → 红点实时更新（对齐安卓 onTotalUnreadMessageCountChanged）
+        .onReceive(NotificationCenter.default.publisher(for: .jjtIMUnreadChanged)) { note in
+            hasUnread = (note.object as? Int ?? 0) > 0
         }
     }
 
@@ -185,17 +193,26 @@ struct HomeView: View {
                 }
             }
             Spacer()
-            // 铃铛 → 密语 tab（对齐安卓 navigateToTab("messages")；未读红点待 IM SDK 接入后补）
+            // 铃铛 → 密语 tab（对齐安卓 navigateToTab("messages")；未读纯红点，不带数字）
             Button { switchTab(2) } label: {
-                ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.05))
-                        .overlay(Circle().stroke(Noir.hairlineGold, lineWidth: 1))
-                    Image(systemName: "bell")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.white.opacity(0.6))
+                ZStack(alignment: .topTrailing) {
+                    ZStack {
+                        Circle()
+                            .fill(.white.opacity(0.05))
+                            .overlay(Circle().stroke(Noir.hairlineGold, lineWidth: 1))
+                        Image(systemName: "bell")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .frame(width: 38, height: 38)
+                    if hasUnread {
+                        Circle()
+                            .fill(Color(red: 0xE8/255, green: 0x30/255, blue: 0x4F/255))
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 9)
+                            .padding(.trailing, 9)
+                    }
                 }
-                .frame(width: 38, height: 38)
             }
         }
         .padding(.horizontal, 20)
@@ -380,6 +397,12 @@ struct HomeView: View {
                     .scaledToFill()
                     .frame(width: screenWidth - 40, height: 190)
                     .clipped()
+                // 右上氛围光斑（对齐安卓：160dp 径向金光 alpha 0.18）
+                RadialGradient(colors: [Noir.gold.opacity(0.18), .clear],
+                               center: .center, startRadius: 0, endRadius: 80)
+                    .frame(width: 160, height: 160)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .allowsHitTesting(false)
                 // 底部压暗
                 LinearGradient(stops: [
                     .init(color: .clear, location: 0.0),
@@ -487,8 +510,17 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.goldLight.opacity(0.45), lineWidth: 1))
             .cornerFrame(Noir.goldLight.opacity(0.9))
-            // 金色呼吸外阴影（对齐安卓 marquee-glow：快亮慢暗）
-            .shadow(color: Noir.gold.opacity(mituGlow ? 0.5 : 0.16), radius: mituGlow ? 30 : 14)
+            // 金色呼吸辉光（对齐安卓：卡片后放大 1.09×1.12 的金色渐变层 blur 22，
+            // 快亮慢暗；此前用 shadow 在深色底上几乎不可见，等同没有）
+            .background {
+                RoundedRectangle(cornerRadius: 34)
+                    .fill(LinearGradient(colors: [Noir.gold, Noir.goldDeep],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .blur(radius: 22)
+                    .scaleEffect(x: 1.09, y: 1.12)
+                    .opacity(mituGlow ? 0.5 : 0.2)
+                    .allowsHitTesting(false)
+            }
         }
         .buttonStyle(.plain)
         .onAppear {

@@ -20,9 +20,13 @@ struct VipClubMainView: View {
         ZStack {
             Color(red: 0x07/255, green: 0x07/255, blue: 0x08/255).ignoresSafeArea()
             // 蜜兔会底图 + 渐变压暗（对齐安卓 VipClubMainScreen：图 opacity 0.9）
+            // 必须 frame+clipped：scaledToFill 的图片会向上报告超出屏幕的尺寸，
+            // 不夹住会把整个 ZStack 撑得比屏宽，内容和返回键全被挤出屏幕
             Image("MituBg")
                 .resizable()
                 .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
                 .opacity(0.9)
                 .ignoresSafeArea()
             LinearGradient(stops: [

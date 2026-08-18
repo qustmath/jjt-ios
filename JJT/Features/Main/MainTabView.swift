@@ -67,8 +67,7 @@ struct MainTabView: View {
             // 全局彩蛋弹窗（对齐安卓根部 EggPopup）
             EggPopupHost()
 
-            // 运营启动弹窗（对齐安卓 StartupPopup：position=1，频次控制）
-            StartupPopupHost()
+            // 运营启动弹窗：产品决定关闭（2026-08，StartupPopupHost 保留文件备后续开启）
         }
         // 每日活跃上报（每日首次生效，对齐安卓启动调用）
         .task {
