@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var showGiftCenter = false
     @State private var showSearchGroup = false
     @State private var showQuiz = false
+    @State private var showMall = false
     @State private var showVipClub = false
     // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
     @State private var mituGlow = false
@@ -124,6 +125,9 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showQuiz) {
             QuizListView()
+        }
+        .fullScreenCover(isPresented: $showMall) {
+            MallHomeView()
         }
         .fullScreenCover(isPresented: $showVipClub) {
             VipClubMainView()
@@ -554,6 +558,7 @@ struct HomeView: View {
                             else if e.name == "礼物中心" { showGiftCenter = true }
                             else if e.name == "群聊" { showSearchGroup = true }
                             else if e.name == "属性测试" { showQuiz = true }
+                            else if e.name == "商城" { showMall = true }
                             else if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
                         } label: {
                             VStack(spacing: 0) {
