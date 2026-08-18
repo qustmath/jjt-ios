@@ -115,11 +115,6 @@ enum SocialAPI {
         try await APIClient.shared.post("app-api/social/post/update", body: req)
     }
 
-    /// 删除自己的帖子
-    static func deletePost(id: Int64) async throws -> Bool {
-        try await APIClient.shared.delete("app-api/social/post/delete", query: ["id": "\(id)"])
-    }
-
     /// 组局城市列表（cityCode ↔ 城市名映射，同城 tab 定位后反查 cityCode 用）
     static func eventCities() async throws -> [EventCityInfo] {
         try await APIClient.shared.get("app-api/social/store/event-cities")
