@@ -30,6 +30,7 @@ struct MeView: View {
     @State private var showTaskCenter = false
     @State private var showBadgeWall = false
     @State private var showQuiz = false
+    @State private var showVipClub = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -60,7 +61,7 @@ struct MeView: View {
                         GridItem("礼物中心", "gift", gold: true) { showGiftCenter = true },
                         GridItem("我的礼物", "heart.text.square") { showMyGifts = true },
                         GridItem("我的组局", "calendar") { showMyEvents = true },
-                        GridItem("蜜兔会", "crown", gold: true) { comingSoon() },
+                        GridItem("蜜兔会", "crown", gold: true) { showVipClub = true },
                     ])
                     gridSection(title: "我的服务", en: "SERVICES", items: [
                         GridItem("我的钱包", "wallet.pass", gold: true) { showWallet = true },
@@ -161,6 +162,9 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showQuiz) {
             QuizListView()
+        }
+        .fullScreenCover(isPresented: $showVipClub) {
+            VipClubMainView()
         }
     }
 
