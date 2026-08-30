@@ -513,9 +513,13 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         .onAppear {
-            withAnimation(.easeIn(duration: 0.9).repeatForever(autoreverses: true)) { mituGlow = true }
-            withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) { mituShine = true }
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false)) { badgeSheen = true }
+            // onAppear 里立刻 withAnimation 在视图 attach 时序下经常不生效（流光/呼吸不动的根因），
+            // 延迟到布局稳定后再启动循环动画
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                withAnimation(.easeIn(duration: 0.9).repeatForever(autoreverses: true)) { mituGlow = true }
+                withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) { mituShine = true }
+                withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false)) { badgeSheen = true }
+            }
         }
     }
 

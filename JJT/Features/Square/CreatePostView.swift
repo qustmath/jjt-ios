@@ -56,6 +56,7 @@ struct CreatePostView: View {
     @State private var pickedItems: [PhotosPickerItem] = []
     @State private var pickedVideo: PhotosPickerItem?
     @State private var showPoiPicker = false
+    @State private var showRealname = false
     @FocusState private var topicFocused: Bool
 
     var body: some View {
@@ -94,6 +95,10 @@ struct CreatePostView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         mediaSection
                         textSection
+                        // 纯文字帖（未选媒体）：文字卡片模板选择（对齐安卓 TextCardStyleRow）
+                        if vm.mediaType == "image", vm.images.isEmpty {
+                            textCardStyleRow
+                        }
                         topicSection
                         poiSection
                         paidSection
@@ -154,6 +159,22 @@ struct CreatePostView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationBackground(Noir.noir)
+        }
+        // 发布前实名检查：未认证 → 引导去认证（对齐安卓 needRealname）
+        .alert("需要实名认证", isPresented: Binding(
+            get: { vm.needRealname },
+            set: { if !$0 { vm.needRealname = false } }
+        )) {
+            Button("去认证") {
+                vm.needRealname = false
+                showRealname = true
+            }
+            Button("取消", role: .cancel) { vm.needRealname = false }
+        } message: {
+            Text("发布内容需要先完成实名认证")
+        }
+        .fullScreenCover(isPresented: $showRealname) {
+            RealnameVerifyView()
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -396,6 +417,37 @@ struct CreatePostView: View {
             .background(Noir.card)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.hairline))
+        }
+    }
+
+    // MARK: - 文字卡片模板选择（纯文字帖，对齐安卓 TextCardStyleRow）
+
+    private var textCardStyleRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("文字卡片封面")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.45))
+            HStack(spacing: 10) {
+                ForEach(TextCardRenderer.styles.indices, id: \.self) { i in
+                    let style = TextCardRenderer.styles[i]
+                    let isSel = i == vm.textCardStyle
+                    Button { vm.textCardStyle = i } label: {
+                        Text(style.name)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(isSel ? 0.95 : 0.5))
+                            .frame(width: 52, height: 68)
+                            .background(LinearGradient(colors: [Color(style.startColor), Color(style.endColor)],
+                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                                isSel ? Noir.gold : Color.white.opacity(0.12), lineWidth: isSel ? 1.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text("不选图片时，将按所选模板把文字生成封面图")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.28))
         }
     }
 
@@ -711,6 +763,10 @@ final class CreatePostViewModel: ObservableObject {
     @Published var images: [ImageItem] = []
     @Published var title = ""
     @Published var content = ""
+    /// 纯文字帖：文字卡片模板下标（TextCardRenderer.styles），发布时本地生图上传为封面
+    @Published var textCardStyle = 0
+    /// 实名引导弹窗（发布前检查，对齐安卓 needRealname）
+    @Published var needRealname = false
     // 话题 chips（ADR 0014）
     @Published var topicList: [String] = []
     @Published var topicInput = ""
@@ -745,9 +801,12 @@ final class CreatePostViewModel: ObservableObject {
         let full = (title + content).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !full.isEmpty else { return false }
         if mediaType == "video" {
+            // 视频形态：选了视频就必须处理完；没选视频按纯文字帖（降级 text/文字卡片）
             return videoUrl != nil && videoStage == nil && !videoError
         }
-        return !images.isEmpty && images.allSatisfy { $0.url != nil }
+        // 图文形态：图片和文字至少发一种；有图则需全部传完（含失败重试中）；无图按纯文字帖
+        if !images.isEmpty { return images.allSatisfy { $0.url != nil } }
+        return true
     }
 
     /// 切换媒体形态（清空另一侧内容，对齐安卓 setMediaType）
@@ -859,17 +918,27 @@ final class CreatePostViewModel: ObservableObject {
 
     // ---- 话题 chips ----
 
-    /// 话题输入：#/＃/空格/逗号 作为分隔符逐词提交（与服务端拆分语义一致），本地预归一化并触发实时补全
+    /// 话题输入（对齐安卓 setTopicInput）：#/＃ 作为分隔符逐词提交（与服务端拆分语义一致），
+    /// 空格/逗号不触发提交（预归一化时会去掉）；本地预归一化（去空格，≤20 字）并触发实时补全（200ms 防抖，失败静默）
     func onTopicInputChange(_ v: String) {
-        let seps: [Character] = ["#", "＃", " ", ",", "，"]
-        if v.contains(where: { seps.contains($0) }) {
-            for part in v.split(whereSeparator: { seps.contains($0) }) { addTopic(String(part)) }
-            topicInput = ""
+        var pending = v
+        if pending.contains("#") || pending.contains("＃") {
+            let parts = pending.split(whereSeparator: { $0 == "#" || $0 == "＃" }).map(String.init)
+            for part in parts.dropLast() where !TopicRules.finalize(part).isEmpty { addTopic(part) }
+            pending = parts.last ?? ""
+        }
+        let cleaned = TopicRules.preNormalizeInput(pending)
+        topicInput = cleaned
+        suggestTask?.cancel()
+        if cleaned.isEmpty {
             topicSuggestions = []
             return
         }
-        topicInput = TopicRules.preNormalizeInput(v)
-        scheduleSuggest(topicInput)
+        suggestTask = Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            topicSuggestions = (try? await SocialAPI.suggestTopics(keyword: cleaned, limit: 10)) ?? []
+        }
     }
 
     /// 输入确认（键盘提交）：把当前输入落为 chip
@@ -892,8 +961,12 @@ final class CreatePostViewModel: ObservableObject {
             errorMessage = "最多添加 \(TopicRules.maxTopics) 个话题"
             return
         }
-        // 归一化后重复：静默忽略（大小写/全半角差异视为同一话题）
-        if topicList.contains(where: { TopicRules.normKey($0) == TopicRules.normKey(name) }) { return }
+        // 归一化后重复：静默忽略（大小写/全半角差异视为同一话题），清输入框（对齐安卓）
+        if topicList.contains(where: { TopicRules.normKey($0) == TopicRules.normKey(name) }) {
+            topicInput = ""
+            topicSuggestions = []
+            return
+        }
         topicList.append(name)
         topicInput = ""
         topicSuggestions = []
@@ -901,20 +974,6 @@ final class CreatePostViewModel: ObservableObject {
 
     func removeTopic(_ name: String) {
         topicList.removeAll { $0 == name }
-    }
-
-    /// 实时补全（300ms 防抖，失败静默）；空输入拉热门话题
-    private func scheduleSuggest(_ keyword: String) {
-        suggestTask?.cancel()
-        suggestTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-            if keyword.isEmpty {
-                topicSuggestions = (try? await SocialAPI.hotTopics(limit: 10)) ?? []
-            } else {
-                topicSuggestions = (try? await SocialAPI.suggestTopics(keyword: TopicRules.normKey(keyword), limit: 10)) ?? []
-            }
-        }
     }
 
     // ---- 编辑 / 发布 ----
@@ -968,28 +1027,47 @@ final class CreatePostViewModel: ObservableObject {
         let full = title.trimmingCharacters(in: .whitespaces).isEmpty
             ? content.trimmingCharacters(in: .whitespacesAndNewlines)
             : title.trimmingCharacters(in: .whitespaces) + "\n" + content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !full.isEmpty else { errorMessage = "请输入内容"; return }
-        if mediaType == "video" {
-            guard videoUrl != nil, videoStage == nil else { errorMessage = "视频还在处理中…"; return }
-        } else {
-            guard !images.isEmpty else { errorMessage = "请至少选择一张图片"; return }
+        let isImage = mediaType == "image"
+        // 图片和文字至少发一种：无媒体时按纯文字帖发布（对齐安卓）
+        let hasMedia = isImage ? !images.isEmpty : (videoUrl != nil)
+        guard hasMedia || !full.isEmpty else { errorMessage = "图片和文字至少发一种"; return }
+        if isImage, !images.isEmpty {
             guard images.allSatisfy({ $0.url != nil }) else { errorMessage = "图片还在上传中…"; return }
         }
-
-        // 话题已是 chips 列表（本地预归一化 + 去重）；服务端清洗管线为最终权威
-        let topicsArg = topicList.isEmpty ? nil : topicList
-        let previewSec = paidEnabled && mediaType == "video" ? Int(previewSeconds) : nil
+        if !isImage, videoStage != nil { errorMessage = "视频还在处理中…"; return }
 
         isPublishing = true
         Task {
+            // 未实名：弹窗引导去认证，不发起发布（编辑同样需要，对齐安卓 checkRealname）
+            guard await checkRealname() else {
+                isPublishing = false
+                return
+            }
             do {
+                // 纯文字：本地渲染文字卡片上传作为封面图（上传失败降级为纯文字帖 text）
+                var effectiveMediaType = hasMedia ? mediaType : "text"
+                var cardImageUrl: String?
+                if !hasMedia {
+                    let card = TextCardRenderer.render(full, styleIndex: textCardStyle)
+                    if let data = card.jpegData(compressionQuality: 0.9) {
+                        cardImageUrl = try? await APIClient.shared.uploadFile(
+                            data: data, filename: "textcard_\(UUID().uuidString.prefix(8)).jpg", mime: "image/jpeg")
+                    }
+                    if cardImageUrl != nil { effectiveMediaType = "image" }
+                }
+
+                // 话题已是 chips 列表（本地预归一化 + 去重）；服务端清洗管线为最终权威
+                let topicsArg = topicList.isEmpty ? nil : topicList
+                let previewSec = effectiveMediaType == "video" && paidEnabled
+                    ? min(max(Int(previewSeconds) ?? 0, 0), 120) : nil
+
                 if let editPostId {
                     _ = try await SocialAPI.updatePost(UpdatePostReq(
                         id: editPostId,
-                        mediaType: mediaType,
-                        images: mediaType == "video" ? nil : images.compactMap(\.url),
-                        video: mediaType == "video" ? videoUrl : nil,
-                        videoCover: mediaType == "video" ? videoCoverUrl : nil,
+                        mediaType: effectiveMediaType,
+                        images: effectiveMediaType == "image" ? (cardImageUrl.map { [$0] } ?? images.compactMap(\.url)) : nil,
+                        video: effectiveMediaType == "video" ? videoUrl : nil,
+                        videoCover: effectiveMediaType == "video" ? videoCoverUrl : nil,
                         content: full,
                         topics: topicsArg,
                         location: selectedPoi?.title,
@@ -1002,10 +1080,10 @@ final class CreatePostViewModel: ObservableObject {
                     ))
                 } else {
                     _ = try await SocialAPI.createPost(CreatePostReq(
-                        mediaType: mediaType,
-                        images: mediaType == "video" ? nil : images.compactMap(\.url),
-                        video: mediaType == "video" ? videoUrl : nil,
-                        videoCover: mediaType == "video" ? videoCoverUrl : nil,
+                        mediaType: effectiveMediaType,
+                        images: effectiveMediaType == "image" ? (cardImageUrl.map { [$0] } ?? images.compactMap(\.url)) : nil,
+                        video: effectiveMediaType == "video" ? videoUrl : nil,
+                        videoCover: effectiveMediaType == "video" ? videoCoverUrl : nil,
                         content: full,
                         topics: topicsArg,
                         location: selectedPoi?.title,
@@ -1019,10 +1097,24 @@ final class CreatePostViewModel: ObservableObject {
                 }
                 isPublishing = false
                 created = true
+                jjtShowToast(editPostId == nil ? "发布成功" : "保存成功")
             } catch {
                 isPublishing = false
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    /// 发布前实名检查（对齐安卓 checkRealname：未认证 → 弹窗引导去认证）
+    private func checkRealname() async -> Bool {
+        do {
+            let user = try await UserAPI.getUserInfo()
+            if user.realnameStatus == 1 { return true }
+            needRealname = true
+            return false
+        } catch {
+            errorMessage = "无法验证实名状态，请重试"
+            return false
         }
     }
 }

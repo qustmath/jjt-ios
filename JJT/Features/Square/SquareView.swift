@@ -335,6 +335,18 @@ private struct PostCard: View {
                     WebImage(url: url) { Noir.noir3 }
                         .frame(width: width, height: width / aspect)
                         .blur(radius: post.isPaidLocked ? 12 : 0)
+                } else if !(post.content ?? "").isEmpty {
+                    // 纯文字帖：媒体区展示正文摘要（对齐安卓 PostCard）
+                    Noir.noir3
+                        .frame(width: width, height: width / aspect)
+                        .overlay(alignment: .topLeading) {
+                            Text(post.content ?? "")
+                                .font(.system(size: 12))
+                                .lineSpacing(6)
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(7)
+                                .padding(12)
+                        }
                 } else {
                     Noir.noir3
                         .frame(width: width, height: width / aspect)
@@ -474,6 +486,7 @@ private struct PostCard: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     if let vip = post.vipLevel {
                         let c = Noir.tierColor(post.vipLevelColor)
                         HStack(spacing: 3) {
@@ -482,6 +495,7 @@ private struct PostCard: View {
                             Text("\(vip) · Lv.\(post.levelInTier ?? 1)")
                                 .font(.system(size: 9, weight: .semibold))
                                 .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                         .foregroundStyle(c)
                         .padding(.horizontal, 6)
@@ -495,9 +509,10 @@ private struct PostCard: View {
                             .foregroundStyle(.white.opacity(0.3))
                     }
                 }
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
 
-                // 卡片菜单（对齐安卓底部行右侧 MoreVert → DropdownMenu）
+                // 卡片菜单（竖向三点，窄尺寸给等级徽章让位，对齐安卓 MoreVert）
                 if onNotInterested != nil || onReport != nil {
                     Menu {
                         if let onNotInterested {
@@ -509,8 +524,9 @@ private struct PostCard: View {
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 14))
+                            .rotationEffect(.degrees(90))
                             .foregroundStyle(.white.opacity(0.35))
-                            .frame(width: 24, height: 24)
+                            .frame(width: 14, height: 24)
                             .contentShape(Rectangle())
                     }
                 }
