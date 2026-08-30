@@ -83,6 +83,25 @@ final class ChatViewModel: ObservableObject {
     @Published var myAvatarFrameScale: Double = 1.0
     @Published var myLevelName: String?
     @Published var myLevelNum: Int?
+    // 群聊资料（公告横幅 / @ 选择器 / 群送礼收礼人）
+    @Published var groupNotice: String?
+    @Published var groupMembers: [GroupMember] = []
+    /// 我在群里的角色（1=群主 2=管理员 3=普通），管理员/群主可 @所有人
+    @Published var myGroupRole: Int?
+    /// 当前待发送的 @ 目标（IM ID 集合；@所有人 = ImManager.atAll）
+    @Published var atUserIds: Set<String> = []
+
+    /// 群送礼候选收礼人（排除自己）
+    var giftReceivers: [GiftReceiver] {
+        let myId = TokenManager.shared.userId ?? 0
+        return groupMembers.filter { $0.userId != myId }
+            .map { GiftReceiver(id: $0.userId, name: $0.nickname ?? "用户\($0.userId)", avatar: $0.avatar) }
+    }
+
+    func addAtMention(userId: Int64) { atUserIds.insert(String(userId)) }
+
+    /// @所有人（群主/管理员）：用 SDK 的 @all 目标，不展开成员列表
+    func addAtAll() { atUserIds = [ImManager.atAll] }
 
     private(set) var peerId = ""
     private(set) var isGroup = false
@@ -128,6 +147,18 @@ final class ChatViewModel: ObservableObject {
                     peerLevelName = profile.level?.name
                     peerLevelNum = profile.level?.levelInTier
                 }
+            }
+        }
+
+        // 群聊：拉群资料（公告/成员/我的角色）
+        if isGroup {
+            Task {
+                guard let info = try? await GroupAPI.get(imGroupId: peerId) else { return }
+                groupNotice = (info.notice?.isEmpty == false) ? info.notice : nil
+                if peerName == nil, let name = info.name { peerName = name }
+                let ms = (try? await GroupAPI.members(groupId: info.id)) ?? []
+                groupMembers = ms
+                myGroupRole = ms.first { $0.userId == TokenManager.shared.userId }?.role
             }
         }
 
@@ -235,7 +266,8 @@ final class ChatViewModel: ObservableObject {
         let myId = String(TokenManager.shared.userId ?? 0)
         let isMine = msg.sender == myId
         let quote = parseQuote(msg.cloudCustomData.flatMap { String(data: $0, encoding: .utf8) })
-        let atMe = msg.groupAtUserList?.contains(myId) == true
+        let atList = msg.groupAtUserList as? [String] ?? []
+        let atMe = atList.contains(myId) || atList.contains(ImManager.atAll)
 
         func base(_ text: String) -> ChatMessage {
             ChatMessage(
@@ -330,7 +362,7 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - 发送
 
-    /// 发送文字（引用经 cloudCustomData 携带）
+    /// 发送文字（引用经 cloudCustomData 携带；群聊带 @ 目标时走 at 消息）
     func sendText(_ text: String, quote: ChatMessage? = nil) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
@@ -338,14 +370,20 @@ final class ChatViewModel: ObservableObject {
         if let quote {
             cloudData = "{\"t\":\"q\",\"txt\":\"\(String(quote.text.prefix(50)))\",\"sn\":\"\(quote.senderName)\"}"
         }
+        let atIds = isGroup ? Array(atUserIds) : []
         Task {
             do {
-                try await ImManager.shared.sendText(t, to: peerId, isGroup: isGroup, cloudCustomData: cloudData)
+                if !atIds.isEmpty {
+                    try await ImManager.shared.sendTextAt(t, atUsers: atIds, to: peerId, cloudCustomData: cloudData)
+                } else {
+                    try await ImManager.shared.sendText(t, to: peerId, isGroup: isGroup, cloudCustomData: cloudData)
+                }
                 var m = ChatMessage(isMine: true, senderId: "", senderName: "", senderAvatar: myAvatar,
                                     text: t, timestamp: Int64(Date().timeIntervalSince1970))
                 m.quoteText = quote.map { String($0.text.prefix(50)) }
                 m.quoteSenderName = quote?.senderName
                 appendMine(m)
+                atUserIds = []
             } catch {
                 self.error = error.localizedDescription
             }

@@ -98,12 +98,14 @@ struct PostDetailView: View {
                     .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x19/255))
             }
         }
-        // 送礼面板（收礼人 = 帖子作者）
+        // 送礼面板（收礼人 = 帖子作者；scene=post 服务端分账给发帖人并计礼物热度）
         .sheet(isPresented: $showGiftPanel) {
             GiftPanelSheet(
                 receiverId: vm.post?.userId ?? 0,
                 toName: vm.post?.nickname ?? "TA",
-                onClose: { showGiftPanel = false }
+                onClose: { showGiftPanel = false },
+                scene: "post",
+                sceneId: vm.postId
             )
             .presentationDetents([.medium])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))

@@ -183,6 +183,18 @@ final class ImManager: NSObject {
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
+    /// @所有人 的特殊 at 目标（SDK kMesssageAtALL 的值；展开全体成员会撞单条 30 人上限，用 @all 代替）
+    static let atAll = "@all"
+
+    /// 发送带 @ 的群消息（atUsers 为被 @ 的用户 IM ID 列表，@所有人传 atAll；对齐安卓 sendGroupAtMessage）
+    func sendTextAt(_ text: String, atUsers: [String], to groupId: String, cloudCustomData: String? = nil) async throws {
+        guard let msg = V2TIMManager.sharedInstance().createTextMessage(text: text) else { return }
+        msg.cloudCustomData = cloudCustomData?.data(using: .utf8)
+        // createAtSignedGroupMessage 为现行 API（createTextAtMessage 已废弃）
+        guard let atMsg = V2TIMManager.sharedInstance().createAtSignedGroupMessage(message: msg, atUserList: NSMutableArray(array: atUsers)) else { return }
+        try await send(atMsg, to: groupId, isGroup: true)
+    }
+
     private func send(_ msg: V2TIMMessage, to peerId: String, isGroup: Bool) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             V2TIMManager.sharedInstance().sendMessage(

@@ -210,12 +210,14 @@ private struct VideoPostPageView: View {
         .fullScreenCover(isPresented: $showRecharge) {
             CoinRechargeView()
         }
-        // 送礼面板（收礼人 = 作者）
+        // 送礼面板（收礼人 = 作者；scene=post 服务端分账给发帖人并计礼物热度）
         .sheet(isPresented: $showGiftPanel) {
             GiftPanelSheet(
                 receiverId: vm.post?.userId ?? 0,
                 toName: vm.post?.nickname ?? "TA",
-                onClose: { showGiftPanel = false }
+                onClose: { showGiftPanel = false },
+                scene: "post",
+                sceneId: vm.postId
             )
             .presentationDetents([.medium])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))

@@ -26,6 +26,10 @@ struct ChatView: View {
     @State private var peerProfileId: Int64?
     /// 群设置（仅群聊）
     @State private var showGroupSettings = false
+    /// @ 成员选择器（群聊输入 @ 触发）
+    @State private var showAtPicker = false
+    /// 群公告全文弹窗
+    @State private var showNoticeAlert = false
     /// 已滚到的最新消息 id（区分首次瞬时定位 vs 后续动画滚动）
     @State private var lastScrolledMsg: String?
     /// 输入框焦点（键盘与功能面板互斥：点 + 收键盘展开面板，点输入框收面板弹键盘）
@@ -38,6 +42,7 @@ struct ChatView: View {
             Noir.noir.ignoresSafeArea()
             VStack(spacing: 0) {
                 topBar
+                noticeBanner
                 messageList
                 quoteBar
                 inputBar
@@ -68,13 +73,45 @@ struct ChatView: View {
                 ImagePreviewViewer(images: [url], initialIndex: 0)
             }
         }
-        // 送礼面板
+        // 送礼面板（群聊带收礼人选择行；单聊固定收礼人）
         .sheet(isPresented: $showGiftPanel) {
-            GiftPanelSheet(
-                receiverId: Int64(peerId) ?? 0,
-                toName: vm.peerName ?? "TA",
-                onClose: { showGiftPanel = false },
-                onSent: { gift in vm.sendGiftMessage(gift: gift) }
+            Group {
+                if isGroup {
+                    GiftPanelSheet(
+                        receiverId: 0,
+                        toName: "",
+                        onClose: { showGiftPanel = false },
+                        receivers: vm.giftReceivers,
+                        onSentTo: { gift, r in vm.sendGiftMessage(gift: gift, toName: r.name) }
+                    )
+                } else {
+                    GiftPanelSheet(
+                        receiverId: Int64(peerId) ?? 0,
+                        toName: vm.peerName ?? "TA",
+                        onClose: { showGiftPanel = false },
+                        onSent: { gift in vm.sendGiftMessage(gift: gift) },
+                        scene: "chat"
+                    )
+                }
+            }
+            .presentationDetents([.medium])
+            .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
+        // @ 成员选择器（群聊输入 @ 触发）
+        .sheet(isPresented: $showAtPicker) {
+            AtMemberPicker(
+                members: vm.groupMembers,
+                isAdmin: vm.myGroupRole == 1 || vm.myGroupRole == 2,
+                onSelect: { member in
+                    insertAtName(member.nickname ?? "用户\(member.userId)")
+                    vm.addAtMention(userId: member.userId)
+                    showAtPicker = false
+                },
+                onSelectAll: {
+                    insertAtName("所有人")
+                    vm.addAtAll()
+                    showAtPicker = false
+                }
             )
             .presentationDetents([.medium])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
@@ -118,7 +155,20 @@ struct ChatView: View {
             GroupSettingsView(imGroupId: peerId)
         }
         .onChange(of: photoItem) { _, item in sendPickedImage(item) }
+        // 群聊输入 @ 唤起成员选择器（对齐安卓）
+        .onChange(of: input) { _, new in
+            if isGroup, new.hasSuffix("@") { showAtPicker = true }
+        }
         .photosPicker(isPresented: $showSystemPicker, selection: $photoItem, matching: .images)
+    }
+
+    /// 选中 @ 目标：把末尾的 @ 替换为 @昵称 占位文本（对齐安卓 inputText 处理）
+    private func insertAtName(_ name: String) {
+        if let idx = input.lastIndex(of: "@") {
+            input = String(input[..<idx]) + "@\(name) "
+        } else {
+            input += "@\(name) "
+        }
     }
 
     // MARK: - 顶栏
@@ -156,6 +206,10 @@ struct ChatView: View {
                     }
                 }
                 Spacer()
+                // 单聊：加好友入口（非好友场景，对齐安卓 ChatScreen 顶栏）
+                if !isGroup {
+                    FriendApplyButton(targetUserId: Int64(peerId))
+                }
                 // 群设置入口（仅群聊，对齐安卓 ChatScreen 顶栏）
                 if isGroup {
                     Button { showGroupSettings = true } label: {
@@ -174,6 +228,38 @@ struct ChatView: View {
             .padding(.top, 16)
             .padding(.bottom, 12)
             Rectangle().fill(Noir.goldLine).frame(height: 1)
+        }
+    }
+
+    // MARK: - 群公告横幅（有公告时展示，点击看全文；对齐安卓 ChatScreen 公告横幅）
+
+    @ViewBuilder
+    private var noticeBanner: some View {
+        if isGroup, let notice = vm.groupNotice {
+            HStack(spacing: 8) {
+                Image(systemName: "megaphone")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Noir.gold)
+                Text(notice)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.3))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Noir.gold.opacity(0.06))
+            .overlay(alignment: .bottom) { Rectangle().fill(Noir.hairlineGold).frame(height: 1) }
+            .contentShape(Rectangle())
+            .onTapGesture { showNoticeAlert = true }
+            .alert("群公告", isPresented: $showNoticeAlert) {
+                Button("知道了") {}
+            } message: {
+                Text(notice)
+            }
         }
     }
 
@@ -625,5 +711,94 @@ enum StickerAssets {
         guard let dir = Bundle.main.url(forResource: "stickers/\(pack)", withExtension: nil),
               let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
         return files.filter { $0.lowercased().hasSuffix(".png") }.sorted()
+    }
+}
+
+// MARK: - @ 成员选择器（对齐安卓 ChatScreen 的 AtMemberPicker）
+
+private struct AtMemberPicker: View {
+
+    let members: [GroupMember]
+    /// 群主/管理员可见「@所有人」
+    let isAdmin: Bool
+    let onSelect: (GroupMember) -> Void
+    let onSelectAll: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("选择要 @ 的成员")
+                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .foregroundStyle(Noir.ivory)
+                .padding(.bottom, 12)
+
+            if isAdmin {
+                Button {
+                    onSelectAll()
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle().fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            Text("全")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
+                        }
+                        .frame(width: 36, height: 36)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("@所有人")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Noir.gold)
+                            Text("提醒本群全部 \(members.count) 名成员")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Rectangle().fill(Noir.goldLine).frame(height: 1).opacity(0.4)
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(members) { member in
+                        Button {
+                            onSelect(member)
+                        } label: {
+                            HStack(spacing: 12) {
+                                AppAvatar(url: member.avatar, size: 36)
+                                    .frame(width: 36, height: 36)
+                                Text(member.nickname ?? "用户\(member.userId)")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Noir.ivory)
+                                    .lineLimit(1)
+                                Spacer()
+                                if member.role == 1 {
+                                    Text("群主")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Color(red: 0xFF/255, green: 0x8A/255, blue: 0x65/255))
+                                } else if member.role == 2 {
+                                    Text("管理员")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Noir.goldLight)
+                                }
+                            }
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxHeight: 360)
+
+            Spacer().frame(height: 12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 20)
+        .background(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
     }
 }
