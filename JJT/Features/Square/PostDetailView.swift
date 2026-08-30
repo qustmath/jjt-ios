@@ -4,7 +4,7 @@ import AVKit
 /// 帖子详情 — 暗夜奢华风（对齐安卓 PostDetailScreen.kt）
 /// 结构：媒体区（多图翻页/视频 + 悬浮返回分享）→ 内容区（标题/正文/话题/时间地点）→
 ///       作者玻璃卡 → 鎏金线 + 私语（评论）列表；底部互动栏 + 评论输入条
-/// v1 未含：付费解锁（支付密码链路）、编辑、分享海报、图片全屏预览
+/// 已含：付费解锁（支付密码链路）、编辑/删除、分享面板、送礼、长按删自己评论、图片全屏预览
 struct PostDetailView: View {
 
     @StateObject private var vm: PostDetailViewModel
@@ -17,6 +17,12 @@ struct PostDetailView: View {
     @State private var previewIndex: Int?
     @State private var showEditor = false
     @State private var showDeleteConfirm = false
+    @State private var showShareSheet = false
+    @State private var showGiftPanel = false
+    @State private var commentToDelete: CommentInfo?
+    @StateObject private var payGuard = PayPasswordGuard()
+    @State private var showPaySettings = false
+    @State private var showRecharge = false
     @FocusState private var inputFocused: Bool
 
     init(postId: Int64) {
@@ -72,6 +78,45 @@ struct PostDetailView: View {
         .onAppear { if vm.post == nil { vm.load() } }
         .fullScreenCover(isPresented: $showEditor, onDismiss: { vm.load() }) {
             CreatePostView(editPostId: vm.postId)
+        }
+        // 支付密码守卫（付费解锁）；余额不足 → 充值引导
+        .payPasswordGuard(payGuard, hint: vm.post.map { "支付 \($0.paidPrice ?? 0) 兔币解锁本条内容" }) { showPaySettings = true }
+        .onReceive(NotificationCenter.default.publisher(for: .jjtInsufficientBalance)) { _ in
+            showRecharge = true
+        }
+        .fullScreenCover(isPresented: $showPaySettings) {
+            PayPasswordSettingsView()
+        }
+        .fullScreenCover(isPresented: $showRecharge) {
+            CoinRechargeView()
+        }
+        // 分享面板
+        .sheet(isPresented: $showShareSheet) {
+            if let post = vm.post {
+                PostShareSheet(post: post) { showShareSheet = false }
+                    .presentationDetents([.medium])
+                    .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x19/255))
+            }
+        }
+        // 送礼面板（收礼人 = 帖子作者）
+        .sheet(isPresented: $showGiftPanel) {
+            GiftPanelSheet(
+                receiverId: vm.post?.userId ?? 0,
+                toName: vm.post?.nickname ?? "TA",
+                onClose: { showGiftPanel = false }
+            )
+            .presentationDetents([.medium])
+            .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
+        // 删除自己的评论（长按触发）
+        .confirmationDialog("删除这条私语？", isPresented: Binding(
+            get: { commentToDelete != nil },
+            set: { if !$0 { commentToDelete = nil } }
+        ), titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                if let c = commentToDelete { vm.deleteComment(c.id) }
+            }
+            Button("取消", role: .cancel) {}
         }
         .confirmationDialog("确定删除这条帖子吗？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("删除", role: .destructive) {
@@ -175,7 +220,7 @@ struct PostDetailView: View {
                     floatingButton(systemImage: "pencil") { showEditor = true }
                     floatingButton(systemImage: "trash") { showDeleteConfirm = true }
                 }
-                floatingButton(systemImage: "square.and.arrow.up") { showToast("分享敬请期待") }
+                floatingButton(systemImage: "square.and.arrow.up") { showShareSheet = true }
             }
             .padding(.horizontal, 16)
             .padding(.top, 56)
@@ -214,7 +259,7 @@ struct PostDetailView: View {
             let isMasked = paid && post.unlocked != true && post.content != nil
 
             if isMasked {
-                // 付费遮罩（解锁需支付密码链路，后续迁移）
+                // 付费遮罩：解锁走支付密码守卫（余额不足自动联动充值引导）
                 VStack(spacing: 10) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 22))
@@ -225,7 +270,9 @@ struct PostDetailView: View {
                     Text("支付 \(post.paidPrice ?? 0) 兔币解锁全文")
                         .font(.system(size: 11))
                         .foregroundStyle(Noir.textDim)
-                    Button { showToast("付费解锁即将上线") } label: {
+                    Button {
+                        payGuard.require { pwd in try await vm.unlock(payPassword: pwd) }
+                    } label: {
                         Text("解锁")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
@@ -465,6 +512,10 @@ struct PostDetailView: View {
             replyTo = comment
             inputFocused = true
         }
+        // 长按删除自己的评论（对齐安卓）
+        .onLongPressGesture {
+            if comment.userId == TokenManager.shared.userId { commentToDelete = comment }
+        }
     }
 
     // MARK: - 底部互动栏 + 评论输入
@@ -509,9 +560,12 @@ struct PostDetailView: View {
                 actionIcon(systemImage: post.favorited == true ? "star.fill" : "star",
                            count: post.favoriteCount ?? 0,
                            active: post.favorited == true) { vm.toggleFavorite() }
-                actionIcon(systemImage: "gift",
-                           count: nil,
-                           active: false) { showToast("礼物敬请期待") }
+                // 送礼入口（自己的帖子不显示，对齐安卓）
+                if post.userId != TokenManager.shared.userId {
+                    actionIcon(systemImage: "gift",
+                               count: nil,
+                               active: false) { showGiftPanel = true }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

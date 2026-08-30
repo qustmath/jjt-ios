@@ -108,6 +108,31 @@ enum SocialAPI {
         try await APIClient.shared.get("app-api/social/post/comments", query: ["postId": "\(postId)"])
     }
 
+    /// 删除自己的评论
+    static func deleteComment(id: Int64) async throws -> Bool {
+        try await APIClient.shared.delete("app-api/social/post/comment/delete", query: ["id": "\(id)"])
+    }
+
+    /// 付费解锁帖子（支付密码；解锁后永久可看）
+    static func unlock(postId: Int64, payPassword: String) async throws -> Bool {
+        try await APIClient.shared.post("app-api/social/post/unlock", query: ["postId": "\(postId)", "payPassword": payPassword])
+    }
+
+    /// 分享上报：分享成功回调后调用，每次成功分享计一次（重复分享重复计）；取消/失败不上报
+    static func share(postId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/social/post/share", query: ["postId": "\(postId)"])
+    }
+
+    /// 我的帖子收藏列表
+    static func favoritePage(pageNo: Int, pageSize: Int = 20) async throws -> PageResult<PostInfo> {
+        try await APIClient.shared.get("app-api/social/post/favorite/page", query: ["pageNo": "\(pageNo)", "pageSize": "\(pageSize)"])
+    }
+
+    /// 我的点赞帖子列表
+    static func likePage(pageNo: Int, pageSize: Int = 20) async throws -> PageResult<PostInfo> {
+        try await APIClient.shared.get("app-api/social/post/like/page", query: ["pageNo": "\(pageNo)", "pageSize": "\(pageSize)"])
+    }
+
     /// 发评论（parentId 非空为回复）
     static func addComment(postId: Int64, parentId: Int64?, content: String) async throws -> CommentInfo {
         try await APIClient.shared.post("app-api/social/post/comment", body: CommentReq(postId: postId, parentId: parentId, content: content))

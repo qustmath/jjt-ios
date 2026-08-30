@@ -134,6 +134,10 @@ private struct VideoPostPageView: View {
     @State private var commentText = ""
     @State private var previewEnded = false
     @State private var toast: String?
+    @State private var showGiftPanel = false
+    @StateObject private var payGuard = PayPasswordGuard()
+    @State private var showPaySettings = false
+    @State private var showRecharge = false
 
     init(postId: Int64, active: Bool, onBack: @escaping () -> Void) {
         self.postId = postId
@@ -174,6 +178,16 @@ private struct VideoPostPageView: View {
         .onChange(of: vm.post?.id) { _, _ in
             if let p = vm.post { setupPlayer(for: p) }
         }
+        // 解锁成功：释放试看播放器，按完整视频重建
+        .onChange(of: vm.post?.unlocked) { _, unlocked in
+            guard unlocked == true, let p = vm.post else { return }
+            player?.pause()
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+            endObserver = nil
+            player = nil
+            previewEnded = false
+            setupPlayer(for: p)
+        }
         .onChange(of: active) { _, now in
             if now { player?.play() } else { player?.pause() }
         }
@@ -185,6 +199,33 @@ private struct VideoPostPageView: View {
             player = nil
         }
         .sheet(isPresented: $showComments) { commentsSheet }
+        // 支付密码守卫（付费视频解锁）；余额不足 → 充值引导
+        .payPasswordGuard(payGuard, hint: vm.post.map { "支付 \($0.paidPrice ?? 0) 兔币解锁完整视频" }) { showPaySettings = true }
+        .onReceive(NotificationCenter.default.publisher(for: .jjtInsufficientBalance)) { _ in
+            showRecharge = true
+        }
+        .fullScreenCover(isPresented: $showPaySettings) {
+            PayPasswordSettingsView()
+        }
+        .fullScreenCover(isPresented: $showRecharge) {
+            CoinRechargeView()
+        }
+        // 送礼面板（收礼人 = 作者）
+        .sheet(isPresented: $showGiftPanel) {
+            GiftPanelSheet(
+                receiverId: vm.post?.userId ?? 0,
+                toName: vm.post?.nickname ?? "TA",
+                onClose: { showGiftPanel = false }
+            )
+            .presentationDetents([.medium])
+            .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
+    }
+
+    /// 发起解锁：支付密码守卫 → 成功后释放试看播放器并整帖重载（拿完整视频地址）
+    private func unlock() {
+        payGuard.require { pwd in try await vm.unlock(payPassword: pwd) }
+        // 解锁成功由 vm.load() 刷新 post；这里监听 post 变化重置播放状态
     }
 
     // MARK: - 沉浸视频页
@@ -249,7 +290,7 @@ private struct VideoPostPageView: View {
                 Text("完整视频 \(post.paidPrice ?? 0) 兔币解锁 · 永久可看")
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.7))
-                Button { showToast("付费解锁即将上线") } label: {
+                Button { unlock() } label: {
                     Text("立即解锁")
                         .font(.system(size: 14, weight: .bold))
                         .tracking(4)
@@ -299,7 +340,7 @@ private struct VideoPostPageView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.8))
                 }
-                .onTapGesture { showToast("礼物敬请期待") }
+                .onTapGesture { showGiftPanel = true }
             }
         }
         .padding(.trailing, 12)
@@ -396,7 +437,7 @@ private struct VideoPostPageView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.75))
                 Spacer()
-                Button { showToast("付费解锁即将上线") } label: {
+                Button { unlock() } label: {
                     Text("立即解锁")
                         .font(.system(size: 14, weight: .bold))
                         .tracking(4)

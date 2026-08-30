@@ -37,6 +37,8 @@ struct MeView: View {
     @State private var showOrders = false
     @State private var showCouponCenter = false
     @State private var showFavorites = false
+    @State private var showPostFavorites = false
+    @State private var showMyLikes = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -71,8 +73,8 @@ struct MeView: View {
                     ])
                     gridSection(title: "我的服务", en: "SERVICES", items: [
                         GridItem("我的钱包", "wallet.pass", gold: true) { showWallet = true },
-                        GridItem("收藏", "star") { comingSoon() },
-                        GridItem("我的点赞", "heart") { comingSoon() },
+                        GridItem("收藏", "star") { showPostFavorites = true },
+                        GridItem("我的点赞", "heart") { showMyLikes = true },
                         GridItem("票夹", "ticket", gold: true) { showTicketWallet = true },
                         GridItem("历史记录", "clock.arrow.circlepath") { comingSoon() },
                         GridItem("排行榜", "trophy") { comingSoon() },
@@ -189,6 +191,12 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showFavorites) {
             FavoriteView()
+        }
+        .fullScreenCover(isPresented: $showPostFavorites) {
+            PostInteractionListView(kind: .favorite)
+        }
+        .fullScreenCover(isPresented: $showMyLikes) {
+            PostInteractionListView(kind: .like)
         }
     }
 

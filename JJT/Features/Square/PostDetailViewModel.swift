@@ -91,6 +91,25 @@ final class PostDetailViewModel: ObservableObject {
             return false
         }
     }
+
+    /// 删除自己的评论（对齐安卓：长按删除，计数同步 -1）
+    func deleteComment(_ commentId: Int64) {
+        Task {
+            guard (try? await SocialAPI.deleteComment(id: commentId)) == true else { return }
+            comments.removeAll { $0.id == commentId }
+            if var p = post {
+                p = p.updating(commentDelta: -1)
+                post = p
+            }
+        }
+    }
+
+    /// 付费解锁（由支付密码守卫回调传入密码；成功抛错交给守卫展示）。
+    /// 解锁成功后重拉详情拿全文/完整视频。
+    func unlock(payPassword: String) async throws {
+        _ = try await SocialAPI.unlock(postId: postId, payPassword: payPassword)
+        load()
+    }
 }
 
 /// 局部更新辅助（PostInfo 是值类型且字段 let，复制改值）
