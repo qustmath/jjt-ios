@@ -52,6 +52,7 @@ struct ChatView: View {
             // 整蛊：特效选择窗 + 购买确认（对齐安卓 PrankOverlay）
             PrankOverlayHost(prank: prank)
         }
+        .jjtKeyboardDismiss()
         .onAppear {
             vm.initIm(peerId: peerId, isGroup: isGroup)
             prank.loadEffects()

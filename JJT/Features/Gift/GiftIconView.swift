@@ -112,8 +112,12 @@ struct GiftSendOverlay: View {
             .opacity(alpha)
         }
         .onAppear {
-            withAnimation(.linear(duration: 2.4)) { progress = 1 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { onDone() }
+            // 覆盖层 attach 瞬间立刻 withAnimation 经常不生效（progress 直跳 1 → 特效全程透明，
+            // 即「送礼后没有特效」的根因），延迟到布局稳定后再启动；关闭时间相应后移
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                withAnimation(.linear(duration: 2.4)) { progress = 1 }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { onDone() }
         }
     }
 }

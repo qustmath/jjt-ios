@@ -91,6 +91,7 @@ struct RedPacketSendView: View {
         } else {
             mainPage
         }
+        .jjtKeyboardDismiss()
     }
 
     // MARK: - 主表单

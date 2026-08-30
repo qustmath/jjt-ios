@@ -51,6 +51,7 @@ struct VideoFeedView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { vm.start(initialPostId: initialPostId, tab: tab) }
     }
 

@@ -27,7 +27,11 @@ enum TextCardRenderer {
     static func render(_ fullContent: String, styleIndex: Int) -> UIImage {
         let style = styles[max(0, min(styleIndex, styles.count - 1))]
         let size = CGSize(width: width, height: height)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        // scale=1：输出 1080×1440 真实像素（对齐安卓 bitmap），
+        // 避免按设备 3x 放大到 3240×4320 导致 JPEG 过大上传失败
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
 
         return renderer.image { ctx in
             let cg = ctx.cgContext
@@ -106,25 +110,31 @@ enum TextCardRenderer {
     }
 
     /// 定宽多行文本块（对齐安卓 StaticLayout：定宽自动换行 + maxLines 截断 + 行距倍数）。
-    /// 用 TextKit（NSTextStorage/NSLayoutManager/NSTextContainer，UILabel 同款排版管线），
-    /// NSStringDrawing 的 truncatesLastVisibleLine 实测存在不换行场景，故以 TextKit 为准。
+    /// 主排用 TextKit（UILabel 同款管线，CJK 按字断行）；容器高度取有限值，
+    /// 不用 greatestFiniteMagnitude（极大值在 TextKit 布局里可能数值溢出导致零 glyph）。
+    /// TextKit 排版结果为空时兜底 NSStringDrawing 直绘，保证卡片一定有文字。
     private struct TextBlock {
+        private let attrString: NSAttributedString
+        private let width: CGFloat
         private let layoutManager = NSLayoutManager()
         private let textContainer: NSTextContainer
+        /// 足够容纳 maxLines 行的有限大高度（13 行 × 约 160px 也远低于它）
+        private static let canvasHeight: CGFloat = 20000
 
         init(text: String, font: UIFont, color: UIColor, kern: CGFloat, width: CGFloat, maxLines: Int, lineHeightMultiple: CGFloat) {
             let para = NSMutableParagraphStyle()
             para.lineHeightMultiple = lineHeightMultiple
             para.lineBreakMode = .byTruncatingTail
-            let storage = NSTextStorage(string: text, attributes: [
+            attrString = NSAttributedString(string: text, attributes: [
                 .font: font, .foregroundColor: color, .kern: kern, .paragraphStyle: para,
             ])
-            textContainer = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+            self.width = width
+            textContainer = NSTextContainer(size: CGSize(width: width, height: TextBlock.canvasHeight))
             textContainer.lineFragmentPadding = 0
             textContainer.maximumNumberOfLines = maxLines
             textContainer.lineBreakMode = .byTruncatingTail
             layoutManager.addTextContainer(textContainer)
-            storage.addLayoutManager(layoutManager)
+            NSTextStorage(attributedString: attrString).addLayoutManager(layoutManager)
         }
 
         /// 排版后的实际高度（已按 maxLines 截断）
@@ -134,8 +144,15 @@ enum TextCardRenderer {
         }
 
         func draw(at point: CGPoint) {
+            layoutManager.ensureLayout(for: textContainer)
             let glyphs = layoutManager.glyphRange(for: textContainer)
-            layoutManager.drawGlyphs(forGlyphRange: glyphs, at: point)
+            if glyphs.length > 0 {
+                layoutManager.drawGlyphs(forGlyphRange: glyphs, at: point)
+            } else if attrString.length > 0 {
+                // TextKit 兜底失败 → NSStringDrawing 直接画，保证文字一定上屏
+                attrString.draw(with: CGRect(x: point.x, y: point.y, width: width, height: TextBlock.canvasHeight),
+                                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+            }
         }
     }
 }

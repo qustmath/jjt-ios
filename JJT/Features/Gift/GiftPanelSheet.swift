@@ -30,7 +30,6 @@ struct GiftPanelSheet: View {
     @State private var gifts: [GiftItem] = []
     @State private var sel: GiftItem?
     @State private var combo = 0
-    @State private var sending = false
     @State private var busy = false
     @State private var balance: Int64?
     @State private var error: String?
@@ -78,11 +77,6 @@ struct GiftPanelSheet: View {
         }
         .fullScreenCover(isPresented: $showRecharge, onDismiss: { refreshBalance() }) {
             CoinRechargeView()
-        }
-        .overlay {
-            if sending, let sel {
-                GiftSendOverlay(gift: sel, combo: combo) { sending = false }
-            }
         }
     }
 
@@ -215,7 +209,7 @@ struct GiftPanelSheet: View {
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
-            .disabled(busy || sending || sel == nil)
+            .disabled(busy || sel == nil)
         }
         .padding(.horizontal, 20)
     }
@@ -287,7 +281,8 @@ struct GiftPanelSheet: View {
                 scene: scene ?? (receivers != nil ? "group" : "profile"), sceneId: sceneId, payPassword: pwd))
             balance = (balance ?? 0) - price
             combo += 1
-            sending = true
+            // 全屏赠送动效：窗口级覆盖（sheet 内的 overlay 只有半屏，对齐安卓全屏 Dialog）
+            JJTWindowOverlay.show(GiftSendOverlay(gift: gift, combo: combo) { JJTWindowOverlay.dismiss() })
             // 彩蛋「借火的人」：送出一件礼物（对齐安卓）
             EggTrigger.report("gift")
             onSent(gift)

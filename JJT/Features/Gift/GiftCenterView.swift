@@ -15,7 +15,6 @@ struct GiftCenterView: View {
     @State private var confirmGift: GiftItem?
     @State private var showPaySettings = false
     @State private var showRecharge = false
-    @State private var sendOverlay: (gift: GiftItem, combo: Int)?
 
     /// 只展示 2D 礼物（3D/GLB 已在 iOS 下线，不再解析）
     private var displayGifts: [GiftItem] {
@@ -70,11 +69,6 @@ struct GiftCenterView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .jjtInsufficientBalance)) { _ in
             showRecharge = true
-        }
-        .overlay {
-            if let overlay = sendOverlay {
-                GiftSendOverlay(gift: overlay.gift, combo: overlay.combo) { sendOverlay = nil }
-            }
         }
     }
 
@@ -230,7 +224,8 @@ struct GiftCenterView: View {
                 giftId: gift.id, receiverId: receiverId, quantity: quantity,
                 scene: receiverId != nil ? "profile" : "buy", payPassword: pwd))
             vm.balance = (vm.balance ?? 0) - Int64((gift.priceRabbit ?? 0) * quantity)
-            sendOverlay = (gift, 1)
+            // 全屏赠送动效：窗口级覆盖（对齐安卓全屏 Dialog）
+            JJTWindowOverlay.show(GiftSendOverlay(gift: gift, combo: 1) { JJTWindowOverlay.dismiss() })
             jjtShowToast(receiverId != nil ? "礼物已送出" : "购买成功，可在我的礼物中送出")
         }
     }

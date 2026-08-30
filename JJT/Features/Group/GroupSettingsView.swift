@@ -37,6 +37,7 @@ struct GroupSettingsView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { vm.load(imGroupId: imGroupId) }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },

@@ -42,6 +42,7 @@ struct VipClubApplyView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { load() }
         .onChange(of: photoItem) { _, item in uploadPhoto(item) }
         .alert("提示", isPresented: Binding(

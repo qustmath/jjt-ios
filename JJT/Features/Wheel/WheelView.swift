@@ -64,6 +64,7 @@ struct WheelView: View {
         }
         .sheet(isPresented: $showExchange) {
             exchangeSheet
+                .jjtKeyboardDismiss()
                 .presentationDetents([.height(300)])
                 .presentationBackground(Noir.noir2)
         }

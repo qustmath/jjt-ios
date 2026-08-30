@@ -75,6 +75,7 @@ struct PageantEntrySheet: View {
             }
         }
         .background(Noir.noir.ignoresSafeArea())
+        .jjtKeyboardDismiss()
         .onAppear { vm.loadExisting() }
         .onChange(of: pickedItems) { _, items in
             vm.addImages(items)

@@ -31,6 +31,7 @@ struct WithdrawView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear {
             vm.load()
             // 进入页面即检查：未设置支付密码直接弹「去设置」引导

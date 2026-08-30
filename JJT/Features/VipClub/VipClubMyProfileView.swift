@@ -63,6 +63,7 @@ struct VipClubMyProfileView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { load() }
         .onChange(of: photoItem) { _, item in uploadPhoto(item) }
         .fullScreenCover(isPresented: $showRequests) {

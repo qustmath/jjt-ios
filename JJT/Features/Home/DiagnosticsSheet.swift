@@ -27,6 +27,15 @@ struct DiagnosticsSheet: View {
                     LabeledContent("登录态", value: TokenManager.shared.isLoggedIn ? "已登录" : "未登录")
                     LabeledContent("Bugly", value: Config.buglyAppID.isEmpty ? "未配置" : "已启用 \(Config.buglyAppID)")
                 }
+                // 文字卡片渲染实测（纯文字帖封面：页内直接渲染样例，肉眼验证文字是否正常绘制/换行）
+                Section("文字卡片渲染测试") {
+                    Image(uiImage: TextCardRenderer.render("夜行手记\n今晚的风把城市吹成一杯冷酒，我们把剩下的故事留在天台说完，聊到月亮也困了。", styleIndex: 0))
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 260)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
                 // Bugly 上报链路测试（对齐安卓 CrashLogScreen 的测试崩溃入口）
                 Section("Bugly 上报测试") {
                     Button("测试异常上报（不闪退）") {

@@ -28,6 +28,7 @@ struct MallHomeView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear {
             vm.load()
             vm.refreshCartCount()

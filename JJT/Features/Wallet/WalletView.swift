@@ -69,6 +69,7 @@ struct WalletView: View {
                     jjtShowToast(error.localizedDescription)
                 }
             }
+            .jjtKeyboardDismiss()
             .presentationDetents([.height(280)])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
         }

@@ -26,6 +26,7 @@ struct AccountSecurityView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { vm.load() }
         .fullScreenCover(isPresented: $showPayPassword) {
             PayPasswordSettingsView()

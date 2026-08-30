@@ -33,6 +33,7 @@ struct CoinRechargeView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { vm.loadPackages() }
         // 拿到收银台地址 → 拉起支付宝
         .onChange(of: vm.payUrl) { _, url in

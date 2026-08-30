@@ -54,6 +54,7 @@ struct BankCardView: View {
                 }
             }
         }
+        .jjtKeyboardDismiss()
         .onAppear { vm.load() }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
