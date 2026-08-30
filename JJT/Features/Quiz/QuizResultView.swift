@@ -10,6 +10,7 @@ struct QuizResultView: View {
     @StateObject private var vm = QuizResultViewModel()
     @State private var retakeId: Int64?
     @State private var reviewId: Int64?
+    @State private var showSharePost = false
 
     var body: some View {
         ZStack {
@@ -46,6 +47,18 @@ struct QuizResultView: View {
         )) { t in
             QuizAnswerView(quizId: t.id, reviewMode: true)
         }
+        // 分享到广场：结果文案预填发帖页（对齐安卓 onShare → create-post?shareContent）
+        .fullScreenCover(isPresented: $showSharePost) {
+            CreatePostView(initialContent: shareText)
+        }
+    }
+
+    /// 分享文案：标题 + 副标题 + 描述（对齐安卓 buildString）
+    private var shareText: String {
+        var t = vm.resultDetail?.title ?? vm.resultInfo?.resultTitle ?? ""
+        if let s = vm.resultDetail?.subtitle, !s.isEmpty { t += "\n\(s)" }
+        if let d = vm.resultDetail?.description, !d.isEmpty { t += "\n\(d)" }
+        return t
     }
 
     private struct T: Identifiable { let id: Int64 }
@@ -202,6 +215,16 @@ struct QuizResultView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .overlay(Capsule().stroke(Noir.gold.opacity(0.5), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                // 分享到广场 — 鎏金胶囊（对齐安卓）
+                Button { showSharePost = true } label: {
+                    Text("分享到广场")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Capsule().fill(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .topLeading, endPoint: .bottomTrailing)))
                 }
                 .buttonStyle(.plain)
                 Button { retakeId = quizId } label: {

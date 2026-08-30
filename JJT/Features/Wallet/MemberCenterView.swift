@@ -266,7 +266,11 @@ struct MemberCenterView: View {
                 }
                 Spacer()
                 // 权益说明
-                Button { benefitsTier = tier } label: {
+                Button {
+                    // 彩蛋「第七层梦境」：冠冕之路点开「月冕」层级（tier 7，对齐安卓）
+                    if tier.tier == 7 { EggTrigger.report("tier7") }
+                    benefitsTier = tier
+                } label: {
                     Image(systemName: "info.circle")
                         .font(.system(size: 15))
                         .foregroundStyle(.white.opacity(0.35))

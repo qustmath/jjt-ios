@@ -50,6 +50,10 @@ struct UserProfileView: View {
             }
         }
         .onAppear { vm.load(userId: userId) }
+        // 彩蛋「无名之辈」：点开一位 TA 的资料卡（资料加载后判定，对齐安卓）
+        .onChange(of: vm.profile?.id) { _, id in
+            if id != nil, !vm.isSelf { EggTrigger.report("stranger") }
+        }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
             set: { if !$0 { vm.clearError() } }
@@ -227,6 +231,9 @@ struct UserProfileView: View {
                               frameURL: vm.profile?.avatarFrame,
                               frameScale: vm.profile?.avatarFrameScale.map { CGFloat($0) } ?? 1.25)
                         .frame(width: 108, height: 108)
+                        // 彩蛋「第三只兔耳」：本人点头像（对齐安卓，头像框更换入口同期触发）
+                        .contentShape(Circle())
+                        .onTapGesture { if isSelf { EggTrigger.report("third-ear") } }
 
                     if isSelf {
                         PhotosPicker(selection: $avatarItem, matching: .images) {

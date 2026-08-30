@@ -322,6 +322,8 @@ struct GiftPanelSheet: View {
             balance = (balance ?? 0) - price
             combo += 1
             sending = true
+            // 彩蛋「借火的人」：送出一件礼物（对齐安卓）
+            EggTrigger.report("gift")
             onSent(gift)
             if let selectedReceiver { onSentTo(gift, selectedReceiver) }
         }

@@ -369,7 +369,7 @@ struct HomeView: View {
         .cornerFrame(Noir.gold.opacity(0.7))
     }
 
-    // MARK: - 滚动播报（静态文案，跑马灯动画后续加回）
+    // MARK: - 滚动播报（无限跑马灯，对齐安卓 basicMarquee；文案为运营氛围静态文案，双端一致）
 
     private static let tickerLines = [
         "夜蔷 送出「荆棘之心」×1", "绯瞳 发起 古堡烛光暗夜茶会", "银蚀 与 鸦先生 匹配成功",
@@ -377,18 +377,11 @@ struct HomeView: View {
     ]
 
     private var ticker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            Text(Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　"))
-                .font(.system(size: 10.5))
-                .tracking(1)
-                .foregroundStyle(Noir.gold.opacity(0.7))
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.vertical, 10)
-        }
-        .background(Color.black.opacity(0.4))
-        .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
-        .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+        MarqueeText(text: Self.tickerLines.map { "◆ \($0)" }.joined(separator: "　　") + "　　")
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.4))
+            .overlay(alignment: .top) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
     }
 
     // MARK: - 蜜兔会 · 独立奢华入口（静态版，呼吸/流光动画后续加回）

@@ -14,6 +14,8 @@ struct SquareView: View {
     @State private var postToHide: PostInfo?
     /// 卡片菜单「举报」：待填原因提交的帖子
     @State private var postToReport: PostInfo?
+    /// 彩蛋「逆行之鳞」：逛到底部后重新回到顶部（对齐安卓 reachedBottom）
+    @State private var reachedBottom = false
 
     private static let tabs: [(key: String, label: String)] = [
         ("recommend", "推荐"), ("newest", "最新"), ("follow", "关注"),
@@ -144,7 +146,11 @@ struct SquareView: View {
                 .background(Color.white.opacity(0.05))
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(Noir.hairlineGold, lineWidth: 1))
-                .onTapGesture { showToast("搜索功能敬请期待") }
+                .onTapGesture {
+                    // 彩蛋「失物招领」：在广场使用一次搜索（对齐安卓）
+                    EggTrigger.report("search")
+                    showToast("搜索功能敬请期待")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -210,6 +216,7 @@ struct SquareView: View {
                         .foregroundStyle(.white.opacity(0.25))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
+                        .onAppear { reachedBottom = true }
                 } else {
                     Color.clear
                         .frame(height: 1)
@@ -220,8 +227,18 @@ struct SquareView: View {
         .refreshable { vm.refresh(tab) }
     }
 
+    /// 卡片进入可视区：曝光埋点 + 彩蛋「逆行之鳞」（逛到底部后首卡再次入镜视为回到顶部）
+    private func cardVisible(_ post: PostInfo, firstId: Int64?) {
+        vm.onPostVisible(post.id)
+        if reachedBottom, post.id == firstId {
+            reachedBottom = false
+            EggTrigger.report("scroll-top")
+        }
+    }
+
     /// 双列瀑布流（按估算高度分配到较短列；列宽写死，图片无权撑爆布局）
     private func waterfall(_ posts: [PostInfo]) -> some View {
+        let firstId = posts.first?.id
         let colW = (JJTMetrics.screenWidth - 20 - 10) / 2
         var col0: [PostInfo] = []
         var col1: [PostInfo] = []
@@ -236,7 +253,7 @@ struct SquareView: View {
             LazyVStack(spacing: 10) {
                 ForEach(col0) {
                     PostCard(post: $0, width: colW, onTap: openPost,
-                             onVisible: { vm.onPostVisible($0.id) },
+                             onVisible: { cardVisible($0, firstId: firstId) },
                              onNotInterested: { postToHide = $0 },
                              onReport: { postToReport = $0 })
                 }
@@ -244,7 +261,7 @@ struct SquareView: View {
             LazyVStack(spacing: 10) {
                 ForEach(col1) {
                     PostCard(post: $0, width: colW, onTap: openPost,
-                             onVisible: { vm.onPostVisible($0.id) },
+                             onVisible: { cardVisible($0, firstId: firstId) },
                              onNotInterested: { postToHide = $0 },
                              onReport: { postToReport = $0 })
                 }

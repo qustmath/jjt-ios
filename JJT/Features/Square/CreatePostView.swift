@@ -48,6 +48,8 @@ struct CreatePostView: View {
 
     /// 编辑模式的帖子 id；nil = 新发布
     var editPostId: Int64? = nil
+    /// 预填内容（测评分享等场景，对齐安卓 initialContent；首行拆为标题）
+    var initialContent: String = ""
 
     @StateObject private var vm = CreatePostViewModel()
     @Environment(\.dismiss) private var dismiss
@@ -129,6 +131,7 @@ struct CreatePostView: View {
         }
         .onAppear {
             if let editPostId { vm.loadForEdit(editPostId) }
+            else if !initialContent.isEmpty { vm.initContent(initialContent) }
         }
         .onChange(of: pickedItems) { _, items in
             vm.addImages(items)
@@ -915,6 +918,14 @@ final class CreatePostViewModel: ObservableObject {
     }
 
     // ---- 编辑 / 发布 ----
+
+    /// 预填内容（测评分享等，对齐安卓 initContent：首行为标题，其余为正文）
+    func initContent(_ raw: String) {
+        guard title.isEmpty, content.isEmpty else { return }
+        let lines = raw.components(separatedBy: "\n")
+        title = lines.first ?? ""
+        content = lines.dropFirst().joined(separator: "\n")
+    }
 
     /// 编辑模式：加载原帖回填（对齐安卓 loadForEdit；首行为标题，其余为正文）
     func loadForEdit(_ postId: Int64) {

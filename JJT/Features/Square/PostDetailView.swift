@@ -76,6 +76,12 @@ struct PostDetailView: View {
             }
         }
         .onAppear { if vm.post == nil { vm.load() } }
+        // 彩蛋「静音剧场」：安静读完一篇帖子（停留 8 秒，对齐安卓）
+        .task {
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard !Task.isCancelled else { return }
+            EggTrigger.report("post")
+        }
         .fullScreenCover(isPresented: $showEditor, onDismiss: { vm.load() }) {
             CreatePostView(editPostId: vm.postId)
         }

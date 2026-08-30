@@ -90,6 +90,8 @@ final class ChatViewModel: ObservableObject {
     @Published var myGroupRole: Int?
     /// 当前待发送的 @ 目标（IM ID 集合；@所有人 = ImManager.atAll）
     @Published var atUserIds: Set<String> = []
+    /// 彩蛋「墙角的耳语」：私聊连续发送计数（对齐安卓 consecutivePrivateSent）
+    private var consecutivePrivateSent = 0
 
     /// 群送礼候选收礼人（排除自己）
     var giftReceivers: [GiftReceiver] {
@@ -384,6 +386,11 @@ final class ChatViewModel: ObservableObject {
                 m.quoteSenderName = quote?.senderName
                 appendMine(m)
                 atUserIds = []
+                // 彩蛋「墙角的耳语」：私聊中连续发送 3 条消息
+                if !isGroup {
+                    consecutivePrivateSent += 1
+                    if consecutivePrivateSent >= 3 { EggTrigger.report("whisper") }
+                }
             } catch {
                 self.error = error.localizedDescription
             }
