@@ -19,8 +19,8 @@ enum VideoTranscoder {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 1080, height: 1080)
-        guard let cg = try? await gen.image(at: .zero).get() else { return nil }
-        return UIImage(cgImage: cg).jpegData(compressionQuality: 0.85)
+        guard let shot = try? await gen.image(at: .zero) else { return nil }
+        return UIImage(cgImage: shot.image).jpegData(compressionQuality: 0.85)
     }
 
     /// 转码为 720p H.264 mp4，输出到临时目录，返回文件 URL（失败返回 nil）
