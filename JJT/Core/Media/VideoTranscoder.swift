@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreTransferable
 import UIKit
 
 /// 发帖视频处理（对齐安卓 VideoTranscoder，ADR-0010：统一转 720p/H.264 + 抽封面帧）
