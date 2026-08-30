@@ -459,7 +459,7 @@ struct CreatePostView: View {
                 Text("#")
                     .foregroundStyle(Noir.crimsonHot)
                     .font(.system(size: 14, weight: .semibold))
-                TextField("话题（空格/# 确认，最多 5 个）", text: Binding(
+                TextField(vm.topicList.isEmpty ? "话题（如：哥特穿搭）" : "继续添加", text: Binding(
                     get: { vm.topicInput },
                     set: { vm.onTopicInputChange($0) }
                 ))
@@ -467,6 +467,16 @@ struct CreatePostView: View {
                 .focused($topicFocused)
                 .onSubmit {
                     vm.commitTopicInput()
+                }
+                // 添加按钮（输入非空时出现，对齐安卓）
+                if !vm.topicInput.isEmpty {
+                    Button("添加") { vm.commitTopicInput() }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Noir.gold)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Noir.gold.opacity(0.12))
+                        .clipShape(Capsule())
                 }
             }
             .noirField()
@@ -923,7 +933,8 @@ final class CreatePostViewModel: ObservableObject {
     func onTopicInputChange(_ v: String) {
         var pending = v
         if pending.contains("#") || pending.contains("＃") {
-            let parts = pending.split(whereSeparator: { $0 == "#" || $0 == "＃" }).map(String.init)
+            // 保留空段：结尾的 # 才能提交前面的词（对齐 Kotlin split 保留尾部空串的语义）
+            let parts = pending.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "#" || $0 == "＃" }).map(String.init)
             for part in parts.dropLast() where !TopicRules.finalize(part).isEmpty { addTopic(part) }
             pending = parts.last ?? ""
         }

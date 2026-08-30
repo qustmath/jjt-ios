@@ -22,9 +22,8 @@ struct HomeView: View {
     @State private var showQuiz = false
     @State private var showMall = false
     @State private var showVipClub = false
-    // 蜜兔会动画：呼吸辉光 / 图上流光 / 徽章扫光（对齐安卓 marquee-glow / shine-sweep / vip-sheen）
+    // 蜜兔会动画：呼吸辉光 / 徽章扫光（流光改由 TimelineView 逐帧驱动，不走 state）
     @State private var mituGlow = false
-    @State private var mituShine = false
     @State private var badgeSheen = false
     // 铃铛未读红点（IM 未读总数 > 0）
     @State private var hasUnread = false
@@ -384,7 +383,7 @@ struct HomeView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Noir.gold.opacity(0.15)).frame(height: 1) }
     }
 
-    // MARK: - 蜜兔会 · 独立奢华入口（静态版，呼吸/流光动画后续加回）
+    // MARK: - 蜜兔会 · 独立奢华入口
 
     private var mituEntrance: some View {
         let cardW = screenWidth - 40
@@ -480,17 +479,25 @@ struct HomeView: View {
                         .init(color: Color(red: 0x0A/255, green: 0x08/255, blue: 0x04/255).opacity(0.45), location: 0.45),
                         .init(color: Color(red: 0x06/255, green: 0x05/255, blue: 0x03/255).opacity(0.95), location: 1.0),
                     ], startPoint: .top, endPoint: .bottom)
-                    // 图上流光（斜切光带扫过，2.6s 周期，对齐安卓 shine-sweep）
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
-                        .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
-                        .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
-                        .init(color: .clear, location: 1),
-                    ], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: cardW / 3, height: 190 * 3)
-                    .rotationEffect(.degrees(-18))
-                    .offset(x: mituShine ? cardW * 1.4 : -cardW * 0.5, y: -190)
+                    // 图上流光（斜切光带从左到右扫过，对齐安卓 shine-sweep：周期前 60% 扫过、后 40% 静置。
+                    // TimelineView 逐帧驱动，保证始终单向；光带高 3 倍卡片、垂直居中，旋转后仍铺满到卡片底边）
+                    TimelineView(.animation) { tl in
+                        let period: Double = 4.2 // 比安卓 2.6s 放慢
+                        let phase = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
+                        let p = min(phase / 0.6, 1)
+                        let bandW = cardW / 3
+                        let x = -bandW * 1.2 + (cardW + bandW * 2.4) * p
+                        LinearGradient(stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: Noir.goldLight.opacity(0.28), location: 0.35),
+                            .init(color: Noir.goldPale.opacity(0.45), location: 0.5),
+                            .init(color: Noir.goldLight.opacity(0.28), location: 0.65),
+                            .init(color: .clear, location: 1),
+                        ], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: bandW, height: 190 * 3)
+                        .rotationEffect(.degrees(-18))
+                        .offset(x: x)
+                    }
                 }
                 .frame(width: cardW, height: 190)
                 .clipped()
@@ -517,7 +524,6 @@ struct HomeView: View {
             // 延迟到布局稳定后再启动循环动画
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 withAnimation(.easeIn(duration: 0.9).repeatForever(autoreverses: true)) { mituGlow = true }
-                withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) { mituShine = true }
                 withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false)) { badgeSheen = true }
             }
         }

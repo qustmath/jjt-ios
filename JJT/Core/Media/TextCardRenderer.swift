@@ -105,38 +105,37 @@ enum TextCardRenderer {
         }
     }
 
-    /// 定宽多行文本块（对齐安卓 StaticLayout：maxLines 截断 + 行距倍数；
-    /// 用 NSStringDrawing 的 truncatesLastVisibleLine，等价 UILabel numberOfLines 行为）
+    /// 定宽多行文本块（对齐安卓 StaticLayout：定宽自动换行 + maxLines 截断 + 行距倍数）。
+    /// 用 TextKit（NSTextStorage/NSLayoutManager/NSTextContainer，UILabel 同款排版管线），
+    /// NSStringDrawing 的 truncatesLastVisibleLine 实测存在不换行场景，故以 TextKit 为准。
     private struct TextBlock {
-        let attrString: NSAttributedString
-        let width: CGFloat
-        let maxLines: Int
-        let lineHeight: CGFloat
+        private let layoutManager = NSLayoutManager()
+        private let textContainer: NSTextContainer
 
         init(text: String, font: UIFont, color: UIColor, kern: CGFloat, width: CGFloat, maxLines: Int, lineHeightMultiple: CGFloat) {
             let para = NSMutableParagraphStyle()
             para.lineHeightMultiple = lineHeightMultiple
             para.lineBreakMode = .byTruncatingTail
-            attrString = NSAttributedString(string: text, attributes: [
+            let storage = NSTextStorage(string: text, attributes: [
                 .font: font, .foregroundColor: color, .kern: kern, .paragraphStyle: para,
             ])
-            self.width = width
-            self.maxLines = maxLines
-            self.lineHeight = font.lineHeight * lineHeightMultiple
+            textContainer = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+            textContainer.lineFragmentPadding = 0
+            textContainer.maximumNumberOfLines = maxLines
+            textContainer.lineBreakMode = .byTruncatingTail
+            layoutManager.addTextContainer(textContainer)
+            storage.addLayoutManager(layoutManager)
         }
 
-        /// 截到 maxLines 后的实际高度
+        /// 排版后的实际高度（已按 maxLines 截断）
         var height: CGFloat {
-            let full = attrString.boundingRect(
-                with: CGSize(width: width, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height
-            return min(full, lineHeight * CGFloat(maxLines))
+            layoutManager.ensureLayout(for: textContainer)
+            return layoutManager.usedRect(for: textContainer).height
         }
 
         func draw(at point: CGPoint) {
-            // 固定高度 rect + truncatesLastVisibleLine：超出部分截断并带省略号
-            attrString.draw(with: CGRect(x: point.x, y: point.y, width: width, height: height),
-                            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+            let glyphs = layoutManager.glyphRange(for: textContainer)
+            layoutManager.drawGlyphs(forGlyphRange: glyphs, at: point)
         }
     }
 }
