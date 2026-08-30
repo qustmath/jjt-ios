@@ -12,14 +12,14 @@ struct GiftCenterView: View {
     @StateObject private var payGuard = PayPasswordGuard()
     @Environment(\.dismiss) private var dismiss
 
-    @State private var giftTab = "3d"
     @State private var confirmGift: GiftItem?
     @State private var showPaySettings = false
     @State private var showRecharge = false
     @State private var sendOverlay: (gift: GiftItem, combo: Int)?
 
+    /// 只展示 2D 礼物（3D/GLB 已在 iOS 下线，不再解析）
     private var displayGifts: [GiftItem] {
-        vm.gifts.filter { giftRenderKindOf(giftDisplayIcon($0.icon, $0.animationUrl)).map { giftKindGroupOf($0.0) } == giftTab }
+        vm.gifts.filter { giftRenderKindOf(giftDisplayIcon($0.icon, $0.animationUrl)).map { giftKindGroupOf($0.0) } == "2d" }
     }
 
     var body: some View {
@@ -32,7 +32,6 @@ struct GiftCenterView: View {
                         if let sel = vm.selected {
                             stage(sel)
                         }
-                        tabSwitcher
                         giftGrid
                     }
                     .padding(.bottom, 40)
@@ -185,38 +184,6 @@ struct GiftCenterView: View {
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.gold.opacity(0.3), lineWidth: 1))
         .padding(.horizontal, 16)
         .padding(.top, 16)
-    }
-
-    // MARK: - 2D/3D 切换
-
-    private var tabSwitcher: some View {
-        HStack(spacing: 0) {
-            categoryTab("平 面 之 礼", active: giftTab == "2d") { giftTab = "2d" }
-            categoryTab("立 体 之 礼", active: giftTab == "3d") { giftTab = "3d" }
-        }
-        .padding(3)
-        .background(Color.black.opacity(0.5))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Noir.hairlineGold, lineWidth: 1))
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-    }
-
-    private func categoryTab(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 11))
-                .tracking(1.5)
-                .foregroundStyle(active ? .white : .white.opacity(0.45))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(active
-                            ? AnyShapeStyle(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
-                                                           startPoint: .topLeading, endPoint: .bottomTrailing))
-                            : AnyShapeStyle(Color.clear))
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - 礼物网格

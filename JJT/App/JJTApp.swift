@@ -20,8 +20,6 @@ struct JJTApp: App {
             if let uid = TokenManager.shared.userId, uid > 0 {
                 Bugly.setUserIdentifier(String(uid))
             }
-            // 上次解析 3D 模型途中崩溃 → 上报具体模型名
-            Gift3DView.reportPendingCrashMarker()
         }
     }
 

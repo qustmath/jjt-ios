@@ -171,12 +171,9 @@ struct PostDetailView: View {
             } else if post.mediaType == "video", post.isPaidLocked {
                 // 付费视频未解锁：封面虚化 + 锁
                 ZStack {
-                    AsyncImage(url: webImageURL(post.videoCover)) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() } else { Noir.noir3 }
-                    }
-                    .frame(width: JJTMetrics.screenWidth, height: heroHeight)
-                    .clipped()
-                    .blur(radius: 14)
+                    WebImage(url: webImageURL(post.videoCover)) { Noir.noir3 }
+                        .frame(width: JJTMetrics.screenWidth, height: heroHeight)
+                        .blur(radius: 14)
                     lockOverlay
                 }
                 .frame(width: JJTMetrics.screenWidth, height: heroHeight)
@@ -185,16 +182,13 @@ struct PostDetailView: View {
                 ZStack(alignment: .bottom) {
                     TabView {
                         ForEach(images.indices, id: \.self) { i in
-                            AsyncImage(url: webImageURL(images[i])) { phase in
-                                if let image = phase.image { image.resizable().scaledToFill() } else { Noir.noir3 }
-                            }
-                            .frame(width: JJTMetrics.screenWidth, height: heroHeight)
-                            .clipped()
-                            .blur(radius: post.isPaidLocked ? 14 : 0)
-                            .contentShape(Rectangle())
-                            // 付费未解锁不给预览，保持虚化遮罩
-                            .onTapGesture { if !post.isPaidLocked { previewIndex = i } }
-                            .tag(i)
+                            WebImage(url: webImageURL(images[i])) { Noir.noir3 }
+                                .frame(width: JJTMetrics.screenWidth, height: heroHeight)
+                                .blur(radius: post.isPaidLocked ? 14 : 0)
+                                .contentShape(Rectangle())
+                                // 付费未解锁不给预览，保持虚化遮罩
+                                .onTapGesture { if !post.isPaidLocked { previewIndex = i } }
+                                .tag(i)
                         }
                     }
                     .tabViewStyle(.page)

@@ -423,12 +423,9 @@ private struct VideoPostPageView: View {
 
     private func lockedPage(_ post: PostInfo) -> some View {
         ZStack {
-            AsyncImage(url: webImageURL(post.videoCover)) { phase in
-                if let image = phase.image { image.resizable().scaledToFill() } else { Color.black }
-            }
-            .frame(width: JJTMetrics.screenWidth, height: JJTMetrics.screenHeight)
-            .clipped()
-            .blur(radius: 16)
+            WebImage(url: webImageURL(post.videoCover)) { Color.black }
+                .frame(width: JJTMetrics.screenWidth, height: JJTMetrics.screenHeight)
+                .blur(radius: 16)
 
             VStack(spacing: 8) {
                 Spacer()

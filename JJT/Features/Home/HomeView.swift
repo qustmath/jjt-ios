@@ -273,18 +273,11 @@ struct HomeView: View {
             // 写死屏幕宽：图片加载完成后不允许它参与宽度协商（撑爆布局的根因）
             TabView(selection: $bannerIndex) {
                 ForEach(vm.banners.indices, id: \.self) { i in
-                    AsyncImage(url: webImageURL(vm.banners[i].imageUrl)) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            Noir.noir2
-                        }
-                    }
-                    .frame(width: screenWidth, height: 400)
-                    .clipped()
-                    .contentShape(Rectangle())
-                    .onTapGesture { handleBannerTap(vm.banners[i]) }
-                    .tag(i)
+                    WebImage(url: webImageURL(vm.banners[i].imageUrl)) { Noir.noir2 }
+                        .frame(width: screenWidth, height: 400)
+                        .contentShape(Rectangle())
+                        .onTapGesture { handleBannerTap(vm.banners[i]) }
+                        .tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -626,15 +619,8 @@ struct HomeView: View {
                     // 安卓跳用户主页；iOS 用户主页未迁移，先提示
                     Button { showToast("敬请期待") } label: {
                         ZStack(alignment: .topLeading) {
-                            AsyncImage(url: webImageURL(user.cover)) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    Color.white.opacity(0.05)
-                                }
-                            }
-                            .frame(width: 132, height: 190)
-                            .clipped()
+                            WebImage(url: webImageURL(user.cover)) { Color.white.opacity(0.05) }
+                                .frame(width: 132, height: 190)
                             LinearGradient(stops: [
                                 .init(color: .clear, location: 0.0),
                                 .init(color: .black.opacity(0.25), location: 0.35),
@@ -776,16 +762,10 @@ struct HomeView: View {
                         }
                         Spacer()
                         if let img = post.images?.first {
-                            AsyncImage(url: webImageURL(img)) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    Color.white.opacity(0.05)
-                                }
-                            }
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.08), lineWidth: 1))
+                            WebImage(url: webImageURL(img)) { Color.white.opacity(0.05) }
+                                .frame(width: 44, height: 44)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.08), lineWidth: 1))
                         }
                     }
                     .padding(.horizontal, 8)

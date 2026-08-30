@@ -331,16 +331,10 @@ private struct PostCard: View {
             // 封面
             ZStack {
                 if let url = coverURL {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            Noir.noir3
-                        }
-                    }
-                    .frame(width: width, height: width / aspect)
-                    .clipped()
-                    .blur(radius: post.isPaidLocked ? 12 : 0)
+                    // WebImage：带内存缓存 + 占位底座，滚动复用不丢图（AsyncImage 在瀑布流快速滚动会不出图）
+                    WebImage(url: url) { Noir.noir3 }
+                        .frame(width: width, height: width / aspect)
+                        .blur(radius: post.isPaidLocked ? 12 : 0)
                 } else {
                     Noir.noir3
                         .frame(width: width, height: width / aspect)

@@ -111,12 +111,9 @@ struct PostInteractionListView: View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottomLeading) {
                 if let url = post.mediaType == "video" ? webImageURL(post.videoCover) : webImageURL(post.images?.first) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() } else { Noir.noir3 }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 150)
-                    .clipped()
+                    WebImage(url: url) { Noir.noir3 }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 150)
                 } else {
                     Noir.noir3
                         .frame(maxWidth: .infinity)

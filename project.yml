@@ -19,8 +19,6 @@ targets:
           - "Resources/**"
       - path: JJT/Resources/stickers
         type: folder
-      - path: JJT/Resources/gifts
-        type: folder
       - path: JJT/Resources/posters
         type: folder
     info:

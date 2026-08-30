@@ -339,11 +339,8 @@ struct PageantHomeView: View {
     /// 作品封面：视频显示封面图，否则第一张图
     private func entryCover(_ entry: PageantEntry) -> some View {
         let url = (entry.video?.isEmpty == false) ? entry.videoCover : entry.images?.first
-        return AsyncImage(url: webImageURL(url)) { phase in
-            if let image = phase.image { image.resizable().scaledToFill() } else { Noir.noir3 }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
+        return WebImage(url: webImageURL(url)) { Noir.noir3 }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - 全部参赛者

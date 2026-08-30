@@ -129,14 +129,8 @@ struct UserProfileView: View {
     private var coverHeader: some View {
         ZStack(alignment: .topLeading) {
             Group {
-                if let bg = vm.profile?.profileBg, !bg.isEmpty, let url = URL(string: bg) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            coverFallback
-                        }
-                    }
+                if let bg = vm.profile?.profileBg, !bg.isEmpty {
+                    WebImage(url: webImageURL(bg)) { coverFallback }
                 } else {
                     coverFallback
                 }
@@ -439,12 +433,8 @@ struct UserProfileView: View {
                 Noir.noir3
                     .aspectRatio(tall ? 0.75 : 1.0, contentMode: .fit)
                     .overlay {
-                        if let cover = coverUrl, let url = URL(string: cover) {
-                            AsyncImage(url: url) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                }
-                            }
+                        if let cover = coverUrl {
+                            WebImage(url: webImageURL(cover)) { Noir.noir3 }
                         } else {
                             Noir.noir3.overlay(
                                 Text("暂无图片")

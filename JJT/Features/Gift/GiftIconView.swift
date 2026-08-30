@@ -1,19 +1,16 @@
 import SwiftUI
 
-/// 礼物统一渲染（对齐安卓 GiftIcon）：icon 五种形态——
+/// 礼物统一渲染（对齐安卓 GiftIcon 的 2D 子集；3D/GLB 已在 iOS 移除——解析即崩溃，见 2026-08 下线决定）——
 /// 1. `gift2d:xxx` → 程序化 2D 动效（Gift2DRender）
-/// 2. `gift3d:xxx` → 内置 GLB 3D 模型（Gift3DView）
-/// 3. `*.svga` URL → SVGA 动效
-/// 4. `*.glb` URL → 3D 模型（下载缓存后渲染）
-/// 5. 其他 http(s) URL → 普通图片；空 → 兜底图标
+/// 2. `*.svga` URL → SVGA 动效
+/// 3. 其他 http(s) URL → 普通图片
+/// 4. `gift3d:xxx` / `*.glb`（3D 礼物）→ 不解析，直接兜底图标（聊天/礼物墙收到 3D 礼物也不会触发 GLB 加载）
 ///
 /// [scale] 单礼物显示缩放（iconScale/100）：以盒子中心放大，不裁切、不影响布局（对齐安卓 graphicsLayer scale）
 struct GiftIconView: View {
     let icon: String?
     var size: CGFloat = 56
     var scale: CGFloat = 1.0
-    /// 3D 是否可交互（拖动旋转），舞台场景用
-    var interactive3D: Bool = false
 
     var body: some View {
         let kind = giftRenderKindOf(icon)
@@ -21,20 +18,14 @@ struct GiftIconView: View {
             switch kind?.0 {
             case "2d":
                 Gift2DRender(id: kind!.1, size: size)
-            case "3d", "glb":
-                Gift3DView(source: kind!.1, interactive: interactive3D)
-                    .frame(width: size, height: size)
             case "svga":
                 SvgaView(url: kind!.1)
+            case "3d", "glb":
+                // 3D 已下线：不加载 GLB，显示兜底图标
+                placeholderIcon
             default:
                 if let icon, icon.hasPrefix("http"), let url = URL(string: icon) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFit()
-                        } else {
-                            placeholderIcon
-                        }
-                    }
+                    WebImage(url: url, contentMode: .fit) { placeholderIcon }
                 } else {
                     placeholderIcon
                 }
@@ -97,8 +88,7 @@ struct GiftSendOverlay: View {
                     GiftIconView(
                         icon: (gift.animationUrl?.isEmpty == false ? gift.animationUrl : gift.icon),
                         size: 220,
-                        scale: CGFloat(gift.iconScale ?? 100) / 100,
-                        interactive3D: true
+                        scale: CGFloat(gift.iconScale ?? 100) / 100
                     )
                 }
                 .padding(.bottom, 28)
