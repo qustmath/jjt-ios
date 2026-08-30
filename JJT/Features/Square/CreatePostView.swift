@@ -1,7 +1,48 @@
 import SwiftUI
 import PhotosUI
 
-/// 发布帖子 — 对齐安卓 CreatePostScreen（v1：图片帖；视频发布需转码/截帧，后续迁移）
+/// 话题规则（对齐安卓 TopicRules 与服务端清洗管线，ADR 0014）：
+/// ≤5 个、单个 ≤20 字（码点）；合法字符 中英文/数字/emoji；归一化 = 全半角统一 + 小写；展示名保留输入写法
+enum TopicRules {
+    static let maxTopics = 5
+    static let maxLength = 20
+
+    /// 合法字符：字母/数字/emoji（含肤色修饰、ZWJ、VS16、键帽符）；与服务端正则一致
+    private static let validRegex = try! NSRegularExpression(
+        pattern: "^[\\p{L}\\p{N}\\p{So}\\u200D\\uFE0F\\u20E3\\U0001F3FB-\\U0001F3FF]+$")
+
+    /// 全角 → 半角（全角 ASCII 变体平移；全角空格转半角）
+    static func toHalfWidth(_ s: String) -> String {
+        String(s.unicodeScalars.map { sc -> Character in
+            switch sc.value {
+            case 0x3000: return " "
+            case 0xFF01...0xFF5E: return Character(UnicodeScalar(sc.value - 0xFEE0)!)
+            default: return Character(sc)
+            }
+        })
+    }
+
+    /// 输入态预归一化（宽松，便于连续输入）：全半角统一、去 #、去空格、限长
+    static func preNormalizeInput(_ s: String) -> String {
+        let t = toHalfWidth(s).replacingOccurrences(of: "#", with: "").replacingOccurrences(of: " ", with: "")
+        return String(t.prefix(maxLength))
+    }
+
+    /// 提交态校验（与服务端同规则）：合法返回展示名，非法返回空串
+    static func finalize(_ raw: String) -> String {
+        let name = toHalfWidth(raw).replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name.unicodeScalars.count <= maxLength else { return "" }
+        let range = NSRange(name.startIndex..., in: name)
+        return validRegex.firstMatch(in: name, range: range) != nil ? name : ""
+    }
+
+    /// 归一化键（chips 去重用）
+    static func normKey(_ name: String) -> String {
+        toHalfWidth(name).trimmingCharacters(in: .whitespaces).lowercased()
+    }
+}
+
+/// 发布帖子 — 对齐安卓 CreatePostScreen：图文/视频双形态、话题 chips（实时补全）、POI 地点选择、付费密语
 /// editPostId 非空为编辑模式：回填原帖内容，保存走 update
 struct CreatePostView: View {
 
@@ -11,6 +52,9 @@ struct CreatePostView: View {
     @StateObject private var vm = CreatePostViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var pickedItems: [PhotosPickerItem] = []
+    @State private var pickedVideo: PhotosPickerItem?
+    @State private var showPoiPicker = false
+    @FocusState private var topicFocused: Bool
 
     var body: some View {
         ZStack {
@@ -29,7 +73,7 @@ struct CreatePostView: View {
                         .foregroundStyle(Noir.goldText)
                     Spacer()
                     Button { vm.publish(editPostId: editPostId) } label: {
-                        Text(vm.isPublishing ? "保存中…" : (vm.isUploading ? "图片上传中…" : (editPostId == nil ? "发布" : "保存")))
+                        Text(vm.isPublishing ? "保存中…" : (publishBusyHint ?? (editPostId == nil ? "发布" : "保存")))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 20)
@@ -46,9 +90,10 @@ struct CreatePostView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        imageSection
+                        mediaSection
                         textSection
-                        metaSection
+                        topicSection
+                        poiSection
                         paidSection
                     }
                     .padding(.horizontal, 20)
@@ -89,11 +134,23 @@ struct CreatePostView: View {
             vm.addImages(items)
             pickedItems = []
         }
+        .onChange(of: pickedVideo) { _, item in
+            if let item { vm.loadPickedVideo(item) }
+            pickedVideo = nil
+        }
         .onChange(of: vm.created) { _, created in
             if created {
                 NotificationCenter.default.post(name: .jjtPostCreated, object: nil)
                 dismiss()
             }
+        }
+        .sheet(isPresented: $showPoiPicker) {
+            PoiPickerView { poi in
+                vm.selectedPoi = poi
+                showPoiPicker = false
+            }
+            .presentationDetents([.medium, .large])
+            .presentationBackground(Noir.noir)
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -105,91 +162,205 @@ struct CreatePostView: View {
         }
     }
 
+    /// 发布按钮忙碌提示（图片上传中/视频压缩中/视频上传中）
+    private var publishBusyHint: String? {
+        if vm.videoStage == "compressing" { return "视频压缩中…" }
+        if vm.videoStage == "uploading" { return "视频上传中…" }
+        if vm.isUploading { return "图片上传中…" }
+        return nil
+    }
+
+    // MARK: - 媒体区（图文 / 视频）
+
+    @ViewBuilder
+    private var mediaSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // 形态切换（还没选内容时可切；对齐安卓 setMediaType）
+            if vm.images.isEmpty, vm.videoUrl == nil, editPostId == nil {
+                Picker("形态", selection: Binding(
+                    get: { vm.mediaType },
+                    set: { vm.setMediaType($0) }
+                )) {
+                    Text("图文").tag("image")
+                    Text("视频").tag("video")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 150)
+            }
+
+            if vm.mediaType == "video" {
+                videoSection
+            } else {
+                Text("图片")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Noir.textDim)
+                imageGrid
+            }
+        }
+    }
+
     // MARK: - 图片区
 
-    private var imageSection: some View {
+    private var imageGrid: some View {
+        let cellW = (JJTMetrics.screenWidth - 40 - 20) / 3
+        return LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: 10), count: 3), spacing: 10) {
+            ForEach(vm.images) { item in
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if let remote = item.remoteURL {
+                            // 编辑模式回填的远端图
+                            AsyncImage(url: webImageURL(remote)) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Noir.noir3
+                                }
+                            }
+                        } else {
+                            Image(uiImage: item.image)
+                                .resizable()
+                                .scaledToFill()
+                        }
+                    }
+                    .frame(width: cellW, height: cellW)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, lineWidth: 1))
+
+                    // 上传状态
+                    if item.url == nil && !item.failed {
+                        ZStack {
+                            Color.black.opacity(0.45)
+                            ProgressView().tint(.white)
+                        }
+                        .frame(width: cellW, height: cellW)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else if item.failed {
+                        ZStack {
+                            Color.black.opacity(0.55)
+                            VStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(Noir.crimsonHot)
+                                Text("点击重试")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
+                        }
+                        .frame(width: cellW, height: cellW)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .onTapGesture { vm.retry(item.id) }
+                    }
+
+                    // 删除
+                    Button { vm.remove(item.id) } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .shadow(radius: 2)
+                    }
+                    .padding(5)
+                }
+            }
+
+            // 添加按钮（最多 9 张）
+            if vm.images.count < 9 {
+                PhotosPicker(selection: $pickedItems, maxSelectionCount: 9 - vm.images.count, matching: .images) {
+                    VStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Noir.gold.opacity(0.7))
+                        Text("\(vm.images.count)/9")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Noir.textFaint)
+                    }
+                    .frame(width: cellW, height: cellW)
+                    .background(Noir.noir2)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, style: StrokeStyle(lineWidth: 1, dash: [4])))
+                }
+            }
+        }
+    }
+
+    // MARK: - 视频区（对齐安卓：选视频 → 720p 转码 → 抽封面 → 上传）
+
+    private var videoSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("图片")
+            Text("视频")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Noir.textDim)
 
-            let cellW = (JJTMetrics.screenWidth - 40 - 20) / 3
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: 10), count: 3), spacing: 10) {
-                ForEach(vm.images) { item in
-                    ZStack(alignment: .topTrailing) {
+            if vm.videoUrl != nil || vm.videoStage != nil || vm.videoError {
+                ZStack(alignment: .topTrailing) {
+                    ZStack {
+                        if let cover = vm.videoCoverLocal {
+                            Image(uiImage: cover).resizable().scaledToFill()
+                        } else if let remote = vm.videoCoverUrl {
+                            AsyncImage(url: webImageURL(remote)) { phase in
+                                if let image = phase.image { image.resizable().scaledToFill() } else { Noir.noir3 }
+                            }
+                        } else {
+                            Noir.noir3
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 200)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
                         Group {
-                            if let remote = item.remoteURL {
-                                // 编辑模式回填的远端图
-                                AsyncImage(url: webImageURL(remote)) { phase in
-                                    if let image = phase.image {
-                                        image.resizable().scaledToFill()
-                                    } else {
-                                        Noir.noir3
-                                    }
-                                }
+                            if vm.videoStage == "compressing" {
+                                statusOverlay("视频压缩中…", spinner: true)
+                            } else if vm.videoStage == "uploading" {
+                                statusOverlay("视频上传中…", spinner: true)
+                            } else if vm.videoError {
+                                statusOverlay("处理失败，点击重选", spinner: false)
                             } else {
-                                Image(uiImage: item.image)
-                                    .resizable()
-                                    .scaledToFill()
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(.white.opacity(0.85))
                             }
                         }
-                        .frame(width: cellW, height: cellW)
-                        .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, lineWidth: 1))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                        // 上传状态
-                        if item.url == nil && !item.failed {
-                            ZStack {
-                                Color.black.opacity(0.45)
-                                ProgressView().tint(.white)
-                            }
-                            .frame(width: cellW, height: cellW)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        } else if item.failed {
-                            ZStack {
-                                Color.black.opacity(0.55)
-                                VStack(spacing: 4) {
-                                    Image(systemName: "exclamationmark.triangle")
-                                        .foregroundStyle(Noir.crimsonHot)
-                                    Text("点击重试")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.white.opacity(0.8))
-                                }
-                            }
-                            .frame(width: cellW, height: cellW)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .onTapGesture { vm.retry(item.id) }
-                        }
-
-                        // 删除
-                        Button { vm.remove(item.id) } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .shadow(radius: 2)
-                        }
-                        .padding(5)
+                    Button { vm.removeVideo() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .shadow(radius: 2)
                     }
+                    .padding(8)
                 }
-
-                // 添加按钮（最多 9 张）
-                if vm.images.count < 9 {
-                    PhotosPicker(selection: $pickedItems, maxSelectionCount: 9 - vm.images.count, matching: .images) {
-                        VStack(spacing: 6) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 22))
-                                .foregroundStyle(Noir.gold.opacity(0.7))
-                            Text("\(vm.images.count)/9")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Noir.textFaint)
-                        }
-                        .frame(width: cellW, height: cellW)
-                        .background(Noir.noir2)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, style: StrokeStyle(lineWidth: 1, dash: [4])))
+                .frame(height: 200)
+            } else {
+                PhotosPicker(selection: $pickedVideo, matching: .videos) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "video.badge.plus")
+                            .font(.system(size: 26))
+                            .foregroundStyle(Noir.gold.opacity(0.7))
+                        Text("选择视频（将压缩为 720p）")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Noir.textFaint)
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 140)
+                    .background(Noir.noir2)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.hairlineGold, style: StrokeStyle(lineWidth: 1, dash: [4])))
                 }
+            }
+        }
+    }
+
+    private func statusOverlay(_ text: String, spinner: Bool) -> some View {
+        ZStack {
+            Color.black.opacity(0.5)
+            VStack(spacing: 8) {
+                if spinner { ProgressView().tint(.white) }
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.85))
             }
         }
     }
@@ -225,28 +396,120 @@ struct CreatePostView: View {
         }
     }
 
-    // MARK: - 话题 / 地点
+    // MARK: - 话题 chips（ADR 0014：逐条添加/单独删除/实时补全）
 
-    private var metaSection: some View {
-        VStack(spacing: 12) {
+    private var topicSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("#")
                     .foregroundStyle(Noir.crimsonHot)
                     .font(.system(size: 14, weight: .semibold))
-                TextField("话题（空格分隔，如 哥特 茶会）", text: $vm.topics)
-                    .font(.system(size: 13))
+                TextField("话题（空格/# 确认，最多 5 个）", text: Binding(
+                    get: { vm.topicInput },
+                    set: { vm.onTopicInputChange($0) }
+                ))
+                .font(.system(size: 13))
+                .focused($topicFocused)
+                .onSubmit {
+                    vm.commitTopicInput()
+                }
             }
             .noirField()
 
+            // 已选 chips
+            if !vm.topicList.isEmpty {
+                FlowRow(spacing: 8) {
+                    ForEach(vm.topicList, id: \.self) { t in
+                        HStack(spacing: 4) {
+                            Text("#\(t)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Noir.crimsonHot)
+                            Button { vm.removeTopic(t) } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Noir.wine.opacity(0.35))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Noir.hairlineRed, lineWidth: 1))
+                    }
+                }
+            }
+
+            // 实时补全建议
+            if topicFocused, !vm.topicSuggestions.isEmpty {
+                FlowRow(spacing: 8) {
+                    ForEach(vm.topicSuggestions) { s in
+                        Button {
+                            vm.addTopic(s.name ?? "")
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("#\(s.name ?? "")")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Noir.ivory)
+                                if let n = s.useCount {
+                                    Text("\(n)")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.05))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Noir.hairlineGold, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 地点（POI 选择）
+
+    private var poiSection: some View {
+        Button { showPoiPicker = true } label: {
             HStack(spacing: 8) {
                 Image(systemName: "mappin")
                     .foregroundStyle(Noir.crimsonHot)
                     .font(.system(size: 13))
-                TextField("地点（选填）", text: $vm.location)
-                    .font(.system(size: 13))
+                if let poi = vm.selectedPoi {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(poi.title ?? "")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Noir.ivory)
+                            .lineLimit(1)
+                        if let addr = poi.address, !addr.isEmpty {
+                            Text(addr)
+                                .font(.system(size: 10))
+                                .foregroundStyle(Noir.textFaint)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                    Button { vm.selectedPoi = nil } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("添加地点（选填）")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Noir.textFaint)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
             }
             .noirField()
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 付费设置
@@ -275,6 +538,18 @@ struct CreatePostView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Noir.textDim)
                 }
+                // 视频帖：试看时长设置（对齐安卓 previewSeconds）
+                if vm.mediaType == "video" {
+                    HStack(spacing: 8) {
+                        TextField("试看秒数（0 = 不可试看）", text: $vm.previewSeconds)
+                            .font(.system(size: 13))
+                            .keyboardType(.numberPad)
+                            .noirField()
+                        Text("秒")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Noir.textDim)
+                    }
+                }
                 Text("未解锁的用户将看到虚化遮罩，支付后可见全文")
                     .font(.system(size: 10))
                     .foregroundStyle(Noir.textFaint)
@@ -284,6 +559,133 @@ struct CreatePostView: View {
         .background(Noir.noir2)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.hairlineGold, lineWidth: 1))
+    }
+}
+
+// MARK: - POI 选择器（周边 + 搜索；对齐安卓 CreatePostScreen POI 弹层）
+
+private struct PoiPickerView: View {
+
+    let onSelect: (PoiInfo) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var keyword = ""
+    @State private var nearby: [PoiInfo] = []
+    @State private var results: [PoiInfo] = []
+    @State private var locating = true
+    @State private var denied = false
+    @State private var searchTask: Task<Void, Never>?
+
+    private var shown: [PoiInfo] { keyword.isEmpty ? nearby : results }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("选择地点")
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .foregroundStyle(Noir.goldText)
+                Spacer()
+                Button("取消") { dismiss() }
+                    .font(.system(size: 14))
+                    .foregroundStyle(Noir.textDim)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.white.opacity(0.35))
+                    .font(.system(size: 13))
+                TextField("搜索地点", text: $keyword)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Noir.ivory)
+                    .onChange(of: keyword) { _, v in scheduleSearch(v) }
+            }
+            .noirField()
+            .padding(.horizontal, 16)
+
+            if locating, keyword.isEmpty {
+                ProgressView().tint(Noir.crimson)
+                    .frame(maxWidth: .infinity)
+                    .padding(40)
+            } else if denied, keyword.isEmpty {
+                VStack(spacing: 8) {
+                    Text("定位未授权，可使用上方搜索找地点")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Noir.textDim)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(30)
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(shown) { poi in
+                        Button {
+                            onSelect(poi)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "mappin.circle")
+                                    .foregroundStyle(Noir.crimsonHot)
+                                    .font(.system(size: 16))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(poi.title ?? "")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Noir.ivory)
+                                        .lineLimit(1)
+                                    Text(poi.address ?? "")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Noir.textFaint)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                if let d = poi.distance {
+                                    Text(d >= 1000 ? String(format: "%.1fkm", Double(d) / 1000) : "\(d)m")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Rectangle().fill(Color.white.opacity(0.04)).frame(height: 1).padding(.leading, 42)
+                    }
+                    if !keyword.isEmpty, results.isEmpty {
+                        Text("没有找到相关地点")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Noir.textFaint)
+                            .padding(30)
+                    }
+                }
+            }
+        }
+        .background(Noir.noir.ignoresSafeArea())
+        .task { await loadNearby() }
+    }
+
+    private func loadNearby() async {
+        guard let c = await CityLocator.shared.currentCoordinate() else {
+            denied = true
+            locating = false
+            return
+        }
+        nearby = (try? await GeoAPI.nearbyPois(latitude: c.latitude, longitude: c.longitude)) ?? []
+        locating = false
+    }
+
+    private func scheduleSearch(_ kw: String) {
+        searchTask?.cancel()
+        guard !kw.isEmpty else { results = []; return }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let city = await CityLocator.shared.currentCity()
+            let c = await CityLocator.shared.currentCoordinate()
+            results = (try? await GeoAPI.searchPoi(keyword: kw, cityName: city, latitude: c?.latitude, longitude: c?.longitude)) ?? []
+        }
     }
 }
 
@@ -302,16 +704,34 @@ final class CreatePostViewModel: ObservableObject {
         var failed = false
     }
 
+    @Published var mediaType = "image" // image / video
     @Published var images: [ImageItem] = []
     @Published var title = ""
     @Published var content = ""
-    @Published var topics = ""
-    @Published var location = ""
+    // 话题 chips（ADR 0014）
+    @Published var topicList: [String] = []
+    @Published var topicInput = ""
+    @Published var topicSuggestions: [TopicInfo] = []
+    // 地点（POI）
+    @Published var selectedPoi: PoiInfo?
+    // 视频
+    @Published var videoUrl: String?
+    @Published var videoCoverUrl: String?
+    @Published var videoCoverLocal: UIImage?
+    @Published var videoStage: String? // compressing / uploading
+    @Published var videoError = false
+    @Published var videoDurationSec = 0
+
     @Published var paidEnabled = false
     @Published var paidPrice = ""
+    @Published var previewSeconds = ""
     @Published var isPublishing = false
     @Published var errorMessage: String?
     @Published var created = false
+
+    /// 已选视频（转码重试用）
+    private var pickedVideoURL: URL?
+    private var suggestTask: Task<Void, Never>?
 
     /// 有图片正在上传（占位未上传完且未失败）
     var isUploading: Bool {
@@ -320,8 +740,22 @@ final class CreatePostViewModel: ObservableObject {
 
     var canPublish: Bool {
         let full = (title + content).trimmingCharacters(in: .whitespacesAndNewlines)
-        return !full.isEmpty && !images.isEmpty && images.allSatisfy { $0.url != nil }
+        guard !full.isEmpty else { return false }
+        if mediaType == "video" {
+            return videoUrl != nil && videoStage == nil && !videoError
+        }
+        return !images.isEmpty && images.allSatisfy { $0.url != nil }
     }
+
+    /// 切换媒体形态（清空另一侧内容，对齐安卓 setMediaType）
+    func setMediaType(_ t: String) {
+        guard t != mediaType else { return }
+        mediaType = t
+        images = []
+        removeVideo()
+    }
+
+    // ---- 图片 ----
 
     /// 相册选图：先上屏占位，再后台压缩上传（对齐安卓 addImages）
     func addImages(_ items: [PhotosPickerItem]) {
@@ -364,6 +798,124 @@ final class CreatePostViewModel: ObservableObject {
         }
     }
 
+    // ---- 视频（对齐安卓 setVideo：读时长 → 抽封面 → 720p 转码 → 上传） ----
+
+    func loadPickedVideo(_ item: PhotosPickerItem) {
+        Task {
+            guard let picked = try? await item.loadTransferable(type: PickedVideo.self) else { return }
+            await setVideo(picked.url)
+        }
+    }
+
+    func setVideo(_ url: URL) async {
+        pickedVideoURL = url
+        videoDurationSec = await VideoTranscoder.durationSeconds(url)
+        mediaType = "video"
+        images = []
+        videoUrl = nil
+        videoCoverUrl = nil
+        videoCoverLocal = nil
+        videoStage = "compressing"
+        videoError = false
+
+        let coverData = await VideoTranscoder.captureCover(url)
+        if let coverData { videoCoverLocal = UIImage(data: coverData) }
+
+        guard let out = await VideoTranscoder.transcode720p(url) else {
+            videoStage = nil
+            videoError = true
+            return
+        }
+        videoStage = "uploading"
+        do {
+            let videoData = try Data(contentsOf: out)
+            let vurl = try await APIClient.shared.uploadFile(data: videoData, filename: "postvideo_\(UUID().uuidString.prefix(8)).mp4", mime: "video/mp4")
+            var curl: String?
+            if let coverData {
+                curl = try? await APIClient.shared.uploadFile(data: coverData, filename: "postcover_\(UUID().uuidString.prefix(8)).jpg", mime: "image/jpeg")
+            }
+            videoUrl = vurl
+            videoCoverUrl = curl
+            videoStage = nil
+        } catch {
+            videoStage = nil
+            videoError = true
+        }
+        try? FileManager.default.removeItem(at: out)
+    }
+
+    func removeVideo() {
+        videoUrl = nil
+        videoCoverUrl = nil
+        videoCoverLocal = nil
+        videoStage = nil
+        videoError = false
+        videoDurationSec = 0
+        pickedVideoURL = nil
+    }
+
+    // ---- 话题 chips ----
+
+    /// 话题输入：#/＃/空格/逗号 作为分隔符逐词提交（与服务端拆分语义一致），本地预归一化并触发实时补全
+    func onTopicInputChange(_ v: String) {
+        let seps: [Character] = ["#", "＃", " ", ",", "，"]
+        if v.contains(where: { seps.contains($0) }) {
+            for part in v.split(whereSeparator: { seps.contains($0) }) { addTopic(String(part)) }
+            topicInput = ""
+            topicSuggestions = []
+            return
+        }
+        topicInput = TopicRules.preNormalizeInput(v)
+        scheduleSuggest(topicInput)
+    }
+
+    /// 输入确认（键盘提交）：把当前输入落为 chip
+    func commitTopicInput() {
+        addTopic(topicInput)
+        topicInput = ""
+        topicSuggestions = []
+    }
+
+    /// 添加话题 chip（输入确认或点选补全）：本地按服务端同规则校验，按归一化键去重，≤5 个
+    func addTopic(_ raw: String) {
+        let name = TopicRules.finalize(raw)
+        guard !name.isEmpty else {
+            if !raw.trimmingCharacters(in: .whitespaces).isEmpty {
+                errorMessage = "话题仅支持中英文/数字/emoji，且不超过 20 字"
+            }
+            return
+        }
+        if topicList.count >= TopicRules.maxTopics {
+            errorMessage = "最多添加 \(TopicRules.maxTopics) 个话题"
+            return
+        }
+        // 归一化后重复：静默忽略（大小写/全半角差异视为同一话题）
+        if topicList.contains(where: { TopicRules.normKey($0) == TopicRules.normKey(name) }) { return }
+        topicList.append(name)
+        topicInput = ""
+        topicSuggestions = []
+    }
+
+    func removeTopic(_ name: String) {
+        topicList.removeAll { $0 == name }
+    }
+
+    /// 实时补全（300ms 防抖，失败静默）；空输入拉热门话题
+    private func scheduleSuggest(_ keyword: String) {
+        suggestTask?.cancel()
+        suggestTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            if keyword.isEmpty {
+                topicSuggestions = (try? await SocialAPI.hotTopics(limit: 10)) ?? []
+            } else {
+                topicSuggestions = (try? await SocialAPI.suggestTopics(keyword: TopicRules.normKey(keyword), limit: 10)) ?? []
+            }
+        }
+    }
+
+    // ---- 编辑 / 发布 ----
+
     /// 编辑模式：加载原帖回填（对齐安卓 loadForEdit；首行为标题，其余为正文）
     func loadForEdit(_ postId: Int64) {
         Task {
@@ -372,14 +924,23 @@ final class CreatePostViewModel: ObservableObject {
             let lines = raw.components(separatedBy: "\n")
             title = lines.first ?? ""
             content = lines.dropFirst().joined(separator: "\n")
-            topics = (post.topics ?? []).joined(separator: " ")
-            location = post.location ?? ""
+            topicList = post.topics ?? []
+            if let place = post.location, !place.isEmpty {
+                selectedPoi = PoiInfo(title: place, address: post.cityName, latitude: nil, longitude: nil, cityCode: nil, cityName: post.cityName, distance: nil)
+            }
             if let price = post.paidPrice, price > 0 {
                 paidEnabled = true
                 paidPrice = "\(price)"
+                if let sec = post.previewSeconds, sec > 0 { previewSeconds = "\(sec)" }
             }
-            images = (post.images ?? []).map { url in
-                ImageItem(image: placeholderImage(), remoteURL: url, url: url)
+            if post.mediaType == "video" {
+                mediaType = "video"
+                videoUrl = post.video
+                videoCoverUrl = post.videoCover
+            } else {
+                images = (post.images ?? []).map { url in
+                    ImageItem(image: placeholderImage(), remoteURL: url, url: url)
+                }
             }
         }
     }
@@ -397,13 +958,16 @@ final class CreatePostViewModel: ObservableObject {
             ? content.trimmingCharacters(in: .whitespacesAndNewlines)
             : title.trimmingCharacters(in: .whitespaces) + "\n" + content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !full.isEmpty else { errorMessage = "请输入内容"; return }
-        guard !images.isEmpty else { errorMessage = "请至少选择一张图片"; return }
-        guard images.allSatisfy({ $0.url != nil }) else { errorMessage = "图片还在上传中…"; return }
+        if mediaType == "video" {
+            guard videoUrl != nil, videoStage == nil else { errorMessage = "视频还在处理中…"; return }
+        } else {
+            guard !images.isEmpty else { errorMessage = "请至少选择一张图片"; return }
+            guard images.allSatisfy({ $0.url != nil }) else { errorMessage = "图片还在上传中…"; return }
+        }
 
-        let topicList = topics
-            .split(whereSeparator: { " ，,".contains($0) })
-            .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "") }
-            .filter { !$0.isEmpty }
+        // 话题已是 chips 列表（本地预归一化 + 去重）；服务端清洗管线为最终权威
+        let topicsArg = topicList.isEmpty ? nil : topicList
+        let previewSec = paidEnabled && mediaType == "video" ? Int(previewSeconds) : nil
 
         isPublishing = true
         Task {
@@ -411,35 +975,35 @@ final class CreatePostViewModel: ObservableObject {
                 if let editPostId {
                     _ = try await SocialAPI.updatePost(UpdatePostReq(
                         id: editPostId,
-                        mediaType: "image",
-                        images: images.compactMap(\.url),
-                        video: nil,
-                        videoCover: nil,
+                        mediaType: mediaType,
+                        images: mediaType == "video" ? nil : images.compactMap(\.url),
+                        video: mediaType == "video" ? videoUrl : nil,
+                        videoCover: mediaType == "video" ? videoCoverUrl : nil,
                         content: full,
-                        topics: topicList.isEmpty ? nil : topicList,
-                        location: location.isEmpty ? nil : location,
-                        latitude: nil,
-                        longitude: nil,
-                        cityCode: nil,
-                        cityName: nil,
+                        topics: topicsArg,
+                        location: selectedPoi?.title,
+                        latitude: selectedPoi?.latitude,
+                        longitude: selectedPoi?.longitude,
+                        cityCode: selectedPoi?.cityCode,
+                        cityName: selectedPoi?.cityName,
                         paidPrice: paidEnabled ? Int(paidPrice) : nil,
-                        previewSeconds: nil
+                        previewSeconds: previewSec
                     ))
                 } else {
                     _ = try await SocialAPI.createPost(CreatePostReq(
-                        mediaType: "image",
-                        images: images.compactMap(\.url),
-                        video: nil,
-                        videoCover: nil,
+                        mediaType: mediaType,
+                        images: mediaType == "video" ? nil : images.compactMap(\.url),
+                        video: mediaType == "video" ? videoUrl : nil,
+                        videoCover: mediaType == "video" ? videoCoverUrl : nil,
                         content: full,
-                        topics: topicList.isEmpty ? nil : topicList,
-                        location: location.isEmpty ? nil : location,
-                        latitude: nil,
-                        longitude: nil,
-                        cityCode: nil,
-                        cityName: nil,
+                        topics: topicsArg,
+                        location: selectedPoi?.title,
+                        latitude: selectedPoi?.latitude,
+                        longitude: selectedPoi?.longitude,
+                        cityCode: selectedPoi?.cityCode,
+                        cityName: selectedPoi?.cityName,
                         paidPrice: paidEnabled ? Int(paidPrice) : nil,
-                        previewSeconds: nil
+                        previewSeconds: previewSec
                     ))
                 }
                 isPublishing = false

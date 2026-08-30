@@ -7,6 +7,15 @@ struct EventCityInfo: Decodable {
     let cityName: String
 }
 
+// MARK: - 话题（一等实体，ADR 0014）
+
+struct TopicInfo: Decodable, Identifiable {
+    let id: Int64
+    let name: String?
+    let useCount: Int64?
+    let pinned: Bool?
+}
+
 // MARK: - 评论模型（对齐安卓 CommentInfo / CommentReq）
 
 struct CommentInfo: Decodable, Identifiable {
@@ -166,6 +175,18 @@ enum SocialAPI {
     /// 举报帖子：预设原因 + 可选补充说明，提交后进待审由运营审核；按 (会员, 帖子) 唯一，重复举报幂等
     static func report(postId: Int64, reason: String, detail: String?) async throws -> Bool {
         try await APIClient.shared.post("app-api/social/post/report", body: PostReportReq(postId: postId, reason: reason, detail: detail))
+    }
+
+    /// 发帖话题补全：按输入（归一化后包含匹配）匹配正常状态话题，按使用次数降序；禁用话题不出现（ADR 0014）
+    static func suggestTopics(keyword: String? = nil, limit: Int = 10) async throws -> [TopicInfo] {
+        var query = ["limit": "\(limit)"]
+        if let keyword, !keyword.isEmpty { query["keyword"] = keyword }
+        return try await APIClient.shared.get("app-api/social/topic/suggest", query: query)
+    }
+
+    /// 热门话题：近 7 天使用次数实时统计，置顶在前、禁用排除（ADR 0014）
+    static func hotTopics(limit: Int = 20) async throws -> [TopicInfo] {
+        try await APIClient.shared.get("app-api/social/topic/hot", query: ["limit": "\(limit)"])
     }
 }
 
