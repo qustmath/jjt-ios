@@ -24,7 +24,7 @@ struct MainTabView: View {
 
     /// 运营弹窗/banner 的跳转目标（对齐安卓 handleDeepLink 子集）
     enum DeepLinkTarget: Identifiable {
-        case wheel, activity(Int64), post(Int64), friend(Int64), group(String)
+        case wheel, activity(Int64), post(Int64), friend(Int64), group(String), pageant
         var id: String {
             switch self {
             case .wheel: return "wheel"
@@ -32,6 +32,7 @@ struct MainTabView: View {
             case .post(let pid): return "post_\(pid)"
             case .friend(let uid): return "friend_\(uid)"
             case .group(let gid): return "group_\(gid)"
+            case .pageant: return "pageant"
             }
         }
     }
@@ -87,6 +88,8 @@ struct MainTabView: View {
                 if let uid = (obj["uid"] as? NSNumber)?.int64Value { deepLink = .friend(uid) }
             case "group":
                 if let gid = obj["gid"] as? String { deepLink = .group(gid) }
+            case "pageant":
+                deepLink = .pageant
             default:
                 showToast("敬请期待")
             }
@@ -98,6 +101,7 @@ struct MainTabView: View {
             case .post(let pid): PostDetailView(postId: pid)
             case .friend(let uid): UserProfileView(userId: uid)
             case .group(let gid): ChatView(peerId: gid, isGroup: true, title: nil)
+            case .pageant: PageantHomeView()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .jjtSwitchTab)) { note in

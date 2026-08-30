@@ -21,6 +21,8 @@ targets:
         type: folder
       - path: JJT/Resources/gifts
         type: folder
+      - path: JJT/Resources/posters
+        type: folder
     info:
       path: JJT/Info.plist
       properties:
