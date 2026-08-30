@@ -392,7 +392,7 @@ private final class PageantEntrySheetModel: ObservableObject {
                 videoStage = nil
             } catch {
                 videoStage = nil
-                error = "视频上传失败，请重试"
+                self.error = "视频上传失败，请重试"
             }
             try? FileManager.default.removeItem(at: out)
         }
@@ -427,7 +427,7 @@ private final class PageantEntrySheetModel: ObservableObject {
                 if case .business(_, let msg) = e { error = msg } else { error = "提交失败，请重试" }
             } catch {
                 submitting = false
-                error = "提交失败，请重试"
+                self.error = "提交失败，请重试"
             }
         }
     }

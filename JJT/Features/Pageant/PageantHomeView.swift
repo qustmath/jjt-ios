@@ -310,7 +310,7 @@ struct PageantHomeView: View {
                 LinearGradient(colors: [.clear, .black.opacity(0.9)], startPoint: .top, endPoint: .bottom)
                 Text("N°\(rank)")
                     .font(.system(size: isChampion ? 15 : 14, weight: .semibold, design: .serif))
-                    .foregroundStyle(isChampion ? Noir.goldText : AnyShapeStyle(Color.white.opacity(0.7)))
+                    .foregroundStyle(isChampion ? AnyShapeStyle(Noir.goldText) : AnyShapeStyle(Color.white.opacity(0.7)))
                     .padding(.leading, 8)
                     .padding(.top, 6)
                 VStack(alignment: .leading, spacing: 2) {
@@ -321,7 +321,7 @@ struct PageantHomeView: View {
                         .lineLimit(1)
                     Text("\(entry.votes ?? 0) 票")
                         .font(.system(size: isChampion ? 12 : 11, weight: .semibold, design: .serif))
-                        .foregroundStyle(isChampion ? Noir.goldText : AnyShapeStyle(Noir.gold))
+                        .foregroundStyle(isChampion ? AnyShapeStyle(Noir.goldText) : AnyShapeStyle(Noir.gold))
                 }
                 .padding(10)
             }

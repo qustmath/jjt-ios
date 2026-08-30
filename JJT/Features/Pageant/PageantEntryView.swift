@@ -101,7 +101,7 @@ private final class PageantEntryModel: ObservableObject {
                     error = "网络异常"
                 }
             } catch {
-                error = "网络异常"
+                self.error = "网络异常"
             }
             voting = false
         }
@@ -649,12 +649,12 @@ private struct QtyStepper: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            stepperBtn("-") { value = max(value - 1, 1) }
+            stepperBtn("-") { value = Swift.max(value - 1, 1) }
             Text("\(value)")
                 .font(.system(size: 16))
                 .foregroundStyle(Noir.ivory)
                 .frame(width: 36)
-            stepperBtn("+") { value = min(value + 1, max(max, 1)) }
+            stepperBtn("+") { value = Swift.min(value + 1, Swift.max(max, 1)) }
         }
     }
 
@@ -667,5 +667,4 @@ private struct QtyStepper: View {
                 .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
         }
         .buttonStyle(.plain)
-    }
-}
+    }}
