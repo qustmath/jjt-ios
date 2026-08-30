@@ -291,10 +291,7 @@ enum MemberLevelAPI {
         try await APIClient.shared.post("app-api/member/level/upgrade-fee", body: UpgradeReq(targetTier: targetTier, targetLevel: targetLevel))
     }
 
-    /// 会员升级（兔币付费，点哪买到哪中间全补）
-    static func upgrade(targetTier: Int, targetLevel: Int) async throws -> MyLevelInfo {
-        try await APIClient.shared.post("app-api/member/level/upgrade", body: UpgradeReq(targetTier: targetTier, targetLevel: targetLevel))
-    }
+    // 付费升级已停用（2026-08 产品调整，对齐安卓）：不再调用 level/upgrade 接口，差额仅展示
 
     /// 设置外显段位（tier=nil 恢复跟随实际最高）
     static func setDisplayTier(_ tier: Int?) async throws -> MyLevelInfo {

@@ -10,7 +10,6 @@ struct MemberCenterView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showFrameSheet = false
     @State private var benefitsTier: MemberTierConfig?
-    @State private var showRecharge = false
 
     var body: some View {
         ZStack {
@@ -69,9 +68,6 @@ struct MemberCenterView: View {
             frameSheet
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
-        }
-        .fullScreenCover(isPresented: $showRecharge, onDismiss: { vm.load() }) {
-            CoinRechargeView()
         }
     }
 
@@ -296,7 +292,7 @@ struct MemberCenterView: View {
                 }
             }
 
-            // 层内等级点亮矩阵（点未点亮格 → 购买）
+            // 层内等级点亮矩阵（点未点亮格 → 查看差额；付费升级已停用，仅展示）
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 10), spacing: 4) {
                 ForEach(0..<max(tier.levelCount, 0), id: \.self) { idx in
                     let lv = idx + 1
@@ -310,17 +306,34 @@ struct MemberCenterView: View {
                 }
             }
 
+            // 层内进度条（对齐安卓）
+            Capsule()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 5)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(LinearGradient(colors: [Color(red: 0x8B/255, green: 0x0A/255, blue: 0x1E/255), Noir.crimsonHot, Noir.goldLight],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(maxWidth: tier.levelCount > 0 ? .infinity : 0)
+                        .scaleEffect(x: tier.levelCount > 0 ? CGFloat(lit) / CGFloat(tier.levelCount) : 0, anchor: .leading)
+                }
+                .clipShape(Capsule())
+                .padding(.top, 4)
+
             HStack {
                 Text("已点亮 \(lit)/\(tier.levelCount)")
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.3))
                 Spacer()
+                // 仅展示距离下一级/下一层级所需兔币（对齐安卓，不再提示购买）
+                let nextTier = (vm.page?.tiers ?? []).first { ($0.startOrdinal ?? 0) > myOrdinal }
                 if lit < tier.levelCount {
-                    Text("点暗格直接购买")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(Noir.gold.opacity(0.6))
+                    nextCostText("距离下一等级还需 ", cost: tier.pricePerLevel)
+                } else if let nextTier {
+                    nextCostText("距离下一层级「\(nextTier.name)」还需 ", cost: nextTier.pricePerLevel)
                 }
             }
+            .padding(.top, 5)
         }
         .padding(14)
         .background(Noir.noir2)
@@ -328,13 +341,28 @@ struct MemberCenterView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(color.opacity(0.25), lineWidth: 1))
     }
 
-    // MARK: - 购买弹窗
+    /// 「距离下一级还需 X 兔币」仅展示文案（对齐安卓）
+    private func nextCostText(_ prefix: String, cost: Int64) -> some View {
+        HStack(spacing: 0) {
+            Text(prefix)
+                .font(.system(size: 9.5))
+                .foregroundStyle(.white.opacity(0.35))
+            Text("\(cost)")
+                .font(.system(size: 10.5, weight: .semibold, design: .serif))
+                .foregroundStyle(Noir.goldText)
+            Text(" 兔币")
+                .font(.system(size: 9.5))
+                .foregroundStyle(.white.opacity(0.35))
+        }
+    }
+
+    // MARK: - 升级差额弹窗（付费升级已停用，仅展示差额明细，对齐安卓 PurchaseDialog）
 
     private var purchaseSheet: some View {
         VStack(spacing: 14) {
             Rectangle().fill(Noir.goldLine).frame(height: 1)
             HStack {
-                Text("段位晋升")
+                Text("升级差额")
                     .font(.system(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(Noir.ivory)
                 Spacer()
@@ -352,7 +380,7 @@ struct MemberCenterView: View {
                 ProgressView().tint(Noir.gold).padding(40)
             } else if let fee = vm.feeInfo, let target = vm.purchaseTarget {
                 let tierName = vm.page?.tiers?.first { $0.tier == target.tier }?.name ?? "T\(target.tier)"
-                Text("\(tierName) · Lv.\(target.level)")
+                Text("升级至 \(tierName) · Lv.\(target.level)")
                     .font(.system(size: 15, weight: .semibold, design: .serif))
                     .foregroundStyle(Noir.goldText)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -364,59 +392,37 @@ struct MemberCenterView: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.6))
                             Spacer()
-                            Text("\(item.subtotal) 兔币")
+                            Text("\(item.count) × \(item.pricePerLevel) = \(item.subtotal)")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.6))
                         }
                     }
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1).padding(.vertical, 4)
                     HStack {
-                        Text("合计")
-                            .font(.system(size: 13, weight: .semibold))
+                        Text("还需消费")
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Noir.ivory)
                         Spacer()
                         Text("\(fee.total ?? 0) 兔币")
-                            .font(.system(size: 14, weight: .bold, design: .serif))
+                            .font(.system(size: 16, weight: .bold, design: .serif))
                             .foregroundStyle(Noir.goldText)
-                    }
-                    HStack {
-                        Text("我的余额")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.4))
-                        Spacer()
-                        Text("\(fee.balance ?? 0) 兔币")
-                            .font(.system(size: 11))
-                            .foregroundStyle((fee.balance ?? 0) >= (fee.total ?? 0) ? Noir.goldLight : Noir.crimsonHot)
                     }
                 }
                 .padding(12)
                 .background(Color.white.opacity(0.03))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                let sufficient = (fee.balance ?? 0) >= (fee.total ?? 0)
-                Button {
-                    if sufficient {
-                        vm.upgrade {
-                            // 余额不足 → 引导充值
-                            vm.closePurchase()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { () -> Void in showRecharge = true }
-                        }
-                    } else {
-                        vm.closePurchase()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { () -> Void in showRecharge = true }
-                    }
-                } label: {
-                    Text(vm.purchasing ? "晋升中…" : (sufficient ? "确认晋升" : "余额不足 · 去充值"))
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                // 付费升级已停用，弹窗仅展示差额
+                Button { vm.closePurchase() } label: {
+                    Text("我知道了")
+                        .font(.system(size: 14, weight: .bold))
+                        .tracking(2)
+                        .foregroundStyle(Noir.goldLight)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
-                                                   startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .clipShape(Capsule())
+                        .padding(.vertical, 12)
+                        .overlay(Capsule().stroke(Noir.hairlineGold, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .disabled(vm.purchasing)
             }
         }
         .padding(.horizontal, 20)
@@ -563,7 +569,6 @@ final class MemberCenterViewModel: ObservableObject {
     @Published var purchaseTarget: (tier: Int, level: Int)?
     @Published var feeInfo: UpgradeFeeInfo?
     @Published var feeLoading = false
-    @Published var purchasing = false
     @Published var error: String?
 
     func load() {
@@ -578,6 +583,7 @@ final class MemberCenterViewModel: ObservableObject {
         loadFrameOptions()
     }
 
+    /// 点未点亮格：查看升级差额（付费升级已停用，弹窗仅展示，对齐安卓）
     func openPurchase(tier: Int, level: Int) {
         purchaseTarget = (tier, level)
         feeInfo = nil
@@ -598,25 +604,6 @@ final class MemberCenterViewModel: ObservableObject {
         purchaseTarget = nil
         feeInfo = nil
         feeLoading = false
-        purchasing = false
-    }
-
-    /// 确认购买；余额不足回调 onInsufficient（引导充值）
-    func upgrade(onInsufficient: () -> Void) {
-        guard let target = purchaseTarget, let fee = feeInfo else { return }
-        if (fee.balance ?? 0) < (fee.total ?? 0) { onInsufficient(); return }
-        purchasing = true
-        Task {
-            do {
-                _ = try await MemberLevelAPI.upgrade(targetTier: target.tier, targetLevel: target.level)
-                closePurchase()
-                jjtShowToast("升级成功")
-                load()
-            } catch {
-                purchasing = false
-                self.error = error.localizedDescription
-            }
-        }
     }
 
     /// 佩戴/取消佩戴外显段位
