@@ -8,7 +8,6 @@ struct VideoFeedView: View {
 
     let initialPostId: Int64
     let tab: String
-    let cityCode: String?
 
     @StateObject private var vm = VideoFeedViewModel()
     @Environment(\.dismiss) private var dismiss
@@ -48,11 +47,11 @@ struct VideoFeedView: View {
                 .onAppear { scrollID = vm.initialIndex }
                 .onChange(of: scrollID) { _, new in
                     // 划到距末尾 3 条以内 → 预取下一页
-                    if let new, new >= vm.ids.count - 3 { vm.loadMore(tab: tab, cityCode: cityCode) }
+                    if let new, new >= vm.ids.count - 3 { vm.loadMore(tab: tab) }
                 }
             }
         }
-        .onAppear { vm.start(initialPostId: initialPostId, tab: tab, cityCode: cityCode) }
+        .onAppear { vm.start(initialPostId: initialPostId, tab: tab) }
     }
 
     private var backButton: some View {
@@ -88,13 +87,13 @@ final class VideoFeedViewModel: ObservableObject {
     private var started = false
     private var isLoadingMore = false
 
-    func start(initialPostId: Int64, tab: String, cityCode: String?) {
+    func start(initialPostId: Int64, tab: String) {
         guard !started else { return }
         started = true
         isLoading = true
         Task {
             defer { isLoading = false }
-            let resp = try? await SocialAPI.postList(pageNo: 1, tab: tab, cityCode: cityCode, mediaType: "video")
+            let resp = try? await SocialAPI.postList(pageNo: 1, tab: tab, mediaType: "video")
             var list = (resp?.list ?? []).map(\.id)
             var seen = Set<Int64>()
             list = list.filter { seen.insert($0).inserted }
@@ -107,13 +106,13 @@ final class VideoFeedViewModel: ObservableObject {
         }
     }
 
-    func loadMore(tab: String, cityCode: String?) {
+    func loadMore(tab: String) {
         guard started, !isLoading, !isLoadingMore, hasMore, !ids.isEmpty else { return }
         isLoadingMore = true
         Task {
             defer { isLoadingMore = false }
             let next = page + 1
-            guard let resp = try? await SocialAPI.postList(pageNo: next, tab: tab, cityCode: cityCode, mediaType: "video") else { return }
+            guard let resp = try? await SocialAPI.postList(pageNo: next, tab: tab, mediaType: "video") else { return }
             let new = (resp.list ?? []).map(\.id).filter { !ids.contains($0) }
             ids += new
             page = next

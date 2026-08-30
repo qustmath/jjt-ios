@@ -70,12 +70,20 @@ extension Notification.Name {
     static let jjtPostCreated = Notification.Name("jjtPostCreated")
 }
 
+/// 举报请求（对齐安卓 PostReportReq：reason 为预设原因编码 porn/harassment/ad/illegal/other）
+struct PostReportReq: Encodable {
+    let postId: Int64
+    let reason: String
+    let detail: String?
+}
+
 enum SocialAPI {
 
-    /// 帖子流（tab: recommend/newest/nearby/follow；同城需带 cityCode；mediaType=video 只取视频帖）
-    static func postList(pageNo: Int, pageSize: Int = 20, tab: String, cityCode: String? = nil, mediaType: String? = nil) async throws -> PageResult<PostInfo> {
+    /// 帖子流（tab: recommend/newest/follow；推荐 tab 已授权定位时带浏览者经纬度做同城加分，ADR 0013；mediaType=video 只取视频帖）
+    static func postList(pageNo: Int, pageSize: Int = 20, tab: String, latitude: Double? = nil, longitude: Double? = nil, mediaType: String? = nil) async throws -> PageResult<PostInfo> {
         var query = ["pageNo": "\(pageNo)", "pageSize": "\(pageSize)", "tab": tab]
-        if let cityCode { query["cityCode"] = cityCode }
+        if let latitude { query["latitude"] = "\(latitude)" }
+        if let longitude { query["longitude"] = "\(longitude)" }
         if let mediaType { query["mediaType"] = mediaType }
         return try await APIClient.shared.get("app-api/social/post/list", query: query)
     }
@@ -115,9 +123,24 @@ enum SocialAPI {
         try await APIClient.shared.post("app-api/social/post/update", body: req)
     }
 
-    /// 组局城市列表（cityCode ↔ 城市名映射，同城 tab 定位后反查 cityCode 用）
+    /// 组局城市列表（cityCode ↔ 城市名映射）
     static func eventCities() async throws -> [EventCityInfo] {
         try await APIClient.shared.get("app-api/social/store/event-cities")
+    }
+
+    /// 不感兴趣：负反馈，确认后该帖在本人广场所有 tab 硬隐藏；幂等（重复提交不报错）；v1 无撤销
+    static func notInterested(postId: Int64) async throws -> Bool {
+        try await APIClient.shared.post("app-api/social/post/not-interested", query: ["postId": "\(postId)"])
+    }
+
+    /// 曝光批量上报：卡片进入广场可视区后凑批（或退出 feed 时）上报；按 (会员, 帖子) 去重，幂等；仅登录态调用
+    static func reportImpressions(_ postIds: [Int64]) async throws -> Bool {
+        try await APIClient.shared.post("app-api/social/post/impression:batch", body: postIds)
+    }
+
+    /// 举报帖子：预设原因 + 可选补充说明，提交后进待审由运营审核；按 (会员, 帖子) 唯一，重复举报幂等
+    static func report(postId: Int64, reason: String, detail: String?) async throws -> Bool {
+        try await APIClient.shared.post("app-api/social/post/report", body: PostReportReq(postId: postId, reason: reason, detail: detail))
     }
 }
 

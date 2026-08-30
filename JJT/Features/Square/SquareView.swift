@@ -2,16 +2,21 @@ import SwiftUI
 
 /// 广场 — 暗夜奢华风（对齐安卓 SquareScreen.kt）
 /// 结构：头部（标题+搜索胶囊+分类 tab+鎏金发丝线）→ 双列瀑布流 → 同城提示条
-/// v1 范围：浏览/切 tab/分页/下拉刷新/同城定位；帖子详情与点赞评论后续迁移
+/// 三 tab：推荐/最新/关注（同城不单设 tab，距离作为推荐算法加分项，CONTEXT.md）；
+/// 卡片菜单：不感兴趣（二次确认硬隐藏）/ 举报（预设原因+补充说明）；卡片进可视区记曝光
 struct SquareView: View {
 
     @StateObject private var vm = SquareViewModel()
     @State private var toast: String?
     @State private var detailPostId: Int64?
     @State private var videoFeedPostId: Int64?
+    /// 卡片菜单「不感兴趣」：待二次确认的帖子
+    @State private var postToHide: PostInfo?
+    /// 卡片菜单「举报」：待填原因提交的帖子
+    @State private var postToReport: PostInfo?
 
     private static let tabs: [(key: String, label: String)] = [
-        ("recommend", "推荐"), ("newest", "最新"), ("nearby", "同城"), ("follow", "关注"),
+        ("recommend", "推荐"), ("newest", "最新"), ("follow", "关注"),
     ]
 
     var body: some View {
@@ -21,10 +26,10 @@ struct SquareView: View {
             VStack(spacing: 0) {
                 header
 
-                // 四 tab 分页容器：左右滑跟手切换（对齐安卓 HorizontalPager）
+                // 三 tab 分页容器：左右滑跟手切换（对齐安卓 HorizontalPager）
                 TabView(selection: $vm.tab) {
                     ForEach(Self.tabs, id: \.key) { t in
-                        tabPage(t.key).tag(t.key)
+                        feedView(t.key).tag(t.key)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -48,9 +53,36 @@ struct SquareView: View {
         .onAppear { vm.switchTab(vm.tab) }
         // 分页滑动直接改 vm.tab（绑定），这里补触发数据加载
         .onChange(of: vm.tab) { _, new in vm.switchTab(new) }
+        // 已授权定位时解析浏览者坐标传入推荐流（同城加分；未授权静默降级）
+        .task {
+            if let c = await CityLocator.shared.currentCoordinate() {
+                vm.setViewerLocation(latitude: c.latitude, longitude: c.longitude)
+            }
+        }
+        // 退出广场时把未满批的曝光补报掉
+        .onDisappear { vm.flushImpressions() }
         // 发帖成功 → 刷新当前 tab
         .onReceive(NotificationCenter.default.publisher(for: .jjtPostCreated)) { _ in
             vm.refresh(vm.tab)
+        }
+        // 「不感兴趣」二次确认：确认后上报并从本地列表移除（服务端已对本人硬隐藏，无撤销）
+        .alert("不感兴趣", isPresented: Binding(
+            get: { postToHide != nil },
+            set: { if !$0 { postToHide = nil } }
+        )) {
+            Button("取消", role: .cancel) {}
+            Button("不再推荐", role: .destructive) {
+                if let post = postToHide { vm.notInterested(postId: post.id) }
+            }
+        } message: {
+            Text("确认后将减少此类内容推荐")
+        }
+        // 「举报」提交弹层：预设原因单选 + 可选补充说明；提交后进平台待审（不移除帖子，接口幂等）
+        .sheet(item: $postToReport) { post in
+            ReportSheet { reason, detail in
+                vm.report(postId: post.id, reason: reason, detail: detail)
+            }
+            .presentationDetents([.medium])
         }
         .fullScreenCover(isPresented: Binding(
             get: { detailPostId != nil },
@@ -65,7 +97,7 @@ struct SquareView: View {
             set: { if !$0 { videoFeedPostId = nil } }
         )) {
             if let id = videoFeedPostId {
-                VideoFeedView(initialPostId: id, tab: vm.tab, cityCode: vm.nearbyCityCode)
+                VideoFeedView(initialPostId: id, tab: vm.tab)
             }
         }
     }
@@ -147,56 +179,6 @@ struct SquareView: View {
         }
     }
 
-    // MARK: - 同城定位引导态
-
-    private var nearbyGate: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            if vm.nearbyLocating {
-                ProgressView()
-                    .tint(Noir.crimson)
-                    .scaleEffect(1.2)
-                Spacer().frame(height: 14)
-                Text("正在定位当前城市…")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Noir.textDim)
-            } else {
-                Image(systemName: "mappin")
-                    .font(.system(size: 34))
-                    .foregroundStyle(Noir.gold)
-                Spacer().frame(height: 14)
-                Text(vm.nearbyDenied ? "定位失败或未授权，再试一次？" : "开启定位，发现同城同好")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Noir.ivory)
-                Spacer().frame(height: 6)
-                Text("仅使用城市级位置，不会暴露精确坐标")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.35))
-                Spacer().frame(height: 20)
-                Button { vm.locateNearby() } label: {
-                    Text(vm.nearbyDenied ? "重新定位" : "开启定位")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 28)
-                        .padding(.vertical, 9)
-                        .background(Capsule().fill(LinearGradient(colors: [Noir.crimson, Noir.crimsonHot], startPoint: .leading, endPoint: .trailing)))
-                }
-            }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    /// 单个 tab 页（同城未定位时显示引导态）
-    @ViewBuilder
-    private func tabPage(_ tab: String) -> some View {
-        if tab == "nearby" && vm.nearbyCityCode == nil {
-            nearbyGate
-        } else {
-            feedView(tab)
-        }
-    }
-
     // MARK: - 瀑布流
 
     private func feedView(_ tab: String) -> some View {
@@ -209,7 +191,7 @@ struct SquareView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 80)
             } else if feed.posts.isEmpty {
-                emptyHint(tab)
+                emptyHint
             } else {
                 waterfall(feed.posts)
 
@@ -252,25 +234,33 @@ struct SquareView: View {
         }
         return HStack(alignment: .top, spacing: 10) {
             LazyVStack(spacing: 10) {
-                ForEach(col0) { PostCard(post: $0, width: colW, onTap: openPost) }
+                ForEach(col0) {
+                    PostCard(post: $0, width: colW, onTap: openPost,
+                             onVisible: { vm.onPostVisible($0.id) },
+                             onNotInterested: { postToHide = $0 },
+                             onReport: { postToReport = $0 })
+                }
             }
             LazyVStack(spacing: 10) {
-                ForEach(col1) { PostCard(post: $0, width: colW, onTap: openPost) }
+                ForEach(col1) {
+                    PostCard(post: $0, width: colW, onTap: openPost,
+                             onVisible: { vm.onPostVisible($0.id) },
+                             onNotInterested: { postToHide = $0 },
+                             onReport: { postToReport = $0 })
+                }
             }
         }
         .padding(.horizontal, 10)
         .padding(.top, 10)
     }
 
-    private func emptyHint(_ tab: String) -> some View {
+    private var emptyHint: some View {
         VStack(spacing: 10) {
             Text("NO MOMENTS YET")
                 .font(.system(size: 10, design: .serif).italic())
                 .tracking(2)
                 .foregroundStyle(Noir.gold.opacity(0.6))
-            Text(tab == "nearby"
-                 ? "「\(vm.nearbyCityName ?? "同城")」还没有帖子，来发第一条吧"
-                 : "暂无动态，来发布第一条吧")
+            Text("暂无动态，来发布第一条吧")
                 .font(.system(size: 13))
                 .foregroundStyle(Noir.textDim)
         }
@@ -304,6 +294,12 @@ private struct PostCard: View {
     let post: PostInfo
     let width: CGFloat
     let onTap: (PostInfo) -> Void
+    /// 卡片进入可视区回调（曝光埋点，对齐安卓 onPostsVisible）
+    var onVisible: ((PostInfo) -> Void)? = nil
+    /// 卡片菜单「不感兴趣」回调（空则不显示菜单项，对齐安卓可空参）
+    var onNotInterested: ((PostInfo) -> Void)? = nil
+    /// 卡片菜单「举报」回调
+    var onReport: ((PostInfo) -> Void)? = nil
 
     private var coverURL: URL? {
         if post.mediaType == "video" { return webImageURL(post.videoCover) }
@@ -456,7 +452,7 @@ private struct PostCard: View {
                     .padding(.top, 10)
             }
 
-            // 底部行：头像（含头像框）+ 昵称/等级
+            // 底部行：头像（含头像框）+ 昵称/等级 + 卡片菜单（不感兴趣/举报）
             HStack(spacing: 10) {
                 AppAvatar(url: post.avatar, size: 34,
                           frameURL: post.avatarFrame, frameScale: CGFloat(post.avatarFrameScale ?? 1.25))
@@ -489,6 +485,24 @@ private struct PostCard: View {
                     }
                 }
                 Spacer()
+
+                // 卡片菜单（对齐安卓底部行右侧 MoreVert → DropdownMenu）
+                if onNotInterested != nil || onReport != nil {
+                    Menu {
+                        if let onNotInterested {
+                            Button("不感兴趣") { onNotInterested(post) }
+                        }
+                        if let onReport {
+                            Button("举报") { onReport(post) }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -499,10 +513,92 @@ private struct PostCard: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.05), lineWidth: 1))
         .contentShape(Rectangle())
         .onTapGesture { onTap(post) }
+        // 卡片进入可视区 → 记一次曝光（会话级去重与凑批由 ViewModel 承担）
+        .onAppear { onVisible?(post) }
     }
 
     private static func formatCount(_ n: Int) -> String {
         n >= 1000 ? String(format: "%.1fk", Double(n) / 1000) : "\(n)"
+    }
+}
+
+// MARK: - 举报弹层：预设原因单选 + 可选补充说明（提交后运营在管理端审核成立/驳回）
+
+private struct ReportSheet: View {
+
+    /// 举报预设原因（code 对齐服务端 ReportReasonEnum 与安卓 REPORT_REASONS）
+    private static let reasons: [(code: String, label: String)] = [
+        ("porn", "色情低俗"),
+        ("harassment", "骚扰辱骂"),
+        ("ad", "广告营销"),
+        ("illegal", "违法犯罪"),
+        ("other", "其他"),
+    ]
+
+    let onConfirm: (_ reason: String, _ detail: String?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected = Self.reasons[0].code
+    @State private var detail = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 标题栏
+            HStack {
+                Button("取消") { dismiss() }
+                    .font(.system(size: 14))
+                    .foregroundStyle(Noir.textDim)
+                Spacer()
+                Text("举报帖子")
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .foregroundStyle(Noir.ivory)
+                Spacer()
+                Button("提交") {
+                    onConfirm(selected, detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : detail)
+                    dismiss()
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Noir.crimsonHot)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+
+            Rectangle().fill(Noir.goldLine).frame(height: 1).opacity(0.4)
+
+            // 预设原因单选
+            ForEach(Self.reasons, id: \.code) { r in
+                let checked = selected == r.code
+                HStack {
+                    Text(r.label)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Noir.ivory)
+                    Spacer()
+                    Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(checked ? Noir.crimsonHot : Color.white.opacity(0.25))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+                .onTapGesture { selected = r.code }
+            }
+
+            // 可选补充说明
+            TextField("补充说明（选填）", text: $detail, axis: .vertical)
+                .font(.system(size: 13))
+                .foregroundStyle(Noir.ivory)
+                .lineLimit(3...)
+                .padding(12)
+                .background(Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Noir.hairlineGold, lineWidth: 1))
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+            Spacer()
+        }
+        .padding(.top, 8)
+        .background(Noir.noir.ignoresSafeArea())
     }
 }
 

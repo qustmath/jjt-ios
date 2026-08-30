@@ -1,14 +1,17 @@
 import CoreLocation
 
-/// 城市定位（对齐安卓 HomeScreen 状态行：定位到城市名，拒绝/失败则不显示位置块）。
-/// 单次定位 + CLGeocoder 反查 locality；结果进程内缓存。
+/// 城市定位（对齐安卓 HomeScreen 状态行 + 广场推荐同城加分：定位城市名/坐标，拒绝/失败则静默降级）。
+/// 单次定位 + CLGeocoder 反查 locality；结果进程内缓存；城市名与坐标请求共用同一次定位。
 final class CityLocator: NSObject, CLLocationManagerDelegate {
 
     static let shared = CityLocator()
 
     private let manager = CLLocationManager()
-    private var continuation: CheckedContinuation<String?, Never>?
+    private var continuation: CheckedContinuation<CLLocation?, Never>?
     private var cachedCity: String?
+    private var cachedCoordinate: CLLocationCoordinate2D?
+    /// 进行中的定位任务：并发调用共用，避免多路 continuation 互踩
+    private var locatingTask: Task<CLLocation?, Never>?
 
     private override init() {
         super.init()
@@ -19,7 +22,35 @@ final class CityLocator: NSObject, CLLocationManagerDelegate {
     /// 当前城市名（如"济南"）；未授权/失败返回 nil
     func currentCity() async -> String? {
         if let cachedCity { return cachedCity }
-        return await withCheckedContinuation { cont in
+        guard let location = await requestLocation() else { return nil }
+        let placemarks = try? await CLGeocoder().reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "zh_CN"))
+        // 直辖市 locality 为空时回退省级名
+        var city = placemarks?.first?.locality ?? placemarks?.first?.administrativeArea
+        city = city?.replacingOccurrences(of: "市", with: "")
+        if let city { cachedCity = city }
+        return city
+    }
+
+    /// 当前坐标（广场推荐流同城加分用，对齐安卓 viewerLatitude/viewerLongitude）；未授权/失败返回 nil
+    func currentCoordinate() async -> (latitude: Double, longitude: Double)? {
+        if let c = cachedCoordinate { return (c.latitude, c.longitude) }
+        guard let location = await requestLocation() else { return nil }
+        return (location.coordinate.latitude, location.coordinate.longitude)
+    }
+
+    /// 单次定位：并发共用一次请求，成功即缓存坐标
+    private func requestLocation() async -> CLLocation? {
+        if let task = locatingTask { return await task.value }
+        let task = Task { await self.performRequest() }
+        locatingTask = task
+        let location = await task.value
+        locatingTask = nil
+        if let location { cachedCoordinate = location.coordinate }
+        return location
+    }
+
+    private func performRequest() async -> CLLocation? {
+        await withCheckedContinuation { cont in
             continuation = cont
             switch manager.authorizationStatus {
             case .notDetermined:
@@ -46,25 +77,16 @@ final class CityLocator: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { finish(nil); return }
-        CLGeocoder().reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "zh_CN")) { [weak self] placemarks, _ in
-            guard let self else { return }
-            var city = placemarks?.first?.locality
-            // 直辖市 locality 为空时回退省级名
-            if city == nil { city = placemarks?.first?.administrativeArea }
-            city = city?.replacingOccurrences(of: "市", with: "")
-            if let city { self.cachedCity = city }
-            self.finish(city)
-        }
+        finish(locations.last)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         finish(nil)
     }
 
-    private func finish(_ city: String?) {
+    private func finish(_ location: CLLocation?) {
         let cont = continuation
         continuation = nil
-        cont?.resume(returning: city)
+        cont?.resume(returning: location)
     }
 }
