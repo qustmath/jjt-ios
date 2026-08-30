@@ -86,10 +86,12 @@ struct RedPacketSendView: View {
     }
 
     var body: some View {
-        if pickingMember {
-            memberPickPage
-        } else {
-            mainPage
+        Group {
+            if pickingMember {
+                memberPickPage
+            } else {
+                mainPage
+            }
         }
         .jjtKeyboardDismiss()
     }
