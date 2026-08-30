@@ -31,6 +31,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
         NSLocationWhenInUseUsageDescription: 用于在首页展示你所在的城市
+        # 扫一扫（首页/我的页扫码加好友、识帖）
+        NSCameraUsageDescription: 用于扫码识别二维码
         # 拉起支付宝收银台（充值）
         LSApplicationQueriesSchemes: [alipays]
         # 对齐安卓 usesCleartextTraffic=true：历史数据存在 http 图片（OSS/CDN），

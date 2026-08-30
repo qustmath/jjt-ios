@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 
 /// 我的 — 暗夜奢华风（对齐安卓 ProfileScreen）
-/// 结构：顶栏 → 头像区 → 任务中心 → 属性测试 → 门店会员 →
+/// 结构：顶栏（扫码/设置） → 头像区（进个人主页） → 任务中心 → 我的钱包余额卡（三资产+申请提现） →
 ///       社交 / 我的服务 / 商城服务 网格 → 更多服务 → 页脚
 struct MeView: View {
 
@@ -13,14 +13,11 @@ struct MeView: View {
     @State private var isUploadingAvatar = false
     @State private var editingField: EditField?
     @State private var editInput = ""
-    @State private var showLogoutConfirm = false
     @State private var showProfile = false
     @State private var showFriends = false
     @State private var showWallet = false
     @State private var showMemberCenter = false
     @State private var showMyEvents = false
-    @State private var showGiftCenter = false
-    @State private var showMyGifts = false
     @State private var showSettings = false
     @State private var showAccountSecurity = false
     @State private var showRealname = false
@@ -29,7 +26,6 @@ struct MeView: View {
     @State private var showInvite = false
     @State private var showTaskCenter = false
     @State private var showBadgeWall = false
-    @State private var showQuiz = false
     @State private var showVipClub = false
     @State private var showTicketWallet = false
     @State private var showAddress = false
@@ -39,6 +35,11 @@ struct MeView: View {
     @State private var showFavorites = false
     @State private var showPostFavorites = false
     @State private var showMyLikes = false
+    // 扫码 / 建群 / 钱包资产页 / 提现
+    @State private var showScan = false
+    @State private var showCreateGroup = false
+    @State private var assetWallet: String?
+    @State private var showWithdraw = false
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -61,13 +62,10 @@ struct MeView: View {
                     topBar
                     avatarSection
                     taskCard
-                    quizCard
-                    storeCard
+                    walletCard
                     gridSection(title: "社交", en: "SOCIAL", items: [
                         GridItem("好友", "person.2") { showFriends = true },
-                        GridItem("群聊", "bubble.left.and.bubble.right") { switchTab(2) },
-                        GridItem("礼物中心", "gift", gold: true) { showGiftCenter = true },
-                        GridItem("我的礼物", "heart.text.square") { showMyGifts = true },
+                        GridItem("群聊", "bubble.left.and.bubble.right") { showCreateGroup = true },
                         GridItem("我的组局", "calendar") { showMyEvents = true },
                         GridItem("蜜兔会", "crown", gold: true) { showVipClub = true },
                     ])
@@ -119,10 +117,6 @@ struct MeView: View {
             Button("保存") { commitEdit() }
             Button("取消", role: .cancel) { editingField = nil }
         }
-        .confirmationDialog("确定退出登录吗？", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
-            Button("退出登录", role: .destructive) { appState.logout() }
-            Button("取消", role: .cancel) {}
-        }
         .fullScreenCover(isPresented: $showProfile) {
             UserProfileView(userId: TokenManager.shared.userId ?? 0)
         }
@@ -138,11 +132,24 @@ struct MeView: View {
         .fullScreenCover(isPresented: $showMyEvents) {
             GroupEventListView(mode: "my")
         }
-        .fullScreenCover(isPresented: $showGiftCenter, onDismiss: { vm.load() }) {
-            GiftCenterView()
+        .fullScreenCover(isPresented: $showScan) {
+            ScanView()
         }
-        .fullScreenCover(isPresented: $showMyGifts) {
-            MyGiftsView()
+        .fullScreenCover(isPresented: $showCreateGroup) {
+            CreateGroupView()
+        }
+        // 钱包资产流水页（兔币/萝贝/收益，对齐安卓 onAssetClick）
+        .fullScreenCover(isPresented: Binding(
+            get: { assetWallet != nil },
+            set: { if !$0 { assetWallet = nil } }
+        )) {
+            if let type = assetWallet {
+                WalletView(walletType: type)
+            }
+        }
+        // 申请提现（对齐安卓 onWithdrawClick）
+        .fullScreenCover(isPresented: $showWithdraw, onDismiss: { vm.load() }) {
+            WithdrawView()
         }
         .fullScreenCover(isPresented: $showSettings) {
             SettingsView()
@@ -167,9 +174,6 @@ struct MeView: View {
         }
         .fullScreenCover(isPresented: $showBadgeWall) {
             BadgeWallView()
-        }
-        .fullScreenCover(isPresented: $showQuiz) {
-            QuizListView()
         }
         .fullScreenCover(isPresented: $showVipClub) {
             VipClubMainView()
@@ -210,7 +214,7 @@ struct MeView: View {
                 .tracking(3)
                 .foregroundStyle(Noir.gold.opacity(0.6))
             Spacer()
-            iconButton("qrcode.viewfinder") { comingSoon() }
+            iconButton("qrcode.viewfinder") { showScan = true }
             iconButton("gearshape") { showSettings = true }
         }
         .padding(.horizontal, 20)
@@ -425,67 +429,57 @@ struct MeView: View {
         } onTap: { showTaskCenter = true }
     }
 
-    // MARK: - 属性测试卡
+    // MARK: - 我的钱包余额卡（对齐安卓：兔币/萝贝/收益三资产 + 申请提现）
 
-    private var quizCard: some View {
-        cardRow(background: glassBrush, border: Noir.gold.opacity(0.18)) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("暗夜属性测试")
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(Noir.ivory)
-                    Text("测出你的暗夜人格与灵魂匹配")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
-                Spacer()
-                Text("去测试")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Noir.crimsonHot)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Noir.crimsonHot)
+    private var walletCard: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                assetCell(value: "\(vm.user?.freeCoin ?? 0)", label: "兔币", divider: false) { assetWallet = "rabbit_coin" }
+                assetCell(value: "\(vm.user?.giftCoin ?? 0)", label: "萝贝", divider: true) { assetWallet = "radish_coin" }
+                assetCell(value: "¥\(vm.user?.earnings?.value ?? "0.00")", label: "我的收益", divider: true) { assetWallet = "earnings" }
             }
-        } onTap: { showQuiz = true }
+            Button { showWithdraw = true } label: {
+                Text("申 请 提 现")
+                    .font(.system(size: 13, weight: .semibold))
+                    .tracking(2)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Capsule().fill(LinearGradient(
+                        colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
+                        startPoint: .leading, endPoint: .trailing)))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 18)
+        }
+        .padding(20)
+        .background(LinearGradient(colors: [Color(red: 0x3A/255, green: 0x0A/255, blue: 0x16/255).opacity(0.7), Color(red: 0x10/255, green: 0x08/255, blue: 0x0A/255).opacity(0.85)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.crimson.opacity(0.35), lineWidth: 1))
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
     }
 
-    // MARK: - 门店会员卡
-
-    private var storeCard: some View {
-        cardRow(
-            background: LinearGradient(colors: [Color(red: 0x28/255, green: 0x1C/255, blue: 0x0A/255).opacity(0.55),
-                                                Color(red: 0x0E/255, green: 0x0A/255, blue: 0x05/255).opacity(0.7)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-            border: Noir.gold.opacity(0.3)
-        ) {
-            HStack {
-                Image(systemName: "storefront")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Noir.goldLight)
-                if let store = vm.user?.storeMember {
-                    Text(store.storeName ?? "门店会员")
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(Noir.ivory)
-                    Text("¥\(store.balance?.value ?? "0.00")")
-                        .font(.system(size: 13, design: .serif))
-                        .foregroundStyle(Noir.goldText)
-                } else {
-                    Text("门店会员")
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(Noir.ivory)
-                    Text("绑定线下门店会员")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
-                Spacer()
-                Text(vm.user?.storeMember == nil ? "去绑定" : "查看")
-                    .font(.system(size: 12))
+    private func assetCell(value: String, label: String, divider: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Text(value)
+                    .font(.system(size: 19, weight: .semibold, design: .serif))
                     .foregroundStyle(Noir.goldText)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Noir.gold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(label)
+                    .font(.system(size: 10))
+                    .tracking(1)
+                    .foregroundStyle(.white.opacity(0.4))
             }
-        } onTap: { comingSoon("门店会员") }
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                if divider { Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1, height: 28) }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 图标网格分区
@@ -569,10 +563,8 @@ struct MeView: View {
                 moreRow("邀请好友", "person.badge.plus") { showInvite = true }
                 moreRow("账号安全", "lock") { showAccountSecurity = true }
                 moreRow("设置", "gearshape") { showSettings = true }
-                moreRow("关于我们", "info.circle") { showAbout = true }
-                moreRow("退出登录", "rectangle.portrait.and.arrow.right", tint: Noir.crimsonHot, divider: false) {
-                    showLogoutConfirm = true
-                }
+                moreRow("关于我们", "info.circle", divider: false) { showAbout = true }
+                // 退出登录在设置页（对齐安卓，不在更多服务重复）
             }
             .padding(.horizontal, 20)
             .background(glassBrush)
@@ -666,10 +658,6 @@ struct MeView: View {
 
     private func comingSoon(_ name: String? = nil) {
         jjtShowToast((name ?? "功能") + "建设中，敬请期待")
-    }
-
-    private func switchTab(_ tag: Int) {
-        NotificationCenter.default.post(name: .jjtSwitchTab, object: tag)
     }
 
     private func commitEdit() {
