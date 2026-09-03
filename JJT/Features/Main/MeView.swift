@@ -651,7 +651,7 @@ struct MeView: View {
             vm.update(UpdateUserReq(mark: value))
         }
     }
-
+}
 
 #Preview {
     MeView().environmentObject(AppState())
