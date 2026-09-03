@@ -59,7 +59,7 @@ struct GiftOrderVO: Decodable, Identifiable {
     }
 
     init(from decoder: Decoder) throws {
-        let c = decoder.container(keyedBy: Keys.self)
+        let c = try decoder.container(keyedBy: Keys.self)
         id = (try? c.decodeIfPresent(Int64.self, forKey: .id)) ?? 0
         giftId = (try? c.decodeIfPresent(Int64.self, forKey: .giftId)) ?? 0
         giftName = try? c.decodeIfPresent(String.self, forKey: .giftName)
