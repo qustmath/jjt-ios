@@ -122,6 +122,7 @@ struct UserProfileView: View {
         .fullScreenCover(isPresented: $showAchievementHall) {
             AchievementHallView()
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 封面

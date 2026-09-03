@@ -42,7 +42,7 @@ struct VipClubApplyView: View {
                 }
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { load() }
         .onChange(of: photoItem) { _, item in uploadPhoto(item) }
         .alert("提示", isPresented: Binding(

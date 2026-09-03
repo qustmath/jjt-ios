@@ -74,6 +74,7 @@ struct FriendApplyListView: View {
                 UserProfileView(userId: id)
             }
         }
+        .jjtPageGestures()
     }
 
     private var topBar: some View {

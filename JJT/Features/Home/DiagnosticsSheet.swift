@@ -36,6 +36,15 @@ struct DiagnosticsSheet: View {
                         .frame(height: 260)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
+                // 送礼特效实测（不扣余额：直接播放全屏赠送动效，验证覆盖层与动画链路）
+                Section("送礼特效测试") {
+                    Button("播放送礼特效（不扣余额）") {
+                        let demo = GiftItem(id: 0, name: "暗夜玫瑰", description: nil, icon: nil,
+                                            categoryId: nil, categoryName: nil, priceRabbit: 520,
+                                            animationUrl: nil, iconScale: nil)
+                        JJTWindowOverlay.show(GiftSendOverlay(gift: demo, combo: 1) { JJTWindowOverlay.dismiss() })
+                    }
+                }
                 // Bugly 上报链路测试（对齐安卓 CrashLogScreen 的测试崩溃入口）
                 Section("Bugly 上报测试") {
                     Button("测试异常上报（不闪退）") {

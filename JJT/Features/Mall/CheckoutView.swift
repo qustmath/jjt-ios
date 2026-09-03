@@ -103,14 +103,7 @@ struct CheckoutView: View {
             }
         }
         .onChange(of: vm.errorMessage) { _, msg in if let msg { showToast(msg); vm.errorMessage = nil } }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("完成") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
+        .jjtPageGestures()
     }
 
     private func showToast(_ text: String) {

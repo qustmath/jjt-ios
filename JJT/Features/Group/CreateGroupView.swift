@@ -31,7 +31,7 @@ struct CreateGroupView: View {
                 friendList
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { vm.load() }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },

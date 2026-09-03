@@ -57,6 +57,7 @@ struct WalletHomeView: View {
         .fullScreenCover(isPresented: $showRecharge, onDismiss: { vm.load() }) {
             CoinRechargeView()
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

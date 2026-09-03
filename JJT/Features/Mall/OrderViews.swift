@@ -236,6 +236,7 @@ struct OrderListView: View {
                 OrderDetailView(orderId: id)
             }
         }
+        .jjtPageGestures()
     }
 }
 

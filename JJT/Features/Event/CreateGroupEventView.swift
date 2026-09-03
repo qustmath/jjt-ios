@@ -108,7 +108,7 @@ struct CreateGroupEventView: View {
                 }
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { vm.setup(draftId: draftId) }
         .onChange(of: vm.created) { _, ok in
             if ok {

@@ -57,6 +57,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showDiagnostics) {
             DiagnosticsSheet()
         }
+        .jjtPageGestures()
     }
 
     private var topBar: some View {

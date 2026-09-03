@@ -96,7 +96,7 @@ struct PayPasswordSettingsView: View {
                 }
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { vm.load() }
         .onChange(of: vm.done) { _, done in
             if done {

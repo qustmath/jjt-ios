@@ -49,6 +49,7 @@ struct TaskCenterView: View {
         .onChange(of: vm.toast) { _, t in
             if let t { jjtShowToast(t); vm.toast = nil }
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

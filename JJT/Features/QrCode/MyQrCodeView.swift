@@ -103,6 +103,7 @@ struct MyQrCodeView: View {
             }
         }
         .onAppear { makeQr() }
+        .jjtPageGestures()
     }
 
     private var topBar: some View {

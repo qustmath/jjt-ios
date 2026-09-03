@@ -73,6 +73,7 @@ struct ActivityView: View {
         } message: {
             Text(error ?? "")
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

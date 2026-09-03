@@ -111,6 +111,7 @@ struct QuizListView: View {
         )) { target in
             QuizResultView(quizId: target.id)
         }
+        .jjtPageGestures()
     }
 
     private struct QuizTarget: Identifiable { let id: Int64 }

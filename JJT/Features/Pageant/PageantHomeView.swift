@@ -56,6 +56,7 @@ struct PageantHomeView: View {
                 PageantEntryView(entryId: id)
             }
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 主体

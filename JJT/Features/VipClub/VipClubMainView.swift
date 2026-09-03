@@ -69,6 +69,7 @@ struct VipClubMainView: View {
         .fullScreenCover(isPresented: $showMyProfile) {
             VipClubMyProfileView()
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

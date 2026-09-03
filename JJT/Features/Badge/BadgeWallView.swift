@@ -62,6 +62,7 @@ struct BadgeWallView: View {
         } message: {
             Text(error ?? "")
         }
+        .jjtPageGestures()
     }
 
     private var topBar: some View {

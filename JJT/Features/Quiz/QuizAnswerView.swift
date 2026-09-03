@@ -84,6 +84,7 @@ struct QuizAnswerView: View {
         .onChange(of: vm.submitSuccess) { _, ok in
             if ok { resultQuizId = quizId }
         }
+        .jjtPageGestures()
     }
 
     private struct T: Identifiable { let id: Int64 }

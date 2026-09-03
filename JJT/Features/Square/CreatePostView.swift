@@ -176,14 +176,7 @@ struct CreatePostView: View {
         .fullScreenCover(isPresented: $showRealname) {
             RealnameVerifyView()
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("完成") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
+        .jjtPageGestures()
     }
 
     /// 发布按钮忙碌提示（图片上传中/视频压缩中/视频上传中）

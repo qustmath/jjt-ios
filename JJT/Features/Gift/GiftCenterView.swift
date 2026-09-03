@@ -70,6 +70,7 @@ struct GiftCenterView: View {
         .onReceive(NotificationCenter.default.publisher(for: .jjtInsufficientBalance)) { _ in
             showRecharge = true
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

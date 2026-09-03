@@ -29,6 +29,7 @@ struct AboutView: View {
                 }
             }
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

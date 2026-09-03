@@ -44,80 +44,84 @@ struct GiftIconView: View {
 }
 
 /// 全屏赠送动效（对齐安卓 GiftSendOverlay：升起 + 放大 + 连击数，2.4s 或点击关闭）
+/// 动画由 TimelineView 逐帧驱动（按墙钟时间计算进度），不依赖 withAnimation——
+/// state 翻转动画在覆盖层 attach 时序下反复失效（progress 直跳终值导致全程透明），
+/// TimelineView 只要可见就每帧重算，机制上不可能不动。
 struct GiftSendOverlay: View {
     let gift: GiftItem
     let combo: Int
     let onDone: () -> Void
 
-    @State private var progress: CGFloat = 0
+    private static let duration: Double = 2.4
+    @State private var start = Date()
 
     // rise-fade 关键帧（对齐安卓）：0% 下60/0.6倍/透明 → 20% 全显 → 70% 上移/1.05 → 100% 消失
-    private var translateY: CGFloat {
-        switch progress {
-        case ..<0.2: return 60 * (1 - progress / 0.2)
-        case ..<0.7: return -30 * ((progress - 0.2) / 0.5)
-        default: return -30 - 60 * ((progress - 0.7) / 0.3)
+    private func translateY(_ p: Double) -> CGFloat {
+        let p = CGFloat(p)
+        switch p {
+        case ..<0.2: return 60 * (1 - p / 0.2)
+        case ..<0.7: return -30 * ((p - 0.2) / 0.5)
+        default: return -30 - 60 * ((p - 0.7) / 0.3)
         }
     }
-    private var scale: CGFloat {
-        switch progress {
-        case ..<0.2: return 0.6 + 0.45 * (progress / 0.2)
+    private func scale(_ p: Double) -> CGFloat {
+        let p = CGFloat(p)
+        switch p {
+        case ..<0.2: return 0.6 + 0.45 * (p / 0.2)
         case ..<0.7: return 1.05
         default: return 1
         }
     }
-    private var alpha: CGFloat {
-        switch progress {
-        case ..<0.2: return progress / 0.2
+    private func alpha(_ p: Double) -> Double {
+        switch p {
+        case ..<0.2: return p / 0.2
         case ..<0.7: return 1
-        default: return 1 - (progress - 0.7) / 0.3
+        default: return 1 - (p - 0.7) / 0.3
         }
     }
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-                .onTapGesture { onDone() }
-            VStack(spacing: 0) {
-                ZStack {
-                    Circle()
-                        .fill(RadialGradient(colors: [Noir.crimson.opacity(0.4), .clear],
-                                             center: .center, startRadius: 0, endRadius: 140))
-                        .frame(width: 280, height: 280)
-                    GiftIconView(
-                        icon: (gift.animationUrl?.isEmpty == false ? gift.animationUrl : gift.icon),
-                        size: 220,
-                        scale: CGFloat(gift.iconScale ?? 100) / 100
-                    )
+        TimelineView(.animation) { tl in
+            let p = min(max(tl.date.timeIntervalSince(start) / Self.duration, 0), 1)
+            ZStack {
+                Color.black.opacity(0.7)
+                    .ignoresSafeArea()
+                    .onTapGesture { onDone() }
+                VStack(spacing: 0) {
+                    ZStack {
+                        Circle()
+                            .fill(RadialGradient(colors: [Noir.crimson.opacity(0.4), .clear],
+                                                 center: .center, startRadius: 0, endRadius: 140))
+                            .frame(width: 280, height: 280)
+                        GiftIconView(
+                            icon: (gift.animationUrl?.isEmpty == false ? gift.animationUrl : gift.icon),
+                            size: 220,
+                            scale: CGFloat(gift.iconScale ?? 100) / 100
+                        )
+                    }
+                    .padding(.bottom, 28)
+                    HStack(alignment: .lastTextBaseline, spacing: 8) {
+                        Text(gift.name)
+                            .font(.system(size: 22, design: .serif))
+                            .italic()
+                            .foregroundStyle(Noir.goldText)
+                        Text("×\(combo)")
+                            .font(.system(size: 40, weight: .bold, design: .serif))
+                            .foregroundStyle(LinearGradient(colors: [Noir.crimsonHot, Noir.crimson], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    }
+                    .padding(.bottom, 8)
+                    Text("赠 予 心 动 的 人")
+                        .font(.system(size: 11))
+                        .tracking(3)
+                        .foregroundStyle(.white.opacity(0.5))
                 }
-                .padding(.bottom, 28)
-                HStack(alignment: .lastTextBaseline, spacing: 8) {
-                    Text(gift.name)
-                        .font(.system(size: 22, design: .serif))
-                        .italic()
-                        .foregroundStyle(Noir.goldText)
-                    Text("×\(combo)")
-                        .font(.system(size: 40, weight: .bold, design: .serif))
-                        .foregroundStyle(LinearGradient(colors: [Noir.crimsonHot, Noir.crimson], startPoint: .topLeading, endPoint: .bottomTrailing))
-                }
-                .padding(.bottom, 8)
-                Text("赠 予 心 动 的 人")
-                    .font(.system(size: 11))
-                    .tracking(3)
-                    .foregroundStyle(.white.opacity(0.5))
+                .offset(y: translateY(p))
+                .scaleEffect(scale(p))
+                .opacity(alpha(p))
             }
-            .offset(y: translateY)
-            .scaleEffect(scale)
-            .opacity(alpha)
         }
         .onAppear {
-            // 覆盖层 attach 瞬间立刻 withAnimation 经常不生效（progress 直跳 1 → 特效全程透明，
-            // 即「送礼后没有特效」的根因），延迟到布局稳定后再启动；关闭时间相应后移
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                withAnimation(.linear(duration: 2.4)) { progress = 1 }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { onDone() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration + 0.1) { onDone() }
         }
     }
 }

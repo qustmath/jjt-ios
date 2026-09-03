@@ -93,7 +93,7 @@ struct RedPacketSendView: View {
                 mainPage
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
     }
 
     // MARK: - 主表单

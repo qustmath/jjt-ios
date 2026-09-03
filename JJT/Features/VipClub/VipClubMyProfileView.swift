@@ -63,7 +63,7 @@ struct VipClubMyProfileView: View {
                 }
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { load() }
         .onChange(of: photoItem) { _, item in uploadPhoto(item) }
         .fullScreenCover(isPresented: $showRequests) {
@@ -428,6 +428,7 @@ struct VipClubViewRequestsView: View {
         } message: {
             Text(error ?? "")
         }
+        .jjtPageGestures()
     }
 
     private func requestRow(_ req: VipClubViewRequest) -> some View {

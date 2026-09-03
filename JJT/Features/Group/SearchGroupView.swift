@@ -20,7 +20,7 @@ struct SearchGroupView: View {
                 groupList
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { vm.loadRecommend() }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },

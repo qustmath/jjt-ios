@@ -37,6 +37,7 @@ struct PostInteractionListView: View {
         )) {
             if let id = videoFeedPostId { VideoFeedView(initialPostId: id, tab: "recommend") }
         }
+        .jjtPageGestures()
     }
 
     private var header: some View {

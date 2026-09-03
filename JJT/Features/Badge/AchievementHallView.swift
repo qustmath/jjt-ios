@@ -104,6 +104,7 @@ struct AchievementHallView: View {
                     .presentationBackground(Noir.noir)
             }
         }
+        .jjtPageGestures()
     }
 
     private struct HallDetailTarget: Identifiable { let id: Int64 }

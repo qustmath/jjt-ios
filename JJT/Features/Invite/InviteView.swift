@@ -40,6 +40,7 @@ struct InviteView: View {
             }
         }
         .onAppear { load() }
+        .jjtPageGestures()
     }
 
     // MARK: - 内容

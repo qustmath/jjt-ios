@@ -64,13 +64,14 @@ struct WheelView: View {
         }
         .sheet(isPresented: $showExchange) {
             exchangeSheet
-                .jjtKeyboardDismiss()
+                .jjtPageGestures()
                 .presentationDetents([.height(300)])
                 .presentationBackground(Noir.noir2)
         }
         .onChange(of: vm.loadError) { _, e in
             if let e { jjtShowToast(e); vm.loadError = nil }
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

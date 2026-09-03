@@ -79,14 +79,7 @@ struct AddressEditView: View {
         .onAppear { vm.load(id: addressId) }
         .onChange(of: vm.success) { _, ok in if ok { onSaved() } }
         .sheet(isPresented: $vm.showPicker) { areaPicker }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("完成") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
+        .jjtPageGestures()
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
             set: { if !$0 { vm.error = nil } }

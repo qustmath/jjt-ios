@@ -70,6 +70,7 @@ struct FriendListView: View {
         .fullScreenCover(isPresented: $showApplies) {
             FriendApplyListView()
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

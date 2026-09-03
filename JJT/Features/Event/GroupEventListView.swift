@@ -58,6 +58,7 @@ struct GroupEventListView: View {
         .fullScreenCover(isPresented: $showCreate, onDismiss: { vm.refresh() }) {
             CreateGroupEventView()
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

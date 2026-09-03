@@ -89,6 +89,7 @@ struct ScanView: View {
                 cameraDenied = true
             }
         }
+        .jjtPageGestures()
     }
 
     /// 识别结果 → QR 协议（对齐安卓 QrCodeData t=friend/group/post/task/url/topic/activity + pageant）→ 深链

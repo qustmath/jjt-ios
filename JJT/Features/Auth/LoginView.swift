@@ -25,7 +25,7 @@ struct LoginView: View {
                 .padding(.horizontal, 28)
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
     }
 
     // MARK: - 头部

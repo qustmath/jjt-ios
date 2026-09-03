@@ -55,6 +55,7 @@ struct VipClubMembersView: View {
         )) { t in
             VipClubMemberDetailView(userId: t.id)
         }
+        .jjtPageGestures()
     }
 
     private struct T: Identifiable { let id: Int64 }

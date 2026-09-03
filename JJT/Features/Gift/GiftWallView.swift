@@ -39,6 +39,7 @@ struct GiftWallView: View {
             }
         }
         .onAppear { load() }
+        .jjtPageGestures()
     }
 
     private var topBar: some View {

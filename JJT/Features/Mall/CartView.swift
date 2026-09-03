@@ -84,6 +84,7 @@ struct CartView: View {
         .onReceive(NotificationCenter.default.publisher(for: .jjtOrderChanged)) { _ in
             vm.load()
         }
+        .jjtPageGestures()
     }
 
     private func showToast(_ text: String) {

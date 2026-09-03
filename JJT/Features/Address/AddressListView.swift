@@ -76,6 +76,7 @@ struct AddressListView: View {
         } message: {
             Text("确定要删除该地址吗？")
         }
+        .jjtPageGestures()
     }
 
     private var topBar: some View {

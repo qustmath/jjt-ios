@@ -27,7 +27,7 @@ struct RealnameVerifyView: View {
                 }
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { vm.loadStatus() }
         .alert(vm.resultMsg ?? "", isPresented: Binding(
             get: { vm.resultMsg != nil },

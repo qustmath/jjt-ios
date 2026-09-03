@@ -54,7 +54,7 @@ struct BankCardView: View {
                 }
             }
         }
-        .jjtKeyboardDismiss()
+        .jjtPageGestures()
         .onAppear { vm.load() }
         .alert("提示", isPresented: Binding(
             get: { vm.error != nil },
@@ -255,6 +255,7 @@ struct BankCardBindView: View {
         } message: {
             Text(error ?? "")
         }
+        .jjtPageGestures()
     }
 
     private func photoPicker(_ label: String, url: String?, item: Binding<PhotosPickerItem?>,

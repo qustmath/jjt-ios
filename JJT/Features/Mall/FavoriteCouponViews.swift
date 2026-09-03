@@ -178,6 +178,7 @@ struct FavoriteView: View {
                 SpuDetailView(spuId: id)
             }
         }
+        .jjtPageGestures()
     }
 }
 
@@ -303,6 +304,7 @@ struct CouponCenterView: View {
         .onChange(of: vm.message) { _, msg in
             if let msg { showToast(msg); vm.message = nil }
         }
+        .jjtPageGestures()
     }
 
     private func showToast(_ text: String) {

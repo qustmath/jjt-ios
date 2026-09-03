@@ -68,6 +68,7 @@ struct TicketWalletView: View {
         )) { t in
             ActivityView(activityId: t.id)
         }
+        .jjtPageGestures()
     }
 
     private struct T: Identifiable { let id: Int64 }

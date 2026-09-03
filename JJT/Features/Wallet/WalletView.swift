@@ -69,10 +69,11 @@ struct WalletView: View {
                     jjtShowToast(error.localizedDescription)
                 }
             }
-            .jjtKeyboardDismiss()
+            .jjtPageGestures()
             .presentationDetents([.height(280)])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏

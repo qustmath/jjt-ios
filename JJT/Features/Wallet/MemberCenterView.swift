@@ -69,6 +69,7 @@ struct MemberCenterView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
         }
+        .jjtPageGestures()
     }
 
     // MARK: - 顶栏
