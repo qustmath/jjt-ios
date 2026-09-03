@@ -36,6 +36,9 @@ struct UserProfileView: View {
 
     private var isSelf: Bool { vm.isSelf }
 
+    /// 官方号（1001 荆棘兔/1002 客服/1003 VIP客服）没有个人中心互动：不能关注/加好友/送礼，只能聊天
+    private var isOfficialUser: Bool { jjtIsOfficialUserId(userId) }
+
     var body: some View {
         ZStack {
             Noir.noir.ignoresSafeArea()
@@ -358,30 +361,34 @@ struct UserProfileView: View {
             }
             .padding(.top, 12)
 
-            // 操作栏（他人）：关注 / 私信 / 送礼 / 加好友
+            // 操作栏（他人）：关注 / 私信 / 送礼 / 加好友（官方号仅私信）
             if !isSelf, let p = vm.profile {
                 HStack(spacing: 10) {
-                    let following = p.isFollowing == true
-                    Button { vm.toggleFollow() } label: {
-                        Text(following ? "已关注" : "关注")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 30)
-                            .background(
-                                following
-                                    ? AnyShapeStyle(Color.white.opacity(0.06))
-                                    : AnyShapeStyle(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
-                                                                   startPoint: .topLeading, endPoint: .bottomTrailing))
-                            )
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(following ? 0.15 : 0), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
+                    if isOfficialUser {
+                        outlineButton("私信", gold: true) { showChat = true }
+                    } else {
+                        let following = p.isFollowing == true
+                        Button { vm.toggleFollow() } label: {
+                            Text(following ? "已关注" : "关注")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 30)
+                                .background(
+                                    following
+                                        ? AnyShapeStyle(Color.white.opacity(0.06))
+                                        : AnyShapeStyle(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
+                                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
+                                )
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(Color.white.opacity(following ? 0.15 : 0), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
 
-                    outlineButton("私信") { showChat = true }
-                    outlineButton("送礼", gold: true) { showGiftPanel = true }
-                    FriendApplyButton(targetUserId: p.id)
+                        outlineButton("私信") { showChat = true }
+                        outlineButton("送礼", gold: true) { showGiftPanel = true }
+                        FriendApplyButton(targetUserId: p.id)
+                    }
                 }
                 .padding(.top, 20)
             }
@@ -402,7 +409,7 @@ struct UserProfileView: View {
                     }
                 }
                 .padding(.top, 20)
-            } else {
+            } else if !isOfficialUser {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         entryCard("礼物墙", "查看", "gift", gold: true) { showGiftWall = true }

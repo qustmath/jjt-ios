@@ -32,6 +32,8 @@ struct SendGiftReq: Encodable {
     let payPassword: String
 }
 
+/// 礼物订单（宽容解码，对齐安卓 Gson 容错语义：单个字段类型漂移不应整组解析失败——
+/// 时间字段后端有时返回字符串、有时返回 epoch 毫秒数字，此前整条 收到/送出 列表因此解成空）
 struct GiftOrderVO: Decodable, Identifiable {
     let id: Int64
     let giftId: Int64
@@ -49,6 +51,55 @@ struct GiftOrderVO: Decodable, Identifiable {
     let receivedAt: String?
     let createTime: String?
     let iconScale: Int?
+
+    private enum Keys: String, CodingKey {
+        case id, giftId, giftName, giftIcon, animationUrl, senderId, receiverId
+        case counterpartyName, quantity, payAmount, revenueAmount, status, scene
+        case receivedAt, createTime, iconScale
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = decoder.container(keyedBy: Keys.self)
+        id = (try? c.decodeIfPresent(Int64.self, forKey: .id)) ?? 0
+        giftId = (try? c.decodeIfPresent(Int64.self, forKey: .giftId)) ?? 0
+        giftName = try? c.decodeIfPresent(String.self, forKey: .giftName)
+        giftIcon = try? c.decodeIfPresent(String.self, forKey: .giftIcon)
+        animationUrl = try? c.decodeIfPresent(String.self, forKey: .animationUrl)
+        senderId = Self.flexInt64(c, .senderId)
+        receiverId = Self.flexInt64(c, .receiverId)
+        counterpartyName = try? c.decodeIfPresent(String.self, forKey: .counterpartyName)
+        quantity = Self.flexInt(c, .quantity)
+        payAmount = Self.flexInt64(c, .payAmount)
+        revenueAmount = Self.flexInt64(c, .revenueAmount)
+        status = try? c.decodeIfPresent(String.self, forKey: .status)
+        scene = try? c.decodeIfPresent(String.self, forKey: .scene)
+        receivedAt = Self.flexTime(c, .receivedAt)
+        createTime = Self.flexTime(c, .createTime)
+        iconScale = Self.flexInt(c, .iconScale)
+    }
+
+    private static func flexInt64(_ c: KeyedDecodingContainer<Keys>, _ k: Keys) -> Int64? {
+        if let n = try? c.decodeIfPresent(Int64.self, forKey: k) { return n }
+        if let s = try? c.decodeIfPresent(String.self, forKey: k) { return Int64(s) }
+        return nil
+    }
+
+    private static func flexInt(_ c: KeyedDecodingContainer<Keys>, _ k: Keys) -> Int? {
+        if let n = try? c.decodeIfPresent(Int.self, forKey: k) { return n }
+        if let s = try? c.decodeIfPresent(String.self, forKey: k) { return Int(s) }
+        return nil
+    }
+
+    /// 字符串 / epoch 毫秒数字 二者兼容（数字转 "yyyy-MM-dd HH:mm"，对齐订单页做法）
+    private static func flexTime(_ c: KeyedDecodingContainer<Keys>, _ k: Keys) -> String? {
+        if let s = try? c.decodeIfPresent(String.self, forKey: k) { return s }
+        if let n = try? c.decodeIfPresent(Int64.self, forKey: k) {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd HH:mm"
+            return f.string(from: Date(timeIntervalSince1970: TimeInterval(n) / 1000))
+        }
+        return nil
+    }
 }
 
 struct GiftWallItem: Decodable, Identifiable {

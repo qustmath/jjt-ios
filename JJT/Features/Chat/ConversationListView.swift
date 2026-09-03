@@ -254,6 +254,13 @@ struct ConversationItem: Identifiable {
     var avatarFrameScale: Double = 1.0
 }
 
+/// 官方号判定（数字 ID：1001 荆棘兔 / 1002 客服 / 1003 VIP客服，对齐安卓）。
+/// 官方号只能聊天：没有个人中心入口、不能加好友、不能送礼。
+func jjtIsOfficialUserId(_ id: Int64?) -> Bool {
+    guard let id else { return false }
+    return id == 1001 || id == 1002 || id == 1003
+}
+
 @MainActor
 final class ConversationListViewModel: ObservableObject {
 
@@ -299,7 +306,6 @@ final class ConversationListViewModel: ObservableObject {
     private static let officialAccounts: [(id: String, name: String)] = [
         ("1001", "荆棘兔"), ("1002", "客服"), ("1003", "VIP客服")
     ]
-
     func load() async {
         isLoading = true
         defer { isLoading = false }

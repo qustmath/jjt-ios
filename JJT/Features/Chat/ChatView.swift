@@ -172,6 +172,9 @@ struct ChatView: View {
         }
     }
 
+    /// 官方号（1001 荆棘兔/1002 客服/1003 VIP客服）只能聊天：无个人中心入口、不能加好友、不能送礼
+    private var isOfficialPeer: Bool { !isGroup && jjtIsOfficialUserId(Int64(peerId)) }
+
     // MARK: - 顶栏
 
     private var topBar: some View {
@@ -193,7 +196,8 @@ struct ChatView: View {
                               frameURL: vm.peerAvatarFrame,
                               frameScale: vm.peerAvatarFrameScale)
                         .frame(width: 34, height: 34)
-                        .onTapGesture { peerProfileId = Int64(peerId) }
+                        // 官方号只能聊天：头像不可点进个人中心
+                        .onTapGesture { if !isOfficialPeer { peerProfileId = Int64(peerId) } }
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title ?? vm.peerName ?? (isGroup ? "群聊" : "私聊"))
@@ -207,8 +211,8 @@ struct ChatView: View {
                     }
                 }
                 Spacer()
-                // 单聊：加好友入口（非好友场景，对齐安卓 ChatScreen 顶栏）
-                if !isGroup {
+                // 单聊：加好友入口（非好友场景，对齐安卓 ChatScreen 顶栏；官方号不提供）
+                if !isGroup, !isOfficialPeer {
                     FriendApplyButton(targetUserId: Int64(peerId))
                 }
                 // 群设置入口（仅群聊，对齐安卓 ChatScreen 顶栏）
@@ -613,7 +617,10 @@ struct ChatView: View {
         HStack(spacing: 0) {
             panelAction("photo", "图片") { panel = nil; showPhotoPicker() }
             panelAction("face.smiling", "表情") { withAnimation { panel = .stickers } }
-            panelAction("gift", "礼物") { panel = nil; showGiftPanel = true }
+            // 官方号不收礼，不显示礼物入口
+            if !isOfficialPeer {
+                panelAction("gift", "礼物") { panel = nil; showGiftPanel = true }
+            }
             panelAction("envelope", "红包") { panel = nil; showRedPacketSend = true }
         }
         .padding(.vertical, 14)
