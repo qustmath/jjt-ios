@@ -1,5 +1,19 @@
 import Foundation
 
+/// 礼物全览弹层条目（收到的/送出的，按 礼物+对方 聚合，对齐安卓 GiftSheetItem）
+struct ProfileGiftItem: Identifiable {
+    let giftId: Int64
+    let name: String
+    let icon: String?
+    let animationUrl: String?
+    let count: Int
+    /// 收到的：送礼人；送出的：接收人
+    let counterparty: String?
+    let iconScale: Int?
+
+    var id: String { "\(giftId)_\(counterparty ?? "")" }
+}
+
 @MainActor
 final class UserProfileViewModel: ObservableObject {
 
@@ -12,6 +26,14 @@ final class UserProfileViewModel: ObservableObject {
     // 本人：成就殿堂点亮进度
     @Published var hallLit = 0
     @Published var hallTotal = 0
+    // 本人：收到的/送出的礼物聚合（入口卡 + 全览弹层）
+    @Published var recvGifts: [ProfileGiftItem] = []
+    @Published var sentGifts: [ProfileGiftItem] = []
+    // 勋章墙（本人/他人均加载；user-wall 对本人同样可用，仅返回已获得）
+    @Published var badges: [BadgeItem] = []
+    // 头像框选项与保存态（本人点头像更换，对齐安卓 frameOptions/frameSaving）
+    @Published var frameOptions: AvatarFrameOptions?
+    @Published var frameSaving = false
 
     private var page = 1
     private var userId: Int64 = 0
@@ -20,7 +42,7 @@ final class UserProfileViewModel: ObservableObject {
         profile?.isSelf == true || profile?.id == TokenManager.shared.userId
     }
 
-    /// 并行加载资料 + 帖子首页（对齐安卓 UserProfileViewModel.load）
+    /// 并行加载资料 + 帖子首页 + 勋章墙（对齐安卓 UserProfileViewModel.load）
     func load(userId: Int64) {
         self.userId = userId
         page = 1
@@ -46,15 +68,63 @@ final class UserProfileViewModel: ObservableObject {
                 self.error = error.localizedDescription
             }
         }
+        Task {
+            // 勋章墙失败静默
+            badges = (try? await BadgeAPI.userBadgeWall(userId: userId)) ?? []
+        }
     }
 
-    /// 本人：成就殿堂点亮数（失败静默）
+    /// 本人：入口卡数据（收到/送出礼物聚合 + 成就殿堂点亮数；失败静默，对齐安卓 loadSelfExtras）
     private func loadSelfExtras() {
         Task {
             if let hall = try? await BadgeAPI.achievementHall() {
                 hallLit = hall.litStages ?? 0
                 hallTotal = hall.totalStages ?? 0
             }
+        }
+        Task {
+            // 按 礼物+对方 聚合，数量求和（对齐安卓 groupBy giftId to counterpartyName）
+            func aggregate(_ orders: [GiftOrderVO]) -> [ProfileGiftItem] {
+                let groups = Dictionary(grouping: orders) { o in
+                    "\(o.giftId)_\(o.counterpartyName ?? "")"
+                }
+                return groups.values.map { orders in
+                    let first = orders.first
+                    return ProfileGiftItem(
+                        giftId: first?.giftId ?? 0,
+                        name: first?.giftName ?? "礼物",
+                        icon: first?.giftIcon,
+                        animationUrl: first?.animationUrl,
+                        count: orders.reduce(0) { $0 + ($1.quantity ?? 1) },
+                        counterparty: first?.counterpartyName.flatMap { $0.isEmpty ? nil : $0 },
+                        iconScale: first?.iconScale
+                    )
+                }
+                .sorted { $0.count > $1.count }
+            }
+            let recv = (try? await GiftAPI.receivedList()) ?? []
+            let sent = (try? await GiftAPI.sentList()) ?? []
+            recvGifts = aggregate(recv)
+            sentGifts = aggregate(sent)
+        }
+    }
+
+    /// 加载头像框选项（默认框 + 持有 + 段位专属含解锁态；失败静默）
+    func loadFrameOptions() {
+        Task {
+            frameOptions = try? await AvatarFrameAPI.options()
+        }
+    }
+
+    /// 更换头像框（url 空串 = 摘下），成功后刷新资料与选项（对齐安卓 selectFrame）
+    func selectFrame(url: String) {
+        frameSaving = true
+        Task {
+            defer { frameSaving = false }
+            _ = try? await UserAPI.updateUserInfo(UpdateUserReq(avatarFrame: url))
+            jjtShowToast(url.isEmpty ? "已摘下头像框" : "已更换头像框")
+            profile = try? await UserAPI.getProfile(userId: userId)
+            frameOptions = try? await AvatarFrameAPI.options()
         }
     }
 

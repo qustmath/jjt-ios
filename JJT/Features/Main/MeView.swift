@@ -9,8 +9,6 @@ struct MeView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var vm = MeViewModel()
 
-    @State private var avatarItem: PhotosPickerItem?
-    @State private var isUploadingAvatar = false
     @State private var editingField: EditField?
     @State private var editInput = ""
     @State private var showProfile = false
@@ -240,31 +238,11 @@ struct MeView: View {
     private var avatarSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 16) {
-                // 头像 + 编辑钮
-                ZStack(alignment: .bottomTrailing) {
-                    AppAvatar(url: vm.user?.avatar, size: 88,
-                              frameURL: vm.user?.avatarFrame,
-                              frameScale: vm.user?.avatarFrameScale.map { CGFloat($0) } ?? 1.25)
-                        .frame(width: 104, height: 104)
-
-                    PhotosPicker(selection: $avatarItem, matching: .images) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine],
-                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 24, height: 24)
-                            if isUploadingAvatar {
-                                ProgressView().tint(.white).scaleEffect(0.6)
-                            } else {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                    }
-                    .disabled(isUploadingAvatar)
-                    .onChange(of: avatarItem) { _, item in uploadAvatar(item) }
-                }
+                // 头像（对齐安卓：我的页不可直接改头像，整行点击进个人主页，改头像/头像框在个人中心）
+                AppAvatar(url: vm.user?.avatar, size: 88,
+                          frameURL: vm.user?.avatarFrame,
+                          frameScale: vm.user?.avatarFrameScale.map { CGFloat($0) } ?? 1.25)
+                    .frame(width: 104, height: 104)
 
                 VStack(alignment: .leading, spacing: 4) {
                     // 昵称 + 段位徽章 / 升级VIP
@@ -674,24 +652,6 @@ struct MeView: View {
         }
     }
 
-    private func uploadAvatar(_ item: PhotosPickerItem?) {
-        guard let item else { return }
-        isUploadingAvatar = true
-        Task {
-            defer { isUploadingAvatar = false; avatarItem = nil }
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self) else { return }
-                // 统一转 jpeg 压缩（对齐安卓发帖 0.82）
-                guard let uiImage = UIImage(data: data),
-                      let jpeg = uiImage.jpegData(compressionQuality: 0.82) else { return }
-                let url = try await APIClient.shared.uploadFile(data: jpeg, filename: "avatar_\(Int(Date().timeIntervalSince1970)).jpg", mime: "image/jpeg")
-                vm.update(UpdateUserReq(avatar: url))
-            } catch {
-                vm.error = error.localizedDescription
-            }
-        }
-    }
-}
 
 #Preview {
     MeView().environmentObject(AppState())

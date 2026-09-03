@@ -23,6 +23,10 @@ struct UserProfileView: View {
     @State private var showGiftWall = false
     @State private var showChat = false
     @State private var showAchievementHall = false
+    @State private var showFrameSheet = false
+    @State private var showBadgeWall = false
+    /// 礼物全览弹层："recv" / "sent"（nil 关闭）
+    @State private var giftSheetKind: String?
 
     private enum EditField: Identifiable {
         case nickname, mark
@@ -121,6 +125,34 @@ struct UserProfileView: View {
         // 成就殿堂（本人）
         .fullScreenCover(isPresented: $showAchievementHall) {
             AchievementHallView()
+        }
+        // 我的勋章墙（本人，勋章区「查看全部」）
+        .fullScreenCover(isPresented: $showBadgeWall) {
+            BadgeWallView()
+        }
+        // 头像框更换（本人点头像，对齐安卓 AvatarFrameSheet）
+        .sheet(isPresented: $showFrameSheet) {
+            AvatarFramePickerSheet(
+                options: vm.frameOptions,
+                saving: vm.frameSaving,
+                onSelect: { vm.selectFrame(url: $0) },
+                onClose: { showFrameSheet = false }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
+        // 礼物全览（收到的/送出的）
+        .sheet(isPresented: Binding(
+            get: { giftSheetKind != nil },
+            set: { if !$0 { giftSheetKind = nil } }
+        )) {
+            if let kind = giftSheetKind {
+                ProfileGiftSheet(kind: kind,
+                                 items: kind == "recv" ? vm.recvGifts : vm.sentGifts,
+                                 onClose: { giftSheetKind = nil })
+                    .presentationDetents([.medium])
+                    .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+            }
         }
         .jjtPageGestures()
     }
@@ -226,9 +258,14 @@ struct UserProfileView: View {
                               frameURL: vm.profile?.avatarFrame,
                               frameScale: vm.profile?.avatarFrameScale.map { CGFloat($0) } ?? 1.25)
                         .frame(width: 108, height: 108)
-                        // 彩蛋「第三只兔耳」：本人点头像（对齐安卓，头像框更换入口同期触发）
+                        // 本人点头像：更换头像框（彩蛋「第三只兔耳」同时保留，对齐安卓两个入口并存）
                         .contentShape(Circle())
-                        .onTapGesture { if isSelf { EggTrigger.report("third-ear") } }
+                        .onTapGesture {
+                            guard isSelf else { return }
+                            EggTrigger.report("third-ear")
+                            if vm.frameOptions == nil { vm.loadFrameOptions() }
+                            showFrameSheet = true
+                        }
 
                     if isSelf {
                         PhotosPicker(selection: $avatarItem, matching: .images) {
@@ -349,10 +386,16 @@ struct UserProfileView: View {
                 .padding(.top, 20)
             }
 
-            // 入口卡（本人）：成就勋章；（他人）：礼物墙
+            // 入口卡（本人）：收到的礼物 / 送出的礼物 / 成就勋章；（他人）：礼物墙
             if isSelf {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
+                        entryCard("收到的礼物", "\(vm.recvGifts.reduce(0) { $0 + $1.count }) 件", "gift") {
+                            giftSheetKind = "recv"
+                        }
+                        entryCard("送出的礼物", "\(vm.sentGifts.reduce(0) { $0 + $1.count }) 件", "paperplane.fill") {
+                            giftSheetKind = "sent"
+                        }
                         entryCard("成就勋章", "\(vm.hallLit)/\(vm.hallTotal)", "medal", gold: true) {
                             showAchievementHall = true
                         }
@@ -366,6 +409,11 @@ struct UserProfileView: View {
                     }
                 }
                 .padding(.top, 20)
+            }
+
+            // 勋章墙（已获得；本人可点进我的勋章墙，对齐安卓 BadgeSection）
+            if !vm.badges.isEmpty {
+                profileBadgeSection
             }
 
             // 动态标题
@@ -384,6 +432,73 @@ struct UserProfileView: View {
         .padding(.horizontal, 20)
         .offset(y: -44)
         .padding(.bottom, -44)
+    }
+
+    // MARK: - 勋章墙（对齐安卓 BadgeSection：已获得勋章横滑，本人可进我的勋章墙）
+
+    private var profileBadgeSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("勋 章")
+                    .font(.system(size: 12))
+                    .tracking(3.6)
+                    .foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                if isSelf {
+                    Button { showBadgeWall = true } label: {
+                        HStack(spacing: 2) {
+                            Text("查看全部")
+                                .font(.system(size: 10))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundStyle(.white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Rectangle().fill(Noir.goldLine).frame(height: 1)
+                .padding(.top, 10)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(vm.badges) { badge in
+                        let tint = rarityColor(badge.rarity)
+                        VStack(spacing: 6) {
+                            Group {
+                                if let icon = badge.icon, !icon.isEmpty {
+                                    WebImage(url: webImageURL(icon), contentMode: .fit) {
+                                        Image(systemName: "medal")
+                                            .font(.system(size: 34))
+                                            .foregroundStyle(tint)
+                                    }
+                                    .frame(width: 44, height: 44)
+                                } else {
+                                    Image(systemName: "medal")
+                                        .font(.system(size: 34))
+                                        .foregroundStyle(tint)
+                                        .frame(width: 44, height: 44)
+                                }
+                            }
+                            Text(badge.name)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.75))
+                                .lineLimit(1)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 4)
+                        .frame(width: 76)
+                        .background(Color.white.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(tint.opacity(0.45), lineWidth: 1))
+                        .contentShape(Rectangle())
+                        .onTapGesture { if isSelf { showBadgeWall = true } }
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .padding(.top, 16)
+        }
+        .padding(.top, 24)
     }
 
     // MARK: - 帖子瀑布流
@@ -612,6 +727,88 @@ struct UserProfileView: View {
                 vm.error = error.localizedDescription
             }
         }
+    }
+}
+
+// MARK: - 礼物全览弹层（收到的/送出的，对齐安卓 GiftSheet：4 列网格 + 聚合计数 + 对方昵称）
+
+struct ProfileGiftSheet: View {
+    let kind: String   // recv / sent
+    let items: [ProfileGiftItem]
+    let onClose: () -> Void
+
+    private var isRecv: Bool { kind == "recv" }
+    private var total: Int { items.reduce(0) { $0 + $1.count } }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(Noir.goldLine).frame(height: 1)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isRecv ? "收到的礼物" : "送出的礼物")
+                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .foregroundStyle(Noir.ivory)
+                    Text("\(isRecv ? "RECEIVED" : "SENT") · 共 \(total) 件")
+                        .font(.system(size: 9, design: .serif))
+                        .italic()
+                        .tracking(2)
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                Spacer()
+                Button { onClose() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.top, 14)
+
+            if items.isEmpty {
+                Text("暂无记录")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        ForEach(items) { item in
+                            VStack(spacing: 4) {
+                                GiftIconView(
+                                    icon: giftDisplayIcon(item.icon, item.animationUrl),
+                                    size: 56,
+                                    scale: CGFloat(item.iconScale ?? 100) / 100
+                                )
+                                .frame(height: 60)
+                                Text(item.name)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .lineLimit(1)
+                                Text("×\(item.count)")
+                                    .font(.system(size: 10, design: .serif))
+                                    .foregroundStyle(Noir.goldText)
+                                if let cp = item.counterparty {
+                                    Text(isRecv ? "来自 \(cp)" : "赠 \(cp)")
+                                        .font(.system(size: 8.5))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                        .lineLimit(1)
+                                }
+                            }
+                            .padding(.vertical, 10)
+                            .background(Color.white.opacity(0.03))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        }
+                    }
+                    .padding(.top, 14)
+                    .padding(.bottom, 30)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
     }
 }
 
