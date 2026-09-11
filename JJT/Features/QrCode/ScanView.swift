@@ -2,7 +2,7 @@ import AVFoundation
 import SwiftUI
 
 /// 扫一扫（对齐安卓 ScanScreen：相机扫码 → QR 协议解析 → 统一深链路由）
-/// 支持：friend 用户主页 / post 帖子 / group 群聊 / pageant 选美 / activity 活动 / url 外部浏览器；
+/// 支持：friend 用户主页 / post 帖子 / group 群聊 / pageant 选美 / activity 活动 / article 图文 / url 外部浏览器；
 /// task/topic 与安卓一致暂未实现（提示）
 struct ScanView: View {
 
@@ -92,7 +92,7 @@ struct ScanView: View {
         .jjtPageGestures()
     }
 
-    /// 识别结果 → QR 协议（对齐安卓 QrCodeData t=friend/group/post/task/url/topic/activity + pageant）→ 深链
+    /// 识别结果 → QR 协议（对齐安卓 QrCodeData t=friend/group/post/article/task/url/topic/activity + pageant）→ 深链
     private func handleScan(_ raw: String) {
         guard lastResult == nil else { return } // 只处理首个结果
         // 非 JSON 内容：按文本提示（对齐安卓 toast 未识别）
@@ -103,7 +103,7 @@ struct ScanView: View {
             return
         }
         switch t {
-        case "friend", "post", "group", "activity":
+        case "friend", "post", "group", "activity", "article":
             dismiss()
             NotificationCenter.default.post(name: .jjtDeepLink, object: obj)
         case "pageant":

@@ -153,7 +153,7 @@ struct HomeView: View {
         NotificationCenter.default.post(name: .jjtSwitchTab, object: tag)
     }
 
-    /// banner 点击：linkTarget DeepLink 统一交给 MainTabView 处理（wheel/activity/post/friend/group）
+    /// banner 点击：linkTarget DeepLink 统一交给 MainTabView 处理（wheel/activity/post/friend/group/pageant/article）
     private func handleBannerTap(_ banner: BannerInfo) {
         guard let target = banner.linkTarget, !target.isEmpty,
               let data = target.data(using: .utf8),
