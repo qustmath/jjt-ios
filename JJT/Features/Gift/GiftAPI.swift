@@ -21,6 +21,8 @@ struct GiftItem: Decodable, Identifiable {
     let animationUrl: String?
     /// 图标显示缩放（百分比，100=原始大小）
     let iconScale: Int?
+    /// 大厅三级广播档（table/store/all，后台配置；nil=未配置并入同桌心意）
+    let broadcastScope: String?
 }
 
 struct SendGiftReq: Encodable {

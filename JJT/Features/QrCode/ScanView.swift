@@ -6,6 +6,10 @@ import SwiftUI
 /// task/topic 与安卓一致暂未实现（提示）
 struct ScanView: View {
 
+    /// 大厅入座码模式（对齐安卓 scan?lobbyTableId= 路由）：扫到 t=lobby_entry 的平板入座码时
+    /// 把 token 交给调用方（门店大厅的扫码入座链路），不走统一深链
+    var onLobbyEntry: ((String) -> Void)? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var cameraDenied = false
     @State private var lastResult: String?
@@ -103,6 +107,15 @@ struct ScanView: View {
             return
         }
         switch t {
+        case "lobby_entry":
+            // 平板入座码（门店大厅扫码入座）：只把 token 交给调用方
+            guard let onLobbyEntry, let token = obj["token"] as? String, !token.isEmpty else {
+                lastResult = "无效的入座码"
+                return
+            }
+            dismiss()
+            onLobbyEntry(token)
+            return
         case "friend", "post", "group", "activity", "article":
             dismiss()
             NotificationCenter.default.post(name: .jjtDeepLink, object: obj)

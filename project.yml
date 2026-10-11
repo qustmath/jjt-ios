@@ -28,9 +28,12 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
-        NSLocationWhenInUseUsageDescription: 用于在首页展示你所在的城市
-        # 扫一扫（首页/我的页扫码加好友、识帖）
+        # 定位：首页城市展示 + 大厅入座/拼桌/邀请核销的 3km 围栏证据
+        NSLocationWhenInUseUsageDescription: 用于展示你所在的城市，以及门店大厅入座时核验你是否在门店 3 公里内
+        # 扫一扫（首页/我的页扫码加好友、识帖；门店大厅扫平板入座码）
         NSCameraUsageDescription: 用于扫码识别二维码
+        # 大厅公屏语音消息
+        NSMicrophoneUsageDescription: 用于在门店大厅发送语音消息
         # 拉起支付宝收银台（充值）
         LSApplicationQueriesSchemes: [alipays]
         # 对齐安卓 usesCleartextTraffic=true：历史数据存在 http 图片（OSS/CDN），

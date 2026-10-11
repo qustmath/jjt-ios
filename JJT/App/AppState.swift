@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
         Task { @MainActor in
             for await _ in NotificationCenter.default.notifications(named: .jjtUnauthorized) {
                 isLoggedIn = false
+                resetLobbySessions()
             }
         }
     }
@@ -29,7 +30,14 @@ final class AppState: ObservableObject {
             await AuthAPI.logout()
             ImManager.shared.logout()
             TokenManager.shared.clear()
+            resetLobbySessions()
             await MainActor.run { isLoggedIn = false }
         }
+    }
+
+    /// 大厅会话清理（坐席态 + 公屏消息/群状态；对齐安卓 MainActivity 登出时的 LobbySeatSession.reset + LobbyImSession.clear）
+    private func resetLobbySessions() {
+        LobbySeatSession.shared.reset()
+        LobbyImSession.shared.clear()
     }
 }

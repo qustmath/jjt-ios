@@ -213,6 +213,23 @@ final class ImManager: NSObject {
         }
     }
 
+    /// 加入群聊（大厅 AVChatRoom 用；10013=已在群里由调用方按成功处理）
+    func joinGroup(_ groupId: String) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            V2TIMManager.sharedInstance().joinGroup(groupID: groupId, msg: "join lobby") {
+                cont.resume()
+            } fail: { code, msg in
+                cont.resume(throwing: APIError.business(code: Int(code), message: msg ?? "进群失败"))
+            }
+        }
+    }
+
+    /// 发送语音消息（本地录音文件路径 + 时长秒；大厅语音公屏用）
+    func sendSound(_ localPath: String, seconds: Int32, to peerId: String, isGroup: Bool) async throws {
+        guard let msg = V2TIMManager.sharedInstance().createSoundMessage(audioFilePath: localPath, duration: seconds) else { return }
+        try await send(msg, to: peerId, isGroup: isGroup)
+    }
+
     /// 设置自己的 IM 名片（昵称+头像）
     func updateSelfInfo(nickname: String, avatar: String) {
         let info = V2TIMUserFullInfo()
@@ -221,8 +238,8 @@ final class ImManager: NSObject {
         V2TIMManager.sharedInstance().setSelfInfo(info: info) {} fail: { (_, _: String?) in }
     }
 
-    /// 翻译 IM SDK 常见英文错误为中文（对齐安卓 translateError）
-    private static func translateError(_ desc: String?) -> String {
+    /// 翻译 IM SDK 常见英文错误为中文（对齐安卓 translateError；大厅发送失败分流也要用）
+    static func translateError(_ desc: String?) -> String {
         let msg = desc ?? "发送失败"
         let lower = msg.lowercased()
         if lower.contains("only send one message") || lower.contains("non-friend") || lower.contains("at most once") {

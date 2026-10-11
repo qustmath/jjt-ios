@@ -22,6 +22,7 @@ struct HomeView: View {
     @State private var showQuiz = false
     @State private var showMall = false
     @State private var showVipClub = false
+    @State private var showLobby = false
     // 蜜兔会动画：呼吸辉光 / 徽章扫光（流光改由 TimelineView 逐帧驱动，不走 state）
     @State private var mituGlow = false
     @State private var badgeSheen = false
@@ -130,6 +131,10 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showVipClub) {
             VipClubMainView()
+        }
+        // 门店大厅（聊天室，对齐安卓首页「门店大厅」入口）
+        .fullScreenCover(isPresented: $showLobby) {
+            NightLobbyView()
         }
         .onAppear {
             // 对齐安卓 LifecycleStartEffect：首次进入加载，之后每次回到首页都刷新
@@ -545,6 +550,7 @@ struct HomeView: View {
         .init(name: "组局", en: "Gather", icon: "person.3", tab: nil),
         .init(name: "群聊", en: "Channel", icon: "bubble.left.and.bubble.right", tab: nil),
         .init(name: "广场动态", en: "Square", icon: "flame", tab: 1),
+        .init(name: "门店大厅", en: "Lounge", icon: "storefront", tab: nil),
         .init(name: "匹配", en: "Match", icon: "heart", tab: nil),
         .init(name: "AI伴侣", en: "Companion", icon: "sparkles", tab: nil),
         .init(name: "属性测试", en: "Persona", icon: "testtube.2", tab: nil),
@@ -562,6 +568,7 @@ struct HomeView: View {
                             else if e.name == "群聊" { showSearchGroup = true }
                             else if e.name == "属性测试" { showQuiz = true }
                             else if e.name == "商城" { showMall = true }
+                            else if e.name == "门店大厅" { showLobby = true }
                             else if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
                         } label: {
                             VStack(spacing: 0) {
