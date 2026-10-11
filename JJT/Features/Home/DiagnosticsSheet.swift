@@ -41,7 +41,7 @@ struct DiagnosticsSheet: View {
                     Button("播放送礼特效（不扣余额）") {
                         let demo = GiftItem(id: 0, name: "暗夜玫瑰", description: nil, icon: nil,
                                             categoryId: nil, categoryName: nil, priceRabbit: 520,
-                                            animationUrl: nil, iconScale: nil)
+                                            animationUrl: nil, iconScale: nil, broadcastScope: nil)
                         JJTWindowOverlay.show(GiftSendOverlay(gift: demo, combo: 1) { JJTWindowOverlay.dismiss() })
                     }
                 }
