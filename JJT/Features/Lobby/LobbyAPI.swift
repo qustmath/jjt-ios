@@ -276,7 +276,7 @@ enum LobbyReportReason: String, CaseIterable {
 // ===================== 枚举口径 =====================
 
 /// 六态桌位（与安卓 TableStatus 对齐：颜色/发光/动画样式在 LobbyParts 里渲染）
-enum LobbyTableStatus: String {
+enum LobbyTableStatus: String, CaseIterable {
     case occupied
     case reserved
     case free
