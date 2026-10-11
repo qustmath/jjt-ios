@@ -76,6 +76,10 @@ jobs:
               tail -100 /tmp/build.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            # 同时以注解形式上报前 10 条（公开 API 可读，无需登录）
+            grep -E "error:" /tmp/build.log | sort -u | head -10 | while IFS= read -r line; do
+              echo "::error::${line:0:600}"
+            done
           fi
 
   # ── TestFlight 发布：仅手动触发且 release=true ─────────────
