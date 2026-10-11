@@ -54,11 +54,29 @@ jobs:
             sleep $s
           done
           [ $ok -eq 1 ] || { echo "pod install 重试 5 次仍失败"; exit 1; }
+          set -o pipefail
           xcodebuild -workspace JJT.xcworkspace -scheme JJT \
             -destination 'generic/platform=iOS Simulator' \
             -sdk iphonesimulator \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee /tmp/build.log
+
+      # 编译失败时把 Swift error 行写进 Job Summary（公开可见，无需登录即可在 job 页读到）
+      - name: Summarize build errors
+        if: failure()
+        run: |
+          if [ -f /tmp/build.log ]; then
+            {
+              echo "## Swift errors"
+              echo '```'
+              grep -E "error:" /tmp/build.log | sort -u | head -80
+              echo '```'
+              echo "## Full log tail"
+              echo '```'
+              tail -100 /tmp/build.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # ── TestFlight 发布：仅手动触发且 release=true ─────────────
   beta:
