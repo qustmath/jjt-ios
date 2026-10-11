@@ -75,9 +75,8 @@ struct LobbyTableDrawerView: View {
     private var members: [LobbySpectateMember] { spectate?.members ?? [] }
     /// 我对本桌的在途申请（未过期）：有则不重复给申请入口
     private var pendingMine: LobbyShareApply? {
-        myApply.takeIf {
-            $0.tableId == table.id && $0.status == "pending" && $0.expired != true
-        }
+        guard let a = myApply, a.tableId == table.id, a.status == "pending", a.expired != true else { return nil }
+        return a
     }
 
     var body: some View {
@@ -152,7 +151,7 @@ struct LobbyTableDrawerView: View {
 
                 // ── 申请人：我的拼桌申请状态（别人的桌 · 拼桌中/有人桌审批制） ──
                 if !isMine && (status == .sharing || status == .occupied) {
-                    let mine = myApply.takeIf { $0.tableId == table.id }
+                    let mine = myApply.flatMap { $0.tableId == table.id ? $0 : nil }
                     if pendingMine != nil {
                         StatusCard(text: "已申请拼桌 · 等桌主审批（30 分钟窗口）", dim: false)
                             .padding(.top, 12)
@@ -470,7 +469,7 @@ private struct MemberLane: View {
                                     .contentShape(Circle())
                                     .onTapGesture { onClick(m) }
                                     .simultaneousGesture(
-                                        LongPressGesture().onEnded {
+                                        LongPressGesture().onEnded { _ in
                                             if canHostAct && m.userId != myUserId { onHostAction(m) }
                                         }
                                     )

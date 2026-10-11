@@ -189,12 +189,12 @@ struct StoreLobbyView: View {
         .sheet(item: $unlockFor) { t in
             LobbyDndUnlockSheet(
                 table: t,
-                hostNickname: spectate?.takeIf { $0.tableId == t.id }?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
+                hostNickname: drawerSpectate(t)?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
                 myOrders: vm.myOrders,
                 onDismiss: { unlockFor = nil },
                 onGiftTier: {
                     unlockFor = nil
-                    let hostName = spectate?.takeIf { $0.tableId == t.id }?.members?
+                    let hostName = drawerSpectate(t)?.members?
                         .first { $0.host == true || $0.userId == t.hostUserId }?.nickname
                     giftCtx = LobbyGiftContext(
                         tableId: t.id, tableNo: t.tableNo, scene: "lobby_dnd",
@@ -436,6 +436,12 @@ struct StoreLobbyView: View {
         }
     }
 
+    /// 围观桌况限定在当前桌（spectate 是单桌快照，防串桌）
+    private func drawerSpectate(_ t: LobbyTable) -> LobbyTableSpectate? {
+        guard let s = spectate, s.tableId == t.id else { return nil }
+        return s
+    }
+
     private func refreshDrawerSpectate() {
         guard let t = drawerTable else { return }
         Task {
@@ -454,7 +460,7 @@ struct StoreLobbyView: View {
             tableId: t.id,
             tableNo: t.tableNo,
             scene: "lobby",
-            receivers: (spectate?.takeIf { $0.tableId == t.id }?.members ?? [])
+            receivers: (drawerSpectate(t)?.members ?? [])
                 .filter { $0.userId != myUserId }
                 .map { GiftReceiver(id: $0.userId, name: $0.nickname ?? "本桌用户", avatar: $0.avatar) },
             toName: "\(t.tableNo ?? "本桌") 桌成员")

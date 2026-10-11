@@ -82,10 +82,12 @@ struct LobbyHeatView: View {
                     }
                 } else {
                     ScrollView(showsIndicators: false) {
+                        let topThree = Array(items.prefix(3))
+                        let rest = items.dropFirst(3)
                         VStack(spacing: 8) {
-                            Podium(items: Array(items.prefix(3))) { cardUser = $0 }
+                            Podium(items: topThree) { cardUser = $0 }
                             Spacer().frame(height: 18)
-                            ForEach(Array(items.drop(3).enumerated()), id: \.element.id) { _, row in
+                            ForEach(rest) { row in
                                 HeatRow(item: row) { cardUser = row }
                             }
                         }

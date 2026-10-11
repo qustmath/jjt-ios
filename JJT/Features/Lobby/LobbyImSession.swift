@@ -95,9 +95,11 @@ final class LobbyImSession: ObservableObject {
     /// 页面离开时调用；计数归零才反注册，避免两页互踢
     func stop() {
         refCount = max(0, refCount - 1)
-        if refCount == 0, let observer {
-            NotificationCenter.default.removeObserver(observer)
-            self.observer = nil
+        if refCount == 0 {
+            if let obs = observer {
+                NotificationCenter.default.removeObserver(obs)
+            }
+            observer = nil
         }
     }
 
@@ -115,10 +117,10 @@ final class LobbyImSession: ObservableObject {
         loginTask?.cancel()
         loginTask = nil
         refCount = 0
-        if let observer {
-            NotificationCenter.default.removeObserver(observer)
-            observer = nil
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
         }
+        observer = nil
     }
 
     private func registerObserverIfNeeded() {

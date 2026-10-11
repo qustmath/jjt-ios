@@ -139,14 +139,14 @@ private struct LobbyMessageRow: View {
                         .padding(.vertical, 5)
                         .background(
                             UnevenRoundedRectangle(
-                                topLeadingRadius: 4, topTrailingRadius: 12,
-                                bottomLeadingRadius: 12, bottomTrailingRadius: 12)
+                                topLeadingRadius: 4, bottomLeadingRadius: 12,
+                                bottomTrailingRadius: 12, topTrailingRadius: 12)
                                 .fill(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.95))
                         )
                         .overlay(
                             UnevenRoundedRectangle(
-                                topLeadingRadius: 4, topTrailingRadius: 12,
-                                bottomLeadingRadius: 12, bottomTrailingRadius: 12)
+                                topLeadingRadius: 4, bottomLeadingRadius: 12,
+                                bottomTrailingRadius: 12, topTrailingRadius: 12)
                                 .stroke(Noir.gold.opacity(0.22), lineWidth: 1)
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
