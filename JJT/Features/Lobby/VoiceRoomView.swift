@@ -208,6 +208,12 @@ struct VoiceRoomView: View {
                         showToast(muted ? "已闭麦" : "已开麦")
                     }
                 },
+                onRole: { seatNo, admin in
+                    session.runAction {
+                        try await session.setMicRole(seatNo: seatNo, role: admin ? "admin" : "normal")
+                        showToast(admin ? "已设为管理麦" : "已取消管理麦")
+                    }
+                },
                 onKick: { uid in
                     session.runAction {
                         try await session.kickMic(targetUserId: uid)
@@ -218,12 +224,6 @@ struct VoiceRoomView: View {
                     session.runAction {
                         try await session.kickFromRoom(targetUserId: uid)
                         showToast("已移出房间")
-                    }
-                },
-                onRole: { seatNo, admin in
-                    session.runAction {
-                        try await session.setMicRole(seatNo: seatNo, role: admin ? "admin" : "normal")
-                        showToast(admin ? "已设为管理麦" : "已取消管理麦")
                     }
                 },
                 onCloseRoom: {

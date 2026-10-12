@@ -314,7 +314,7 @@ final class VoiceRoomSession: ObservableObject {
                 conn = .idle
             } else {
                 conn = .failed
-                notice = liveKitErrorText(error)
+                notice = liveKitErrorText(String(describing: error))
             }
         }
     }
@@ -341,7 +341,7 @@ final class VoiceRoomSession: ObservableObject {
     /// 调用方须已取得麦克风权限。
     func setLocalMic(on: Bool) async {
         guard let r = room else { return }
-        if on && !canPublishNow() {
+        if on && !canPublishNow {
             notice = "你当前不在麦上或已被闭麦"
             return
         }
@@ -528,8 +528,9 @@ private final class VoiceRoomLiveKitDelegate: RoomDelegate {
     }
 
     func room(_ room: Room, didUpdateSpeakingParticipants participants: [Participant]) {
-        let ids = Set(participants.compactMap { p in
-            p.identity?.stringValue.flatMap { Int64($0) }
+        let ids = Set(participants.compactMap { p -> Int64? in
+            guard let sv = p.identity?.stringValue else { return nil }
+            return Int64(sv)
         })
         Task { @MainActor in owner.handleSpeaking(ids) }
     }

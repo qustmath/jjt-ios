@@ -148,8 +148,8 @@ struct VoiceRoomOpsSheet: View {
                     if onMicMembers.isEmpty {
                         hint("麦上暂时只有你自己")
                     } else {
-                        ForEach(onMicMembers) { m in
-                            guard let seatNo = m.seatNo else { continue }
+                        ForEach(onMicMembers.filter { $0.seatNo != nil }) { m in
+                            let seatNo = m.seatNo ?? 0
                             HStack(spacing: 8) {
                                 Text("\(seatNo)")
                                     .font(.system(size: 11, weight: .bold))
@@ -299,6 +299,30 @@ private struct SmallAction: View {
                         .overlay(Capsule().stroke(Noir.gold.opacity(0.35), lineWidth: 1))
                 }
             }
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+            .onTapGesture { onClick() }
+    }
+}
+
+/// 选择 chip（标签/进房方式）
+private struct SelectChip: View {
+    let label: String
+    let selected: Bool
+    let onClick: () -> Void
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11, weight: selected ? .semibold : .regular))
+            .foregroundStyle(selected ? LobbyColors.ivory : .white.opacity(0.5))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(selected ? LobbyColors.crimson.opacity(0.18) : .white.opacity(0.04))
+            )
+            .overlay(
+                Capsule().stroke(selected ? LobbyColors.crimson.opacity(0.6) : .white.opacity(0.12), lineWidth: 1)
+            )
             .clipShape(Capsule())
             .contentShape(Capsule())
             .onTapGesture { onClick() }
