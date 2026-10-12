@@ -8,10 +8,21 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 
+# 语音房 RTC（对齐安卓 io.livekit:livekit-android）。
+# 走 SPM 而非 CocoaPods：LiveKit 的 trunk pod 断供（LiveKitClient 2.17 依赖的
+# LiveKitWebRTC 150.x 不在 trunk，官方 CocoaPods 通道已弃用），SPM 是官方主通道。
+# SPM 产品模块名是 LiveKit（源码 import LiveKit）。
+packages:
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    exactVersion: 2.17.0
+
 targets:
   JJT:
     type: application
     platform: iOS
+    dependencies:
+      - package: LiveKit
     sources:
       - path: JJT
         excludes:

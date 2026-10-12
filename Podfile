@@ -6,9 +6,6 @@ target 'JJT' do
   pod 'SVGAPlayer', '~> 2.5'
   # 腾讯 IM（密语），对齐安卓 com.tencent.imsdk:imsdk-plus
   pod 'TXIMSDK_Plus_iOS'
-  # LiveKit 语音房 RTC，对齐安卓 io.livekit:livekit-android
-  # （二进制依赖 LiveKitWebRTC 体积大，首次 pod install 较慢；podspec min iOS 13）
-  pod 'LiveKitClient', '~> 2.17'
   # Bugly 崩溃上报（对齐安卓 crashreport）
   pod 'Bugly'
 end

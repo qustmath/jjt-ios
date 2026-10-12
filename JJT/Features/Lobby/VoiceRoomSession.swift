@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import ImSDK_Plus
-import LiveKitClient
+import LiveKit
 
 /// LiveKit 连接态（页面据此显示「连接中/已连接/重连中」）
 enum VoiceConnState: Equatable {
