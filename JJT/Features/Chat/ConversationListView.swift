@@ -311,8 +311,19 @@ final class ConversationListViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let list = try await ImManager.shared.conversationList()
-            var items = list.map { conv -> ConversationItem in
+            // 群会话白名单（对齐安卓 bcaef97）：语音房/大厅系群的成员增删全在服务端 REST
+            // （退房/被移出/关房解散），SDK 不会清本地会话，退出后群会话一直残留；
+            // 已加入群列表 = 显示白名单，不在名单 = 已不在此群，本地残留一律不显示。
+            // 直播群（门店群/聚合群，AVChatRoom）本就不进已加入列表，同样被挡住。
+            // 例外的例外：当前所在的语音房群即使仍在名单也不显示（「留在房里」时去密语）。
+            let joined = ImManager.shared.joinedGroupIds()
+            let currentVoiceRoomGroup = VoiceRoomSession.shared.detail?.imGroupIdStr
+            var items = list.compactMap { conv -> ConversationItem? in
                 let isGroup = conv.type == .GROUP
+                if isGroup {
+                    guard let gid = conv.groupID, !gid.isEmpty, joined.contains(gid),
+                          gid != currentVoiceRoomGroup else { return nil }
+                }
                 let lastMsg = Self.lastMessageText(conv.lastMessage)
                 return ConversationItem(
                     id: conv.conversationID ?? (isGroup ? "group_\(conv.groupID ?? "")" : "c2c_\(conv.userID ?? "")"),

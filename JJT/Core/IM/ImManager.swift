@@ -224,6 +224,18 @@ final class ImManager: NSObject {
         }
     }
 
+    /// 已加入的群 ID 集合（直播群 AVChatRoom 不支持该 API、不在结果里——门店群/聚合群天然不在名单）。
+    /// 密语列表以它为群会话显示白名单（对齐安卓 getJoinedGroupList 口径）。
+    func joinedGroupIds() async -> Set<String> {
+        await withCheckedContinuation { cont in
+            V2TIMManager.sharedInstance().getJoinedGroupList(succ: { list in
+                cont.resume(returning: Set((list ?? []).compactMap { $0.groupID }))
+            }, fail: { _, _ in
+                cont.resume(returning: [])
+            })
+        }
+    }
+
     /// 发送语音消息（本地录音文件路径 + 时长秒；大厅语音公屏用）
     func sendSound(_ localPath: String, seconds: Int32, to peerId: String, isGroup: Bool) async throws {
         guard let msg = V2TIMManager.sharedInstance().createSoundMessage(audioFilePath: localPath, duration: seconds) else { return }
