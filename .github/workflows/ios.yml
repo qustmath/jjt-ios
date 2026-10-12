@@ -2,8 +2,11 @@ name: iOS
 
 on:
   # 代码推送：只跑模拟器编译验证（不需要任何 Secrets）
+  # release-* 标签：触发 beta 任务签名打包上传 TestFlight（本机无 GitHub token，
+  # workflow_dispatch 调不动 API；但 git SSH 推送可用——推标签即发版，与 shuhu-ios 同款）
   push:
     branches: [master, main]
+    tags: ['release-*']
     paths-ignore:
       - "docs/**"
       - "*.md"
@@ -16,8 +19,9 @@ on:
         default: "false"
 
 jobs:
-  # ── 编译验证：任何推送都跑，不需要付费账号 ─────────────────
+  # ── 编译验证：分支推送都跑，不需要付费账号 ─────────────────
   build-simulator:
+    if: github.ref_type == 'branch' || github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -82,9 +86,9 @@ jobs:
             done
           fi
 
-  # ── TestFlight 发布：仅手动触发且 release=true ─────────────
+  # ── TestFlight 发布：release-* 标签推送 或 手动触发且 release=true ─────────────
   beta:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true') || github.ref_type == 'tag'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
