@@ -35,9 +35,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// 大厅会话清理（坐席态 + 公屏消息/群状态；对齐安卓 MainActivity 登出时的 LobbySeatSession.reset + LobbyImSession.clear）
+    /// 大厅会话清理（坐席态 + 公屏消息/群状态 + 语音房 LiveKit 连接；对齐安卓登出清理）
     private func resetLobbySessions() {
         LobbySeatSession.shared.reset()
         LobbyImSession.shared.clear()
+        VoiceRoomSession.shared.clear()
     }
 }

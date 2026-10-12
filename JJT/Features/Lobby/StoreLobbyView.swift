@@ -2,8 +2,8 @@ import PhotosUI
 import SwiftUI
 
 /// 门店大厅（对齐安卓 StoreLobbyScreen，原型 /lobby/store/:id）：
-/// 视频区 / 热力榜横幅 / 座位平面图（六态桌位）/ 图例 / 公屏四路发言 + 桌位抽屉全操作。
-/// 语音房（表演区小房间）暂不接入——Android 端该功能未收口，平面图仅保留表演区呼吸点。
+/// 视频区 / 热力榜横幅 / 座位平面图（六态桌位）/ 图例 / 公屏四路发言 + 桌位抽屉全操作
+/// + 表演区语音房（房间列表/开房/进房，对齐安卓票 20）。
 struct StoreLobbyView: View {
 
     let storeId: Int64
@@ -12,6 +12,7 @@ struct StoreLobbyView: View {
     @StateObject private var vm = StoreLobbyViewModel()
     @ObservedObject private var seatSession = LobbySeatSession.shared
     @ObservedObject private var imSession = LobbyImSession.shared
+    @ObservedObject private var voiceSession = VoiceRoomSession.shared
 
     // 楼层/聊天显隐
     @State private var floorIdx = 0
@@ -39,6 +40,14 @@ struct StoreLobbyView: View {
     @State private var giftCtx: LobbyGiftContext?
     // 未入座时的送礼入口：先选桌（收礼人须正入座某桌），再进礼物面板
     @State private var giftPickOpen = false
+    // 表演区（语音房）：房间列表 / 开房 / 进房
+    @State private var roomListOpen = false
+    @State private var createRoomOpen = false
+    @State private var voiceRoomNav: VoiceRoomNav?
+    struct VoiceRoomNav: Identifiable {
+        let roomId: Int64
+        var id: Int64 { roomId }
+    }
     // 入座扫码（扫平板入座码）：待入座的桌位 id
     @State private var scanForTableId: Int64?
     // 资料卡动作跳转
@@ -251,6 +260,46 @@ struct StoreLobbyView: View {
         // 热力榜
         .fullScreenCover(isPresented: $showHeat) {
             LobbyHeatView(storeId: storeId, storeName: vm.store?.name)
+        }
+        // 表演区房间列表（20s 轮询在 sheet 内）
+        .sheet(isPresented: $roomListOpen) {
+            VoiceRoomListSheet(
+                storeId: storeId,
+                rooms: vm.rooms,
+                onRefresh: { Task { await vm.refreshRooms(storeId: storeId) } },
+                onEnter: { room in
+                    roomListOpen = false
+                    voiceRoomNav = VoiceRoomNav(roomId: room.id)
+                },
+                onPreview: {
+                    roomListOpen = false
+                    voiceRoomNav = VoiceRoomNav(roomId: -1)
+                },
+                onCreate: {
+                    roomListOpen = false
+                    createRoomOpen = true
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationBackground(LobbyColors.panel)
+        }
+        // 开小房间（门槛全在服务端；建成功直接进房）
+        .sheet(isPresented: $createRoomOpen) {
+            VoiceRoomCreateSheet(
+                storeId: storeId,
+                onDismiss: { createRoomOpen = false },
+                onCreated: { id in
+                    createRoomOpen = false
+                    Task { await vm.refreshRooms(storeId: storeId) }
+                    voiceRoomNav = VoiceRoomNav(roomId: id)
+                }
+            )
+            .presentationDetents([.medium])
+            .presentationBackground(LobbyColors.panel)
+        }
+        // 语音房（LiveKit + IM 群公屏 + 麦位管理）
+        .fullScreenCover(item: $voiceRoomNav) { nav in
+            VoiceRoomView(storeId: storeId, roomId: nav.roomId, storeName: vm.store?.name)
         }
         // 资料卡动作：礼物中心 / 私信
         .fullScreenCover(item: $giftNav) { nav in
@@ -512,6 +561,23 @@ struct StoreLobbyView: View {
             .background(LobbyColors.gold.opacity(0.06))
             .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
             .clipShape(Capsule())
+            // 进行中语音房入口：「留在房里」退出页面但未退房时常驻提示，点击直接回房；
+            // 退房/解散即消失。只在本店房间显示
+            if let p = voiceSession.presence, p.storeId == storeId {
+                HStack(spacing: 4) {
+                    Circle().fill(LobbyColors.crimson).frame(width: 6, height: 6)
+                    Text("在语音房")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(LobbyColors.crimson.opacity(0.95))
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(LobbyColors.crimson.opacity(0.14))
+                .overlay(Capsule().stroke(LobbyColors.crimson.opacity(0.45), lineWidth: 1))
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+                .onTapGesture { voiceRoomNav = VoiceRoomNav(roomId: p.roomId) }
+            }
             LobbyIconAction(icon: "square.and.arrow.up", tint: .white.opacity(0.6)) {
                 showToast("门店分享链接另立票")
             }
@@ -847,13 +913,31 @@ struct StoreLobbyView: View {
                     .padding(.top, 44)
                 }
 
-                // 表演区热点（语音房暂不接入：仅保留呼吸红点标识）
+                // 表演区热点：开启小房间（列表/开房/进房）
                 if let p = plan {
                     let sx = min(max((p.stageX ?? 50) / 100, 0), 1)
                     let sy = min(max((p.stageY ?? 50) / 100, 0), 1)
-                    LobbyPulsingDot()
-                        .position(x: w * sx, y: h * sy)
-                        .allowsHitTesting(false)
+                    VStack(spacing: 4) {
+                        LobbyPulsingDot()
+                        HStack(spacing: 3) {
+                            Image(systemName: "mic")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.white)
+                            Text("表演区 · 开启小房间")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(LinearGradient(colors: [LobbyColors.crimson.opacity(0.85), LobbyColors.crimsonTail.opacity(0.85)], startPoint: .leading, endPoint: .trailing))
+                        .overlay(Capsule().stroke(LobbyColors.goldLight.opacity(0.7), lineWidth: 1))
+                        .clipShape(Capsule())
+                    }
+                    .position(x: w * sx, y: h * sy)
+                    .onTapGesture {
+                        Task { await vm.refreshRooms(storeId: storeId) }
+                        roomListOpen = true
+                    }
                 }
 
                 // 图内底部：公屏消息流（点击图面空白显隐）

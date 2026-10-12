@@ -115,6 +115,51 @@ struct LobbySpectateMember: Decodable, Identifiable {
     var id: Int64 { userId }
 }
 
+// ===================== 小房间（语音房）列表与详情 =====================
+
+/// 小房间摘要（LobbyVoiceRoomRespVO）
+struct LobbyVoiceRoom: Decodable, Identifiable {
+    let id: Int64
+    let title: String?
+    let tags: String?
+    let mode: String?
+    let ownerUserId: Int64?
+    let ownerNickname: String?
+    let micOccupied: Int?
+    let micTotal: Int?
+    /// 建房时间：epoch 毫秒
+    let createTime: Int64?
+}
+
+/// 小房间详情（LobbyVoiceRoomDetailRespVO）
+struct LobbyVoiceRoomDetail: Decodable {
+    let id: Int64
+    let storeId: Int64?
+    let title: String?
+    let tags: String?
+    let mode: String?
+    let ownerUserId: Int64?
+    let ownerNickname: String?
+    let mics: [LobbyMicItem]?
+    let mySeatNo: Int?
+    let inRoom: Bool?
+    /// 腾讯 IM 群 ID（App SDK 进群用）：仅在房用户返回
+    let imGroupIdStr: String?
+    let complianceText: String?
+}
+
+/// 麦位项（LobbyMicItemRespVO）
+struct LobbyMicItem: Decodable, Identifiable {
+    let seatNo: Int?
+    let userId: Int64?
+    let nickname: String?
+    let avatar: String?
+    let role: String?
+    let muted: Bool?
+
+    var id: Int64 { Int64(seatNo ?? 0) }
+}
+
 // ===================== 坐席 =====================
 
 /// 入座请求：token 来自平板入座码，坐标来自客户端 GPS
@@ -383,6 +428,11 @@ enum LobbyAPI {
     /// 围观桌况（纯读，含入座成员昵称头像；抽屉展示用）
     static func spectateTable(tableId: Int64) async throws -> LobbyTableSpectate {
         try await client.get("app-api/social/lobby/query/spectate", query: ["tableId": String(tableId)])
+    }
+
+    /// 门店营业中小房间列表（表演区）
+    static func listOpenRooms(storeId: Int64) async throws -> [LobbyVoiceRoom] {
+        try await client.get("app-api/social/lobby/voice-room/list", query: ["storeId": String(storeId)])
     }
 
     // MARK: 坐席

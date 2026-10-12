@@ -31,6 +31,8 @@ final class StoreLobbyViewModel: ObservableObject {
     @Published var videos: [LobbyVideo] = []
     @Published var gaps: [LobbyShareGap] = []
     @Published var heatTop: [LobbyHeatItem] = []
+    /// 门店营业中小房间列表（表演区）
+    @Published var rooms: [LobbyVoiceRoom] = []
     @Published var error: String?
     /// 本桌待审批拼桌申请（桌主视角；抽屉打开时按需拉取）
     @Published var hostApplies: [LobbyShareApply] = []
@@ -64,6 +66,7 @@ final class StoreLobbyViewModel: ObservableObject {
         if let board = try? await LobbyAPI.heatBoard(storeId: storeId, type: "realtime", limit: 3) {
             heatTop = board.list ?? []
         }
+        rooms = (try? await LobbyAPI.listOpenRooms(storeId: storeId)) ?? []
         loading = false
     }
 
@@ -75,6 +78,11 @@ final class StoreLobbyViewModel: ObservableObject {
     /// 拼桌缺口滚动条轮询（轻量接口客户端轮询）
     func refreshGaps(storeId: Int64) async {
         gaps = (try? await LobbyAPI.listSharingGaps(storeId: storeId)) ?? gaps
+    }
+
+    /// 小房间列表刷新（房间列表 sheet 打开与轮询时）
+    func refreshRooms(storeId: Int64) async {
+        rooms = (try? await LobbyAPI.listOpenRooms(storeId: storeId)) ?? rooms
     }
 
     /// 只重拉平面图 + 拼桌投影（入座/离桌/换桌后桌态与人数已变，页面要跟着刷新）。
