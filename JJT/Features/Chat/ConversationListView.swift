@@ -316,7 +316,7 @@ final class ConversationListViewModel: ObservableObject {
             // 已加入群列表 = 显示白名单，不在名单 = 已不在此群，本地残留一律不显示。
             // 直播群（门店群/聚合群，AVChatRoom）本就不进已加入列表，同样被挡住。
             // 例外的例外：当前所在的语音房群即使仍在名单也不显示（「留在房里」时去密语）。
-            let joined = ImManager.shared.joinedGroupIds()
+            let joined = await ImManager.shared.joinedGroupIds()
             let currentVoiceRoomGroup = VoiceRoomSession.shared.detail?.imGroupIdStr
             var items = list.compactMap { conv -> ConversationItem? in
                 let isGroup = conv.type == .GROUP
