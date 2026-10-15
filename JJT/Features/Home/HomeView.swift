@@ -550,7 +550,8 @@ struct HomeView: View {
         .init(name: "组局", en: "Gather", icon: "person.3", tab: nil),
         .init(name: "群聊", en: "Channel", icon: "bubble.left.and.bubble.right", tab: nil),
         .init(name: "广场动态", en: "Square", icon: "flame", tab: 1),
-        .init(name: "门店大厅", en: "Lounge", icon: "storefront", tab: nil),
+        // 门店大厅暂不上线，入口隐藏（恢复时取消注释；与安卓 65e5308 同口径，扫码/深链不受控）
+        // .init(name: "门店大厅", en: "Lounge", icon: "storefront", tab: nil),
         .init(name: "匹配", en: "Match", icon: "heart", tab: nil),
         .init(name: "AI伴侣", en: "Companion", icon: "sparkles", tab: nil),
         .init(name: "属性测试", en: "Persona", icon: "testtube.2", tab: nil),
