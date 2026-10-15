@@ -139,6 +139,8 @@ private struct VideoPostPageView: View {
     @StateObject private var payGuard = PayPasswordGuard()
     @State private var showPaySettings = false
     @State private var showRecharge = false
+    /// 作者主页（点底部头像进入；对齐安卓 onUserClick）
+    @State private var profileId: Int64?
 
     init(postId: Int64, active: Bool, onBack: @escaping () -> Void) {
         self.postId = postId
@@ -222,6 +224,15 @@ private struct VideoPostPageView: View {
             )
             .presentationDetents([.medium])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
+        // 作者主页（点底部头像进入）
+        .fullScreenCover(isPresented: Binding(
+            get: { profileId != nil },
+            set: { if !$0 { profileId = nil } }
+        )) {
+            if let id = profileId {
+                UserProfileView(userId: id)
+            }
         }
     }
 
@@ -354,11 +365,18 @@ private struct VideoPostPageView: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
             HStack(spacing: 10) {
-                AppAvatar(url: post.avatar, size: 38,
-                          frameURL: post.avatarFrame, frameScale: CGFloat(post.avatarFrameScale ?? 1.2))
-                Text(post.nickname ?? "TA")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                // 头像 + 昵称：点进 TA 的主页（与关注钮分开，避免误触）
+                HStack(spacing: 10) {
+                    AppAvatar(url: post.avatar, size: 38,
+                              frameURL: post.avatarFrame, frameScale: CGFloat(post.avatarFrameScale ?? 1.2))
+                    Text(post.nickname ?? "TA")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if let uid = post.userId, uid > 0 { profileId = uid }
+                }
                 if post.userId != TokenManager.shared.userId {
                     Button { vm.toggleFollow() } label: {
                         Text(vm.isFollowed ? "已关注" : "+ 关注")

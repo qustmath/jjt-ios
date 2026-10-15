@@ -35,7 +35,7 @@ targets:
     info:
       path: JJT/Info.plist
       properties:
-        CFBundleDisplayName: 荆棘兔子
+        CFBundleDisplayName: 荆棘兔
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false

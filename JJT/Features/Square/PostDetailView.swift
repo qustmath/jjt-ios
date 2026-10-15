@@ -23,6 +23,8 @@ struct PostDetailView: View {
     @StateObject private var payGuard = PayPasswordGuard()
     @State private var showPaySettings = false
     @State private var showRecharge = false
+    /// 作者主页（玻璃卡点击进入；对齐安卓 onUserClick）
+    @State private var profileId: Int64?
     @FocusState private var inputFocused: Bool
 
     init(postId: Int64) {
@@ -143,6 +145,15 @@ struct PostDetailView: View {
         )) {
             if let post = vm.post, let images = post.images, let i = previewIndex {
                 ImagePreviewViewer(images: images, initialIndex: i)
+            }
+        }
+        // 作者主页（点玻璃卡/头像进入，与广场/密语同款 UserProfileView）
+        .fullScreenCover(isPresented: Binding(
+            get: { profileId != nil },
+            set: { if !$0 { profileId = nil } }
+        )) {
+            if let id = profileId {
+                UserProfileView(userId: id)
             }
         }
     }
@@ -383,7 +394,9 @@ struct PostDetailView: View {
     // MARK: - 3. 作者玻璃卡
 
     private func authorBar(_ post: PostInfo) -> some View {
-        Button { showToast("个人主页敬请期待") } label: {
+        Button {
+            if let uid = post.userId, uid > 0 { profileId = uid }
+        } label: {
             HStack(spacing: 12) {
                 AppAvatar(url: post.avatar, size: 44,
                           frameURL: post.avatarFrame, frameScale: CGFloat(post.avatarFrameScale ?? 1.15))

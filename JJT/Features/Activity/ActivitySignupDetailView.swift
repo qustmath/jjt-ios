@@ -52,7 +52,8 @@ struct ActivitySignupDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = ActivitySignupDetailModel()
-    @State private var pageIndex = 0
+    /// 当前横滑页（scrollPosition 驱动；原生 paging，不用 TabView——TabView 分页会吃掉叠层按钮的点击）
+    @State private var pageScroll: Int?
     @State private var viewerIndex = 0
     @State private var showViewer = false
     @State private var profileTarget: WallDetailTarget?
@@ -70,20 +71,25 @@ struct ActivitySignupDetailView: View {
             if model.loading {
                 ProgressView().tint(model.theme.accent)
             } else if let item = model.item, !photos.isEmpty {
-                // 全屏出血大图（Crop），每页点击进预览放大细看
-                TabView(selection: $pageIndex) {
-                    ForEach(photos.indices, id: \.self) { i in
-                        WebImage(url: webImageURL(photos[i]), contentMode: .fill) { Color.black }
-                            .ignoresSafeArea()
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                viewerIndex = i
-                                showViewer = true
-                            }
-                            .tag(i)
+                // 全屏出血大图（Crop）多页横滑：原生 paging（对齐竖滑视频流范式——该模式下叠层按钮真机可用）；
+                // 每页点击进预览放大细看
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(photos.indices, id: \.self) { i in
+                            WebImage(url: webImageURL(photos[i]), contentMode: .fill) { Color.black }
+                                .frame(width: JJTMetrics.screenWidth, height: JJTMetrics.screenHeight)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    viewerIndex = i
+                                    showViewer = true
+                                }
+                                .id(i)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $pageScroll)
                 .ignoresSafeArea()
 
                 // 顶部/底部压暗渐变
@@ -109,12 +115,13 @@ struct ActivitySignupDetailView: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.top, 22)
                     if photos.count > 1 {
-                        Text("\(pageIndex + 1)/\(photos.count)")
+                        Text("\((pageScroll ?? 0) + 1)/\(photos.count)")
                             .font(.system(size: 10))
                             .foregroundStyle(.white.opacity(0.6))
                     }
                     Spacer()
                 }
+                .allowsHitTesting(false)
 
                 // 底部信息区：头像（带框，可点进主页）+ 昵称/段位 + 造型名；「喜欢」与昵称同一行高度、靠右
                 VStack {
@@ -152,7 +159,7 @@ struct ActivitySignupDetailView: View {
                             if let uid = item.userId, uid > 0 { profileTarget = WallDetailTarget(id: uid) }
                         }
                         Spacer(minLength: 8)
-                        // 喜欢：与昵称同行高度、靠右
+                        // 喜欢：与昵称同行高度、靠右；热区放大到 56×52，防误触穿到图片
                         Button {
                             Task { await model.like() }
                         } label: {
@@ -165,9 +172,14 @@ struct ActivitySignupDetailView: View {
                                     .font(.system(size: 11))
                                     .foregroundStyle(.white.opacity(0.85))
                             }
+                            .frame(minWidth: 56, minHeight: 52)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
+                    // 吸收层：底栏空白区域点击不再穿透到图片（放大预览只由图片本体触发）
+                    .contentShape(Rectangle())
+                    .onTapGesture {}
                     .padding(.leading, 16)
                     .padding(.trailing, 14)
                     .padding(.bottom, 26)
