@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// 活动详情（对齐安卓 ActivityScreen）
-/// 阶段：before未开始 / claim领票中 / open验票中 / expired已落幕；
-/// 领票 → 票根卡（验票）→ 验票成功弹奖励勋章
+/// TICKET：before未开始 / claim领票中 / open验票中 / expired已落幕；领票 → 票根卡（验票）→ 验票成功弹奖励勋章
+/// SIGNUP_PHOTO（报名审核制，v74 原型）：居中标题 → 流程条 → 会员风采横滑 → 「我的报名」分隔线 → 报名三态
 struct ActivityView: View {
 
     let activityId: Int64
@@ -15,34 +15,85 @@ struct ActivityView: View {
     @State private var error: String?
     @State private var rewardShow: ActivityInfo?
     @State private var showBadgeWall = false
+    /// 会员风采横滑区（报名制：墙第 1 页前 10 条，过滤本人待审）
+    @State private var wallPreview: [WallItem] = []
+    /// 已通过者点「重新报名」：本地切回表单态
+    @State private var forceForm = false
+    @State private var showWall = false
+
+    private var isSignupMode: Bool { activity?.signupMode == "photo" }
+    private var theme: ActivityTheme { parseActivityTheme(activity?.theme) }
 
     var body: some View {
         ZStack {
             Noir.bg.ignoresSafeArea()
-            // 活动头图背景 + 压暗
+            // 活动头图背景 + 压暗（报名制明显更暗，头图只留氛围；票务保持原有清透）
             if let cover = activity?.cover, !cover.isEmpty {
                 WebImage(url: webImageURL(cover), contentMode: .fill) { Color.clear }
                     .ignoresSafeArea()
-                LinearGradient(stops: [
-                    .init(color: .black.opacity(0.45), location: 0),
-                    .init(color: Noir.bg.opacity(0.85), location: 0.5),
-                    .init(color: Noir.bg, location: 0.85),
-                ], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+                if isSignupMode {
+                    LinearGradient(stops: [
+                        .init(color: Noir.bg.opacity(0.85), location: 0),
+                        .init(color: Noir.bg.opacity(0.96), location: 0.45),
+                        .init(color: Noir.bg, location: 1),
+                    ], startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+                } else {
+                    LinearGradient(stops: [
+                        .init(color: .black.opacity(0.45), location: 0),
+                        .init(color: Noir.bg.opacity(0.85), location: 0.5),
+                        .init(color: Noir.bg, location: 0.85),
+                    ], startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+                }
+            }
+            // 报名制：主题装饰字符水印（对齐原型右上角氛围）
+            if isSignupMode && !theme.deco.isEmpty {
+                Text(theme.deco)
+                    .font(.system(size: 96))
+                    .foregroundStyle(.white.opacity(0.07))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, 56)
+                    .padding(.trailing, -24)
+                    .allowsHitTesting(false)
             }
 
             VStack(spacing: 0) {
                 topBar
                 if loading {
                     Spacer()
-                    ProgressView().tint(Noir.gold)
+                    ProgressView().tint(isSignupMode ? theme.accent : Noir.gold)
                     Spacer()
                 } else if let a = activity {
                     ScrollView {
                         VStack(spacing: 0) {
-                            headerBlock(a)
-                            actionBlock(a)
-                            rulesBlock(a)
+                            if isSignupMode {
+                                // ===== 报名制（v74 原型顺序）：居中头 → 流程条 → 会员风采 → 我的报名分隔线 → 三态 =====
+                                SignupHeaderView(a: a, theme: theme)
+                                ActivitySignupFlowStrip(theme: theme, my: a.mySignup, forceForm: forceForm)
+                                    .padding(.horizontal, 20)
+                                if a.wallEnabled == true && !wallPreview.isEmpty {
+                                    SignupShowcaseSection(
+                                        theme: theme,
+                                        items: wallPreview,
+                                        onAllClick: { showWall = true }
+                                    )
+                                }
+                                ActivitySignupMineDivider(theme: theme)
+                                ActivitySignupSection(
+                                    activity: a,
+                                    theme: theme,
+                                    rules: a.rules,
+                                    forceForm: forceForm,
+                                    onResign: { forceForm = true },
+                                    onWallClick: { showWall = true },
+                                    onRefresh: { refresh() }
+                                )
+                            } else {
+                                headerBlock(a)
+                                actionBlock(a)
+                                rulesBlock(a)
+                            }
                             footerBlock(a)
                         }
                         .padding(.bottom, 40)
@@ -61,9 +112,18 @@ struct ActivityView: View {
                 rewardDialog(rewardShow)
             }
         }
-        .onAppear { load() }
+        .onAppear {
+            if activity == nil { load() }
+        }
         .fullScreenCover(isPresented: $showBadgeWall) {
             BadgeWallView()
+        }
+        .fullScreenCover(isPresented: $showWall) {
+            ActivitySignupWallView(activityId: activityId, onJoin: { showWall = false })
+        }
+        .onChange(of: showWall) { _, shown in
+            // 从穿搭墙返回：重拉详情（审核后三态必须翻转，三态真源=服务端 mySignup）
+            if !shown { refresh() }
         }
         .alert("提示", isPresented: Binding(
             get: { error != nil },
@@ -85,18 +145,28 @@ struct ActivityView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Noir.goldLight)
+                    .foregroundStyle(isSignupMode ? Noir.ivory : Noir.goldLight)
                     .frame(width: 36, height: 36)
                     .background(Color.black.opacity(0.4))
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(Noir.hairlineGold, lineWidth: 1))
+                    .overlay(Circle().stroke(
+                        isSignupMode ? theme.accent.opacity(0.35) : Noir.hairlineGold, lineWidth: 1))
             }
             Spacer()
-            Text(activity?.nameEn ?? "NIGHT BANQUET")
-                .font(.system(size: 9, design: .serif))
-                .italic()
-                .tracking(3)
-                .foregroundStyle(Noir.goldLight.opacity(0.7))
+            if isSignupMode {
+                // 报名制：顶栏中央 EN 小字（主题色）
+                Text(activity?.nameEn ?? "")
+                    .font(.system(size: 10))
+                    .italic()
+                    .tracking(3)
+                    .foregroundStyle(theme.accent.opacity(0.7))
+            } else {
+                Text(activity?.nameEn ?? "NIGHT BANQUET")
+                    .font(.system(size: 9, design: .serif))
+                    .italic()
+                    .tracking(3)
+                    .foregroundStyle(Noir.goldLight.opacity(0.7))
+            }
             Spacer()
             Color.clear.frame(width: 36, height: 36)
         }
@@ -104,7 +174,7 @@ struct ActivityView: View {
         .padding(.top, 16)
     }
 
-    // MARK: - 头部
+    // MARK: - 票务头部（TICKET 保持原样）
 
     private func headerBlock(_ a: ActivityInfo) -> some View {
         VStack(spacing: 10) {
@@ -358,8 +428,43 @@ struct ActivityView: View {
 
     private func load() {
         Task {
-            activity = try? await ActivityAPI.get(id: activityId)
+            if let a = try? await ActivityAPI.get(id: activityId) {
+                applyDetail(a)
+            }
             loading = false
+        }
+    }
+
+    /// 静默刷新（从穿搭墙/后台审核返回时重拉，三态以服务端为准）
+    private func refresh() {
+        Task {
+            if let a = try? await ActivityAPI.get(id: activityId) {
+                applyDetail(a)
+            }
+        }
+    }
+
+    /// 详情落状态；报名身份（id/status）变化时退出本地「重新报名」表单态
+    private func applyDetail(_ detail: ActivityInfo) {
+        let oldKey = signupKey(activity?.mySignup)
+        let newKey = signupKey(detail.mySignup)
+        if oldKey != newKey { forceForm = false }
+        activity = detail
+        fetchWallPreview(detail)
+    }
+
+    private func signupKey(_ s: SignupInfo?) -> String {
+        guard let s else { return "none" }
+        return "\(s.id)-\(s.status ?? -1)"
+    }
+
+    /// 会员风采横滑区：墙第 1 页前 10 条；该区语义是「已通过审核」，过滤掉本人待审（空则整区隐藏）
+    private func fetchWallPreview(_ a: ActivityInfo) {
+        guard a.signupMode == "photo", a.wallEnabled == true else { return }
+        Task {
+            if let wall = try? await ActivityAPI.signupWall(id: a.id, pageNo: 1, pageSize: 10) {
+                wallPreview = (wall.list ?? []).filter { $0.pending != true }
+            }
         }
     }
 
@@ -393,5 +498,169 @@ struct ActivityView: View {
                 self.error = error.localizedDescription
             }
         }
+    }
+}
+
+// MARK: - 报名制活动页头（v74 原型：居中排版 + 主题渐变大字标题）
+
+private struct SignupHeaderView: View {
+    let a: ActivityInfo
+    let theme: ActivityTheme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let sub = a.subtitle, !sub.isEmpty {
+                Text(sub)
+                    .font(.system(size: 10))
+                    .tracking(4)
+                    .foregroundStyle(theme.accent)
+                    .multilineTextAlignment(.center)
+                Spacer().frame(height: 8)
+            }
+            // 渐变 = 亮 accent → accent → accent2（对齐原型「浅金→主题色→深色」三段）
+            Text(a.name ?? "")
+                .font(.system(size: 36, weight: .bold, design: .serif))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(LinearGradient(
+                    colors: [lerpColor(.white, theme.accent, 0.5), theme.accent, theme.accent2],
+                    startPoint: .top, endPoint: .bottom))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 64)
+        .padding(.horizontal, 20)
+    }
+}
+
+/// 颜色线性插值（对齐安卓 lerp，白色→主题色 50%）
+func lerpColor(_ from: Color, _ to: Color, _ t: CGFloat) -> Color {
+    let a = UIColor(from)
+    let b = UIColor(to)
+    var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+    var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+    a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+    b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+    return Color(red: ar + (br - ar) * t, green: ag + (bg - ag) * t, blue: ab + (bb - ab) * t)
+}
+
+// MARK: - 「报名通过 · 会员风采」横滑区（v74 原型）
+
+private struct SignupShowcaseSection: View {
+    let theme: ActivityTheme
+    let items: [WallItem]
+    let onAllClick: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal")
+                            .font(.system(size: 13))
+                            .foregroundStyle(activityPassGreen)
+                        Text("报名通过 · 会员风采")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Noir.ivory)
+                    }
+                    Text("以下会员报名已通过审核 · 获得入店凭证")
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                Spacer()
+                Button(action: onAllClick) {
+                    HStack(spacing: 2) {
+                        Text("全部会员")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(theme.accent)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(theme.accent)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            Spacer().frame(height: 12)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(items) { item in
+                        SignupShowcaseCard(item: item, theme: theme)
+                            .contentShape(Rectangle())
+                            .onTapGesture(perform: onAllClick)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .padding(.top, 24)
+    }
+}
+
+/// 会员风采横滑卡：138×188 大图 + 底部渐变（昵称/造型名/点赞数）+ 左上「已通过」角标
+private struct SignupShowcaseCard: View {
+    let item: WallItem
+    let theme: ActivityTheme
+
+    var body: some View {
+        ZStack {
+            WebImage(url: webImageURL(item.img), contentMode: .fill) { Color.white.opacity(0.05) }
+            // 上下压暗（上浅下重，保底部信息可读）
+            LinearGradient(stops: [
+                .init(color: .black.opacity(0.05), location: 0),
+                .init(color: .clear, location: 0.4),
+                .init(color: .black.opacity(0.92), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            // 左上：已通过角标
+            VStack {
+                HStack {
+                    HStack(spacing: 2) {
+                        Image(systemName: "checkmark.seal")
+                            .font(.system(size: 7))
+                            .foregroundStyle(activityPassGreen)
+                        Text("已通过")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundStyle(activityPassGreen)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.65))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(activityPassGreen.opacity(0.5), lineWidth: 1))
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(8)
+            // 底部：昵称 + 造型名 + 点赞数
+            VStack {
+                Spacer()
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(item.nickname ?? "")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(Noir.ivory)
+                        .lineLimit(1)
+                    if let look = item.look, !look.isEmpty {
+                        Text("「\(look)」")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(theme.accent.opacity(0.8))
+                            .lineLimit(1)
+                    }
+                    Spacer().frame(height: 4)
+                    HStack(spacing: 4) {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(theme.accent)
+                        Text("\(item.likes ?? 0)")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(width: 138, height: 188)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.accent.opacity(0.35), lineWidth: 1))
     }
 }
