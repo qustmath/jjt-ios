@@ -415,7 +415,7 @@ private struct WallCardView: View {
                         lineWidth: isMine ? 1.5 : 1)
         )
         .contentShape(Rectangle())
-        .onTapGesture(onTap)
+        .onTapGesture { onTap() }
     }
 }
 
