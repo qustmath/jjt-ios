@@ -29,6 +29,9 @@ struct HomeView: View {
     // 铃铛未读红点（IM 未读总数 > 0）
     @State private var hasUnread = false
 
+    /// 今日心动区块开关：2026-10-18 需求暂时隐藏（对齐安卓 SHOW_TODAY_HEARTBEAT）；推荐接口接入后改回 true
+    private static let showTodayHeartbeat = false
+
     /// 屏幕宽（竖屏锁定，按场景窗口取）
     private var screenWidth: CGFloat {
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.width ?? 390
@@ -57,10 +60,13 @@ struct HomeView: View {
                     Spacer().frame(height: 16)
                     entryRail
 
-                    Spacer().frame(height: 36)
-                    SectionTitle(en: "TONIGHT", title: "今日心动", actionText: "去匹配") { showToast("敬请期待") }
-                    Spacer().frame(height: 16)
-                    tonightRecommend
+                    // 今日心动：暂时隐藏（2026-10-18，对齐安卓 SHOW_TODAY_HEARTBEAT；推荐接口接入后改回 true）
+                    if Self.showTodayHeartbeat {
+                        Spacer().frame(height: 36)
+                        SectionTitle(en: "TONIGHT", title: "今日心动", actionText: "去匹配") { showToast("敬请期待") }
+                        Spacer().frame(height: 16)
+                        tonightRecommend
+                    }
 
                     if !vm.hotGroupEvents.isEmpty {
                         Spacer().frame(height: 36)

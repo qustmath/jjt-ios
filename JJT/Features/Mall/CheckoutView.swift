@@ -628,6 +628,7 @@ struct PickUpStore: Decodable, Identifiable {
     let detailAddress: String?
     let openingTime: String?
     let closingTime: String?
+    let phone: String?         // 核销码卡展示（对齐安卓 PickUpStoreItem）
 }
 
 private struct OrderCreateReq: Encodable {

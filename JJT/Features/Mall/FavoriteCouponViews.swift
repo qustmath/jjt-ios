@@ -47,6 +47,23 @@ enum CouponAPI {
     static func take(templateId: Int64) async throws -> Bool {
         try await APIClient.shared.post("app-api/promotion/coupon/take", body: CouponTakeReq(templateId: templateId))
     }
+
+    /// 我的优惠券分页（status: 1未使用 / 2已使用 / 3已过期；「我的」页未使用角标只取 total）
+    static func myPage(status: Int, pageNo: Int, pageSize: Int) async throws -> PageResult<MyCoupon> {
+        try await APIClient.shared.get("app-api/promotion/coupon/page", query: [
+            "status": "\(status)", "pageNo": "\(pageNo)", "pageSize": "\(pageSize)",
+        ])
+    }
+}
+
+/// 我的优惠券（AppCouponRespVO 子集，对齐安卓 Coupon）
+struct MyCoupon: Decodable, Identifiable {
+    let id: Int64
+    let name: String?
+    let status: Int?            // 1未使用 / 2已使用 / 3已过期
+    let usePrice: Int?          // 分，0 不限制
+    let discountType: Int?      // 1=满减 2=折扣
+    let discountPrice: Int?     // 分
 }
 
 struct CouponTemplate: Decodable, Identifiable {

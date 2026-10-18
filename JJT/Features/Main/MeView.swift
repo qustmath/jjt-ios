@@ -71,15 +71,15 @@ struct MeView: View {
                         GridItem("我的钱包", "wallet.pass", gold: true) { showWallet = true },
                         GridItem("收藏", "star") { showPostFavorites = true },
                         GridItem("我的点赞", "heart") { showMyLikes = true },
-                        GridItem("票夹", "ticket", gold: true) { showTicketWallet = true },
+                        GridItem("票夹", "ticket", gold: true, badge: vm.ticketUsable) { showTicketWallet = true },
                         GridItem("历史记录", "clock.arrow.circlepath") { comingSoon() },
                         GridItem("排行榜", "trophy") { comingSoon() },
                     ])
                     gridSection(title: "商城服务", en: "BOUTIQUE", items: [
                         GridItem("商城", "storefront") { showMall = true },
-                        GridItem("我的订单", "bag") { showOrders = true },
+                        GridItem("我的订单", "bag", badge: vm.orderUnpaid) { showOrders = true },
                         GridItem("收货地址", "mappin") { showAddress = true },
-                        GridItem("优惠券", "ticket") { showCouponCenter = true },
+                        GridItem("优惠券", "ticket", badge: vm.couponUsable) { showCouponCenter = true },
                         GridItem("我的收藏", "heart") { showFavorites = true },
                     ])
                     moreSection
@@ -95,6 +95,10 @@ struct MeView: View {
             }
         }
         .onAppear { vm.load() }
+        // 入口角标轮询（15s，对齐安卓）：TabView 页常驻 onAppear 不再触发，停留本页也能跟上票/单/券变化
+        .onReceive(Timer.publish(every: 15, on: .main, in: .common).autoconnect()) { _ in
+            vm.loadBadges()
+        }
         // 成就殿堂挂载/卸下勋章后刷新挂载行（TabView 页面常驻，onAppear 不一定再触发）
         .onReceive(NotificationCenter.default.publisher(for: .jjtBadgesChanged)) { _ in
             vm.load()
@@ -466,12 +470,16 @@ struct MeView: View {
         let name: String
         let icon: String
         let gold: Bool
+        // 入口角标数（0/nil 不渲染，见 CountBadge）
+        let badge: Int?
         let action: () -> Void
 
-        init(_ name: String, _ icon: String, gold: Bool = false, action: @escaping () -> Void) {
+        init(_ name: String, _ icon: String, gold: Bool = false, badge: Int? = nil,
+             action: @escaping () -> Void) {
             self.name = name
             self.icon = icon
             self.gold = gold
+            self.badge = badge
             self.action = action
         }
     }
@@ -520,6 +528,13 @@ struct MeView: View {
                     Image(systemName: item.icon)
                         .font(.system(size: 19))
                         .foregroundStyle(Noir.goldLight)
+                }
+                // 入口角标：图标圆右上角悬挂，微出圈外
+                .overlay(alignment: .topTrailing) {
+                    if let b = item.badge, b > 0 {
+                        CountBadge(count: b)
+                            .offset(x: 6, y: -2)
+                    }
                 }
                 Text(item.name)
                     .font(.system(size: 11))

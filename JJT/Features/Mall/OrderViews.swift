@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreImage
 
 // MARK: - 订单模型与 API（对齐安卓 OrderApi；价格为分）
 
@@ -69,6 +70,10 @@ struct OrderDetail: Decodable {
     let logisticsName: String?
     let logisticsNo: String?
     let deliveryTime: String?
+    // 配送方式：1=快递 / 2=自提（自提订单详情展示核销码）
+    let deliveryType: Int?
+    let pickUpStoreId: Int64?
+    let pickUpVerifyCode: String?
     let receiverName: String?
     let receiverMobile: String?
     let receiverAreaName: String?
@@ -81,6 +86,7 @@ struct OrderDetail: Decodable {
         case id, no, status, createTime, userRemark, payStatus, payOrderId, payTime, payExpireTime
         case totalPrice, discountPrice, deliveryPrice, payPrice
         case logisticsName, logisticsNo, deliveryTime
+        case deliveryType, pickUpStoreId, pickUpVerifyCode
         case receiverName, receiverMobile, receiverAreaName, receiverDetailAddress
         case rabbitCoinPrice, radishCoinPrice, items
     }
@@ -103,6 +109,9 @@ struct OrderDetail: Decodable {
         logisticsName = try c.decodeIfPresent(String.self, forKey: .logisticsName)
         logisticsNo = try c.decodeIfPresent(String.self, forKey: .logisticsNo)
         deliveryTime = decodeFlexString(c, for: .deliveryTime)
+        deliveryType = try c.decodeIfPresent(Int.self, forKey: .deliveryType)
+        pickUpStoreId = try c.decodeIfPresent(Int64.self, forKey: .pickUpStoreId)
+        pickUpVerifyCode = try c.decodeIfPresent(String.self, forKey: .pickUpVerifyCode)
         receiverName = try c.decodeIfPresent(String.self, forKey: .receiverName)
         receiverMobile = try c.decodeIfPresent(String.self, forKey: .receiverMobile)
         receiverAreaName = try c.decodeIfPresent(String.self, forKey: .receiverAreaName)
@@ -136,6 +145,17 @@ enum OrderAPI {
         var query = ["pageNo": "\(pageNo)", "pageSize": "10"]
         if let status { query["status"] = "\(status)" }
         return try await APIClient.shared.get("app-api/trade/order/page", query: query)
+    }
+
+    /// 各状态订单数（对齐安卓 orderCount：unpaidCount 待付款 / undeliveredCount 待发货 /
+    /// deliveredCount 待收货；「我的」页待付款角标用）
+    static func counts() async throws -> [String: Int64] {
+        try await APIClient.shared.get("app-api/trade/order/get-count")
+    }
+
+    /// 自提门店详情（自提订单核销码卡展示门店信息，对齐安卓 pickUpStoreGet）
+    static func pickUpStore(id: Int64) async throws -> PickUpStore {
+        try await APIClient.shared.get("app-api/trade/delivery/pick-up-store/get", query: ["id": "\(id)"])
     }
 
     static func detail(id: Int64) async throws -> OrderDetail {
@@ -384,8 +404,8 @@ struct OrderDetailView: View {
                                 Spacer()
                             }
 
-                            // 收货信息
-                            if o.receiverName != nil {
+                            // 收货信息（快递单；自提单显示下方核销码卡，对齐安卓 deliveryType==1 条件）
+                            if o.deliveryType == 1, o.receiverName != nil {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 8) {
                                         Text(o.receiverName ?? "")
@@ -401,6 +421,11 @@ struct OrderDetailView: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .cardStyle()
+                            }
+
+                            // 自提核销码（到店出示；deliveryType==2 且服务端已发码）
+                            if o.deliveryType == 2, let code = o.pickUpVerifyCode, !code.isEmpty {
+                                PickUpVerifyCodeCard(code: code, store: vm.pickUpStore)
                             }
 
                             // 商品
@@ -609,17 +634,125 @@ private extension View {
     }
 }
 
+// MARK: - 自提核销码（对齐安卓 PickUpVerifyCodeSection：门店信息 + 大字号数字 + 二维码）
+
+private struct PickUpVerifyCodeCard: View {
+
+    let code: String
+    let store: PickUpStore?
+
+    /// 核销码数字按 4 位分组展示：40964096 → 4096 4096
+    private var formattedCode: String {
+        var groups: [String] = []
+        var idx = code.startIndex
+        while idx < code.endIndex {
+            let end = code.index(idx, offsetBy: 4, limitedBy: code.endIndex) ?? code.endIndex
+            groups.append(String(code[idx..<end]))
+            idx = end
+        }
+        return groups.joined(separator: " ")
+    }
+
+    /// CoreImage 生成二维码（对齐安卓 ZXing；失败返回 nil 显示占位文案）
+    private var qr: Image? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(code.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let side = output.extent.width
+        guard side > 0 else { return nil }
+        let scale = 480 / side
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let cg = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }
+        return Image(decorative: cg, scale: 1, orientation: .up)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("自提核销码")
+                .font(.system(size: 11))
+                .tracking(3)
+                .foregroundStyle(Noir.goldLight.opacity(0.7))
+            Text(formattedCode)
+                .font(.system(size: 32, weight: .bold, design: .serif))
+                .tracking(3)
+                .foregroundStyle(Noir.goldText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            if let qr {
+                qr.resizable().interpolation(.none).scaledToFit()
+                    .frame(width: 160, height: 160)
+                    .padding(10)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text("二维码生成失败")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .frame(width: 160, height: 160)
+            }
+            Text("到店出示此码核销")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.4))
+
+            if let store {
+                Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1).padding(.vertical, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("核销门店")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text(store.name ?? "门店")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Noir.ivory)
+                    let address = [store.areaName, store.detailAddress]
+                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+                    if !address.isEmpty {
+                        Text(address)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    if let phone = store.phone, !phone.isEmpty {
+                        Text("电话：\(phone)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    if let open = store.openingTime, !open.isEmpty,
+                       let close = store.closingTime, !close.isEmpty {
+                        // 结束早于开始 = 跨天营业（如 18:00 - 次日04:00）
+                        Text("营业时间：\(open) - \(close < open ? "次日 " : "")\(close)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(18)
+        .background(Color(red: 0x14/255, green: 0x14/255, blue: 0x19/255))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Noir.gold.opacity(0.3), lineWidth: 1))
+    }
+}
+
 @MainActor
 final class OrderDetailViewModel: ObservableObject {
     @Published var order: OrderDetail?
     @Published var tracks: [ExpressTrack] = []
+    @Published var pickUpStore: PickUpStore?
     @Published var message: String?
 
     func load(id: Int64) {
         Task {
             order = try? await OrderAPI.detail(id: id)
-            if order?.logisticsNo != nil {
-                tracks = (try? await OrderAPI.expressTracks(id: id)) ?? []
+            if let o = order {
+                // 自提单：拉核销门店信息（对齐安卓 OrderDetailViewModel）
+                if o.deliveryType == 2, let sid = o.pickUpStoreId {
+                    pickUpStore = try? await OrderAPI.pickUpStore(id: sid)
+                }
+                if o.logisticsNo != nil {
+                    tracks = (try? await OrderAPI.expressTracks(id: id)) ?? []
+                }
             }
         }
     }

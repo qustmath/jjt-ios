@@ -19,6 +19,8 @@ struct MainTabView: View {
     @State private var selection = 0
     @State private var toast: String?
     @State private var showCreatePost = false
+    // 密语未读角标（activity 级单例；排除官方号，IM 推送实时刷新）
+    @ObservedObject private var whisper = WhisperUnreadCenter.shared
     // 运营弹窗 DeepLink 跳转目标
     @State private var deepLink: DeepLinkTarget?
 
@@ -71,9 +73,10 @@ struct MainTabView: View {
 
             // 运营启动弹窗：产品决定关闭（2026-08，StartupPopupHost 保留文件备后续开启）
         }
-        // 每日活跃上报（每日首次生效，对齐安卓启动调用）
+        // 每日活跃上报（每日首次生效，对齐安卓启动调用）+ 密语未读角标启动
         .task {
             _ = try? await TaskAPI.dailyActive()
+            whisper.start()
         }
         // 运营弹窗/banner DeepLink 统一跳转
         .onReceive(NotificationCenter.default.publisher(for: .jjtDeepLink)) { note in
@@ -142,7 +145,7 @@ struct MainTabView: View {
                 tabButton(index: 0, label: "主页", icon: "house")
                 tabButton(index: 1, label: "广场", icon: "flame")
                 publishButton
-                tabButton(index: 2, label: "密语", icon: "message")
+                tabButton(index: 2, label: "密语", icon: "message", badge: whisper.count)
                 tabButton(index: 3, label: "我的", icon: "person")
             }
             .frame(height: 64)
@@ -153,17 +156,25 @@ struct MainTabView: View {
         )
     }
 
-    private func tabButton(index: Int, label: String, icon: String) -> some View {
+    private func tabButton(index: Int, label: String, icon: String, badge: Int = 0) -> some View {
         let selected = selection == index
         let color: Color = selected ? Noir.crimsonHot : Color.white.opacity(0.35)
         return Button { selection = index } label: {
             VStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 21))
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: icon)
+                        .font(.system(size: 21))
+                        .foregroundStyle(color)
+                    // 密语未读角标（排除官方号，实时刷新）
+                    if badge > 0 {
+                        CountBadge(count: badge)
+                            .offset(x: 10, y: -4)
+                    }
+                }
                 Text(label)
                     .font(.system(size: 10, weight: selected ? .medium : .regular))
+                    .foregroundStyle(color)
             }
-            .foregroundStyle(color)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
