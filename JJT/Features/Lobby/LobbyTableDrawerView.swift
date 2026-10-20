@@ -287,7 +287,7 @@ struct LobbyTableDrawerView: View {
             return "同桌成员可送礼与离桌；桌主管理动作仅桌主可见"
         }
         if lobbySeatableFor(status, full: full) {
-            return "入座核验在服务端：入座码时效 + 门店 3 公里围栏 + 实名"
+            return "入座核验在服务端：入座码时效 + 门店围栏 + 实名"
         }
         if status == .sharing || status == .occupied {
             return "入座走桌主审批：申请后等 30 分钟窗口，通过即入桌"

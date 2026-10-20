@@ -765,7 +765,6 @@ struct VoiceRoomView: View {
             seated: seat != nil,
             isSelf: m.userId == myUserId,
             stateText: seat.map { "\($0.seatNo ?? 0) 号麦\($0.muted == true ? " · 已闭麦" : "")" } ?? "在房间里",
-            inviteLabel: canManage ? "抱上麦" : nil,
             onDismiss: { selfCard = nil },
             onGift: { selfCard = nil; giftNav = .init(userId: m.userId, nickname: m.nickname) },
             onChat: { selfCard = nil; chatNav = .init(userId: m.userId, nickname: m.nickname) },
@@ -793,7 +792,8 @@ struct VoiceRoomView: View {
                 }
             },
             onDrink: { selfCard = nil; giftNav = .init(userId: m.userId, nickname: m.nickname) },
-            onReport: nil
+            onReport: nil,
+            inviteLabel: canManage ? "抱上麦" : nil
         )
     }
 }

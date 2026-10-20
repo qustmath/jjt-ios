@@ -55,7 +55,7 @@ final class LobbySeatSession: ObservableObject {
             throw APIError.business(code: -1, message: Self.locationRequiredHint)
         }
         guard let fix = await LobbyLocator.shared.currentFix() else {
-            throw APIError.business(code: -1, message: "定位失败：请在开阔处重试（入座需核验是否在门店 3 公里内）")
+            throw APIError.business(code: -1, message: "定位失败：请在开阔处重试（入座需核验是否在门店内）")
         }
         let state = try await LobbyAPI.checkIn(
             token: token, tableId: tableId,

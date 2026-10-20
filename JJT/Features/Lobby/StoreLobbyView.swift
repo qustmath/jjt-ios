@@ -641,7 +641,7 @@ struct StoreLobbyView: View {
         Task {
             do {
                 guard let fix = await LobbyLocator.shared.currentFix() else {
-                    throw APIError.business(code: -1, message: "定位失败：请在开阔处重试（拼桌申请需核验是否在门店 3 公里内）")
+                    throw APIError.business(code: -1, message: "定位失败：请在开阔处重试（拼桌申请需核验是否在门店内）")
                 }
                 try await LobbyAPI.shareApply(
                     tableId: t.id,
@@ -760,7 +760,7 @@ struct StoreLobbyView: View {
         Task {
             do {
                 guard let fix = await LobbyLocator.shared.currentFix() else {
-                    throw APIError.business(code: -1, message: "定位失败：请在开阔处重试（接受邀请需核验是否在门店 3 公里内）")
+                    throw APIError.business(code: -1, message: "定位失败：请在开阔处重试（接受邀请需核验是否在门店内）")
                 }
                 try await vm.acceptInvite(
                     invite,
