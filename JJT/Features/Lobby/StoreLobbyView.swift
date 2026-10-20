@@ -1022,12 +1022,6 @@ struct StoreLobbyView: View {
             table: t,
             hostNickname: drawerSpectate(t)?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
             myOrders: vm.myOrders,
-            onRefreshOrders: { Task { await vm.refreshMyOrders() } },
-            onResolved: { msg in
-                unlockFor = nil
-                showToast(msg)
-                Task { await vm.refreshMyOrders() }
-            },
             onDismiss: { unlockFor = nil },
             onGiftTier: {
                 unlockFor = nil
@@ -1040,6 +1034,12 @@ struct StoreLobbyView: View {
             onOrderPlaced: {
                 unlockFor = nil
                 showToast("解锁订单已支付 · 等桌主响应（10 分钟内，超时自动退款）")
+                Task { await vm.refreshMyOrders() }
+            },
+            onRefreshOrders: { Task { await vm.refreshMyOrders() } },
+            onResolved: { msg in
+                unlockFor = nil
+                showToast(msg)
                 Task { await vm.refreshMyOrders() }
             }
         )
