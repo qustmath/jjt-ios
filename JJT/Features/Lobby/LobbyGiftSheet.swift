@@ -204,7 +204,7 @@ struct LobbyGiftSheet: View {
                     ForEach(receiverRows) { r in
                         let selected = chosen?.id == r.id
                         VStack(spacing: 3) {
-                            AppAvatar(url: r.avatar, size: 38)
+                            LobbyMemberAvatar(userId: r.id, fallbackAvatar: r.avatar, size: 38)
                                 .frame(width: 44, height: 44)
                                 .overlay(Circle().stroke(selected ? LobbyColors.gold : .white.opacity(0.12), lineWidth: 1.5))
                             Text(r.name)

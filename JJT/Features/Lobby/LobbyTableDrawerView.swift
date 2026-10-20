@@ -518,7 +518,7 @@ private struct MemberLane: View {
                     ForEach(members) { m in
                         VStack(spacing: 4) {
                             ZStack(alignment: .top) {
-                                AppAvatar(url: m.avatar, size: 46)
+                                LobbyMemberAvatar(userId: m.userId, fallbackAvatar: m.avatar, size: 46)
                                     .contentShape(Circle())
                                     .onTapGesture { onClick(m) }
                                     .simultaneousGesture(
@@ -576,7 +576,7 @@ private struct ApplyRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            AppAvatar(url: apply.userAvatar, size: 34)
+            LobbyMemberAvatar(userId: apply.userId, fallbackAvatar: apply.userAvatar, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(apply.userNickname ?? "申请人")
                     .font(.system(size: 12, weight: .semibold))
@@ -614,7 +614,7 @@ private struct UnlockOrderRow: View {
         TimelineView(.periodic(from: .now, by: 20)) { _ in
             let leftMin = lobbyRemainingMinutes(order.expireTime)
             HStack(spacing: 10) {
-                AppAvatar(url: order.userAvatar, size: 34)
+                LobbyMemberAvatar(userId: order.userId, fallbackAvatar: order.userAvatar, size: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(order.userNickname ?? "解锁方")
                         .font(.system(size: 12, weight: .semibold))
@@ -797,7 +797,7 @@ struct LobbyFriendPickerSheet: View {
                     } else {
                         ForEach(friends) { u in
                             HStack(spacing: 10) {
-                                AppAvatar(url: u.avatar, size: 32)
+                                LobbyMemberAvatar(userId: u.userId, fallbackAvatar: u.avatar, size: 32)
                                 Text(u.nickname ?? "好友")
                                     .font(.system(size: 12))
                                     .foregroundStyle(LobbyColors.ivory)

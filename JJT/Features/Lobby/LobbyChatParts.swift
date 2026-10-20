@@ -698,16 +698,19 @@ extension LobbySpectateMember {
     }
 }
 
-/// 资料卡（点头像弹出）：送礼 / 私信 / 加好友 / 邀请拼桌 / 请喝一杯 + 举报入口。
-/// 页面把它放在 ZStack 最顶层（对齐安卓 Dialog 窗口承载，保证盖在桌位抽屉等 sheet 之上）。
+/// 用户资料卡（2026-10-18 按附件改为完整资料卡，对齐安卓 LobbyUserCard）：
+/// 封面 + 头像框 + VIP 段位 + 昵称/签名 + 关注/获赞 + 区域/座位标签 + 成就勋章 + 关注/私信/赠礼。
+/// 数据来自 member/user/profile（公开资料）与 member/badge/user-wall（他人已获得勋章）；
+/// 两个接口都没有的字段（兴趣标签、认证状态）不编造——标签用区域/桌号/座位态替代。
 struct LobbyUserCard: View {
 
+    let userId: Int64
     let nickname: String
     let avatar: String?
     let tableNo: String?
     let seated: Bool
     let isSelf: Bool
-    /// 状态文案（nil=按 seated 推断「在座/围观中」）
+    /// 状态文案（nil=按 seated 推断「在座/围观中」）；>12 字另起一行小字
     var stateText: String? = nil
     let onDismiss: () -> Void
     let onGift: () -> Void
@@ -717,6 +720,34 @@ struct LobbyUserCard: View {
     let onDrink: () -> Void
     /// 举报入口（nil=不显示）：举报以公屏消息 msgId 为凭据
     var onReport: (() -> Void)? = nil
+    /// 非空时在三个主按钮下方显示次级文字入口（语音房「抱上麦」/门店「邀请拼桌」）
+    var inviteLabel: String? = nil
+
+    @State private var profile: UserProfileInfo?
+    @State private var badges: [BadgeItem] = []
+
+    private var displayName: String {
+        let n = profile?.nickname ?? ""
+        return n.isEmpty ? nickname : n
+    }
+    private var displayAvatar: String? { profile?.avatar ?? avatar }
+    private var signature: String? {
+        guard let m = profile?.mark, !m.isEmpty else { return nil }
+        return m
+    }
+    private var longState: String? {
+        guard let s = stateText, s.count > 12 else { return nil }
+        return s
+    }
+    private var isFollowed: Bool { isSelf || profile?.isFollowing == true }
+    private var showStats: Bool { profile?.followCount != nil || profile?.likeCount != nil }
+    private var tags: [String] {
+        var list: [String] = []
+        if let tableNo, !tableNo.isEmpty { list.append(tableNo) }
+        list.append(stateText ?? (seated ? "在座" : "围观中"))
+        if let area = profile?.areaName, !area.isEmpty { list.append(area) }
+        return Array(list.prefix(3))
+    }
 
     var body: some View {
         ZStack {
@@ -725,78 +756,249 @@ struct LobbyUserCard: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onDismiss() }
 
-            VStack(spacing: 0) {
-                AppAvatar(url: avatar, size: 72)
-                Spacer().frame(height: 10)
-                HStack(spacing: 6) {
-                    Text(nickname)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(LobbyColors.ivory)
-                    if let tableNo, !tableNo.isEmpty {
-                        Text(tableNo)
-                            .font(.system(size: 9))
-                            .foregroundStyle(Noir.goldLight)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    coverSection
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(displayName)
+                            .font(.system(size: 20, weight: .bold, design: .serif))
+                            .foregroundStyle(LobbyColors.ivory)
+                            .lineLimit(1)
+                        if let signature {
+                            Text("\u{201C}\(signature)\u{201D}")
+                                .font(.system(size: 11).italic())
+                                .foregroundStyle(.white.opacity(0.5))
+                                .lineLimit(2)
+                                .padding(.top, 4)
+                        }
+                        if let longState {
+                            Text(longState)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.white.opacity(0.35))
+                                .lineLimit(1)
+                                .padding(.top, 3)
+                        }
+
+                        HStack(spacing: 0) {
+                            if showStats {
+                                HStack(alignment: .bottom, spacing: 16) {
+                                    statText("关注", profile?.followCount ?? 0)
+                                    statText("获赞", profile?.likeCount ?? 0)
+                                }
+                                Spacer()
+                            }
+                            ForEach(Array(tags.enumerated()), id: \.offset) { i, tag in
+                                if i > 0 { Spacer().frame(width: 4) }
+                                Text(tag)
+                                    .font(.system(size: 8.5))
+                                    .foregroundStyle(LobbyColors.goldLight.opacity(0.85))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(LobbyColors.gold.opacity(0.10)))
+                                    .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.30), lineWidth: 1))
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
+                        }
+                        .padding(.top, 10)
+
+                        Rectangle().fill(Noir.gold.opacity(0.25)).frame(height: 1).padding(.top, 14)
+
+                        if !badges.isEmpty {
+                            Text("成 就 勋 章")
+                                .font(.system(size: 10))
+                                .kerning(2.2)
+                                .foregroundStyle(.white.opacity(0.4))
+                                .padding(.top, 14)
+                            HStack(spacing: 6) {
+                                ForEach(0..<5, id: \.self) { idx in
+                                    if idx < badges.count {
+                                        badgeCell(badges[idx])
+                                            .frame(maxWidth: .infinity)
+                                    } else {
+                                        Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+                                    }
+                                }
+                            }
+                            .padding(.top, 10)
+                        }
+
+                        HStack(spacing: 8) {
+                            mainButton(
+                                label: isSelf ? "自己" : (isFollowed ? "已关注" : "关注"),
+                                icon: "person.badge.plus",
+                                style: isFollowed ? .outline : .primary,
+                                enabled: !isSelf && !isFollowed
+                            ) { onFollow() }
+                            mainButton(label: "私信", icon: "message.fill", style: .outline, enabled: true) { onChat() }
+                            mainButton(label: "赠礼", icon: "gift.fill", style: .gold, enabled: true) { onGift() }
+                        }
+                        .padding(.top, 14)
+
+                        if let inviteLabel {
+                            Text(inviteLabel)
+                                .font(.system(size: 10))
+                                .foregroundStyle(LobbyColors.goldLight.opacity(0.8))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(.white.opacity(0.04)))
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 8)
+                                .contentShape(Capsule())
+                                .onTapGesture { onInviteShare() }
+                        }
+
+                        if !isSelf, let onReport {
+                            Text("举报该用户发言")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.35))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 5)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 4)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onReport() }
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
                 }
-                Spacer().frame(height: 4)
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(seated ? LobbyColors.seated : LobbyColors.standing)
-                        .frame(width: 6, height: 6)
-                    Text(stateText ?? (seated ? "在座" : "围观中"))
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.4))
+            }
+            .frame(maxWidth: 430)
+            .frame(maxHeight: 760)
+            .background(Color(red: 0x10/255, green: 0x0D/255, blue: 0x12/255))
+            .overlay(RoundedRectangle(cornerRadius: 26).stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 26))
+            .padding(.horizontal, 18)
+            .contentShape(Rectangle())
+            .onTapGesture { } // 吃掉卡片内点击，不落到遮罩上
+        }
+        .task(id: userId) {
+            guard userId > 0 else { return }
+            async let p = try? ProfileAPI.getProfile(userId: userId)
+            async let b = try? MeAPI.userBadgeWall(userId: userId)
+            profile = await p
+            badges = ((await b) ?? []).filter { $0.owned }
+        }
+    }
+
+    // MARK: 封面 + 头像 + VIP
+
+    private var coverSection: some View {
+        ZStack(alignment: .bottomLeading) {
+            ZStack(alignment: .topTrailing) {
+                if let bg = profile?.profileBg, !bg.isEmpty, let url = webImageURL(bg) {
+                    WebImage(url: url) { coverFallback }
+                        .frame(height: 272)
+                } else {
+                    coverFallback.frame(height: 272)
                 }
-                Spacer().frame(height: 16)
-                HStack {
-                    LobbyCardAction(label: "送礼", icon: "storefront") { onGift() }
-                    LobbyCardAction(label: "私信", icon: "message") { onChat() }
-                    LobbyCardAction(label: "加好友", icon: "person.badge.plus") { onFollow() }
-                    LobbyCardAction(label: "邀请拼桌", icon: "person.2.wave.2") { onInviteShare() }
-                    LobbyCardAction(label: "请喝一杯", icon: "wineglass") { onDrink() }
+                LinearGradient(stops: [
+                    .init(color: Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.30), location: 0),
+                    .init(color: Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.10), location: 0.5),
+                    .init(color: Color(red: 0x10/255, green: 0x0D/255, blue: 0x12/255).opacity(0.90), location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(width: 30, height: 30)
+                        .background(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.55))
+                        .clipShape(Circle())
                 }
-                if !isSelf, let onReport {
-                    Spacer().frame(height: 12)
-                    Text("举报该用户发言")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.white.opacity(0.45))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .overlay(Capsule().stroke(.white.opacity(0.12), lineWidth: 1))
-                        .onTapGesture { onReport() }
+                .buttonStyle(.plain)
+                .padding(12)
+            }
+            .frame(height: 272)
+
+            // 头像压封面下缘；VIP 段位小标挂右下
+            HStack(alignment: .bottom) {
+                avatarView.padding(.bottom, -14)
+                Spacer()
+                if let level = profile?.level, let name = level.name, !name.isEmpty {
+                    LobbyVipChip(vipName: name, vipColor: level.color, levelInTier: level.levelInTier, fontSize: 10)
+                        .padding(.bottom, 62)
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 22)
-            .background(Color(red: 0x14/255, green: 0x10/255, blue: 0x16/255))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.gold.opacity(0.4), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 24))
-            .padding(.horizontal, 32)
         }
     }
-}
 
-private struct LobbyCardAction: View {
-    let label: String
-    let icon: String
-    let onClick: () -> Void
+    private var coverFallback: some View {
+        LinearGradient(colors: [
+            Color(red: 0x1B/255, green: 0x0A/255, blue: 0x12/255),
+            Color(red: 0x0B/255, green: 0x09/255, blue: 0x10/255),
+            Color(red: 0x12/255, green: 0x0A/255, blue: 0x0D/255),
+        ], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 15))
-                .foregroundStyle(Noir.goldLight)
-                .frame(width: 46, height: 46)
-                .background(Noir.gold.opacity(0.07))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Noir.gold.opacity(0.28), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+    /// 头像框靠溢出圆外呈现；无框时才画金描边
+    private var avatarView: some View {
+        let frame = profile?.avatarFrame
+        let hasFrame = !(frame ?? "").isEmpty
+        let scale = (profile?.avatarFrameScale ?? 0) > 0 ? CGFloat(profile!.avatarFrameScale!) : 1.2
+        return AppAvatar(url: displayAvatar, size: 86, frameURL: frame, frameScale: scale)
+            .modifier(AvatarRing(hasFrame: hasFrame))
+    }
+
+    // MARK: 小件
+
+    private func statText(_ label: String, _ value: Int) -> some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            Text("\(value)")
+                .font(.lobbyNumber(15, weight: .semibold))
+                .foregroundStyle(LobbyColors.goldLight)
             Text(label)
-                .font(.system(size: 8.5))
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.4))
         }
+    }
+
+    private func badgeCell(_ badge: BadgeItem) -> some View {
+        VStack(spacing: 4) {
+            if let icon = badge.icon, let url = webImageURL(icon) {
+                WebImage(url: url) { Image(systemName: "seal.fill").foregroundStyle(Noir.gold) }
+                    .frame(width: 44, height: 44)
+            } else {
+                Image(systemName: "seal.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(Noir.gold)
+                    .frame(width: 44, height: 44)
+            }
+            Text(badge.name)
+                .font(.system(size: 8))
+                .foregroundStyle(.white.opacity(0.55))
+                .lineLimit(1)
+        }
+    }
+
+    private enum BtnStyle { case primary, outline, gold }
+
+    private func mainButton(label: String, icon: String, style: BtnStyle, enabled: Bool, onClick: @escaping () -> Void) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 12))
+            Text(label).font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(style == .gold ? Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255)
+                            : (style == .primary ? .white : LobbyColors.ivory))
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture { onClick() }
+        .padding(.vertical, 11)
+        .background {
+            switch style {
+            case .primary:
+                Capsule().fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
+            case .gold:
+                Capsule().fill(LinearGradient(colors: [LobbyColors.goldPale, LobbyColors.gold], startPoint: .leading, endPoint: .trailing))
+            case .outline:
+                Capsule().stroke(LobbyColors.gold.opacity(0.45), lineWidth: 1)
+            }
+        }
+        .opacity(enabled ? 1 : 0.4)
+        .contentShape(Capsule())
+        .onTapGesture { if enabled { onClick() } }
     }
 }
 

@@ -112,16 +112,25 @@ struct LobbyMemberAvatar: View {
     var size: CGFloat = 36
     /// 无显式 frameScale 时的兜底外扩比例（对齐安卓 1.2f）
     var frameScale: CGFloat = 1.2
+    /// 无框时画金描边（榜单/领奖台口径；有框不画避免叠圈）
+    var ringWhenNoFrame = false
+    var ringColor: Color = Noir.gold.opacity(0.5)
 
     @ObservedObject private var store = MemberCardStore.shared
 
     var body: some View {
         let card = store.card(userId)
         let scale = (card?.avatarFrameScale ?? 0) > 0 ? CGFloat(card!.avatarFrameScale!) : frameScale
+        let noFrame = (card?.avatarFrame ?? "").isEmpty
         AppAvatar(url: card?.avatar ?? fallbackAvatar,
                   size: size,
                   frameURL: card?.avatarFrame,
                   frameScale: scale)
+            .overlay {
+                if ringWhenNoFrame && noFrame {
+                    Circle().stroke(ringColor, lineWidth: 1)
+                }
+            }
             .task(id: userId) {
                 if let userId, userId > 0 {
                     MemberCardStore.shared.fetchMissing([userId])

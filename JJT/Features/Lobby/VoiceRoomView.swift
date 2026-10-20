@@ -603,6 +603,7 @@ struct VoiceRoomView: View {
                         seatNo: no,
                         nickname: mic?.nickname ?? (no == 1 ? session.detail?.ownerNickname : nil),
                         avatar: mic?.avatar,
+                        userId: uid,
                         role: voiceMicRoleLabel(mic?.role),
                         muted: mic?.muted == true,
                         speaking: uid != nil && session.speaking.contains(uid!),
@@ -757,12 +758,14 @@ struct VoiceRoomView: View {
     private func memberCard(_ m: MicMember) -> some View {
         let seat = (session.detail?.mics ?? []).first { $0.userId == m.userId }
         return LobbyUserCard(
+            userId: m.userId,
             nickname: m.nickname ?? "房间用户",
             avatar: m.avatar,
             tableNo: nil,
             seated: seat != nil,
             isSelf: m.userId == myUserId,
             stateText: seat.map { "\($0.seatNo ?? 0) 号麦\($0.muted == true ? " · 已闭麦" : "")" } ?? "在房间里",
+            inviteLabel: canManage ? "抱上麦" : nil,
             onDismiss: { selfCard = nil },
             onGift: { selfCard = nil; giftNav = .init(userId: m.userId, nickname: m.nickname) },
             onChat: { selfCard = nil; chatNav = .init(userId: m.userId, nickname: m.nickname) },
@@ -805,6 +808,8 @@ struct MicSlotView: View {
     let seatNo: Int
     let nickname: String?
     let avatar: String?
+    /// 麦上成员 id：名片缓存接头像框+等级小标（对齐安卓 443399f 麦位头像框）
+    var userId: Int64? = nil
     let role: String?
     let muted: Bool
     let speaking: Bool
@@ -821,7 +826,7 @@ struct MicSlotView: View {
             ZStack(alignment: .top) {
                 Group {
                     if nickname != nil || avatar != nil {
-                        AppAvatar(url: avatar, size: size)
+                        LobbyMemberAvatar(userId: userId, fallbackAvatar: avatar, size: size)
                     } else {
                         ZStack {
                             Circle()

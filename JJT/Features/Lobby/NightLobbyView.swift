@@ -534,6 +534,7 @@ struct NightLobbyView: View {
 
     private func userCard(_ u: LobbyChatMessage) -> some View {
         LobbyUserCard(
+            userId: u.senderId,
             nickname: u.nickname,
             avatar: u.avatar,
             tableNo: u.tableNo,

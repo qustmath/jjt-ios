@@ -77,7 +77,7 @@ struct VoiceRoomOpsSheet: View {
                     } else {
                         ForEach(applies) { a in
                             HStack(spacing: 10) {
-                                AppAvatar(url: a.avatar, size: 32)
+                                LobbyMemberAvatar(userId: a.userId, fallbackAvatar: a.avatar, size: 32)
                                 Text(a.nickname ?? "用户\(a.userId ?? 0)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(LobbyColors.ivory)
@@ -103,7 +103,7 @@ struct VoiceRoomOpsSheet: View {
                     } else {
                         ForEach(requests) { r in
                             HStack(spacing: 10) {
-                                AppAvatar(url: r.avatar, size: 32)
+                                LobbyMemberAvatar(userId: r.userId, fallbackAvatar: r.avatar, size: 32)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(r.nickname ?? "用户\(r.userId ?? 0)")
                                         .font(.system(size: 12))
@@ -155,7 +155,7 @@ struct VoiceRoomOpsSheet: View {
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundStyle(.white.opacity(0.4))
                                     .frame(width: 18, alignment: .leading)
-                                AppAvatar(url: m.avatar, size: 30)
+                                LobbyMemberAvatar(userId: m.userId, fallbackAvatar: m.avatar, size: 30)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(m.nickname ?? "用户\(m.userId ?? 0)")
                                         .font(.system(size: 12))
@@ -193,7 +193,7 @@ struct VoiceRoomOpsSheet: View {
                     } else {
                         ForEach(roomOnlyMembers) { p in
                             HStack(spacing: 10) {
-                                AppAvatar(url: avatarOf(p.userId), size: 30)
+                                LobbyMemberAvatar(userId: p.userId, fallbackAvatar: avatarOf(p.userId), size: 30)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text((p.name?.isEmpty == false) ? p.name! : "用户\(p.userId)")
                                         .font(.system(size: 12))

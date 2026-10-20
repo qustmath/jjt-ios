@@ -1110,6 +1110,7 @@ struct StoreLobbyView: View {
     /// 点人资料卡：同桌成员、榜单人物复用同一卡片
     private func userCard(_ u: LobbyCardTarget) -> some View {
         LobbyUserCard(
+            userId: u.userId,
             nickname: u.nickname,
             avatar: u.avatar,
             tableNo: u.tableNo,

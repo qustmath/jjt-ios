@@ -292,8 +292,7 @@ private struct Podium: View {
                     Text("👑").font(.system(size: 14))
                     Spacer().frame(height: 2)
                 }
-                AppAvatar(url: item.avatar, size: first ? 62 : 50)
-                    .overlay(Circle().stroke(first ? LobbyColors.goldLight : LobbyColors.gold.opacity(0.5), lineWidth: first ? 2 : 1))
+                LobbyMemberAvatar(userId: item.userId, fallbackAvatar: item.avatar, size: first ? 62 : 50, ringWhenNoFrame: true, ringColor: first ? LobbyColors.goldLight : LobbyColors.gold.opacity(0.5))
                 Spacer().frame(height: 6)
                 Text(item.nickname ?? "")
                     .font(.system(size: first ? 12 : 11, weight: first ? .bold : .regular))
@@ -341,7 +340,7 @@ private struct HeatRow: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.white.opacity(0.35))
                 .frame(width: 26, alignment: .leading)
-            AppAvatar(url: item.avatar, size: 34)
+            LobbyMemberAvatar(userId: item.userId, fallbackAvatar: item.avatar, size: 34, ringWhenNoFrame: true)
             Text(item.nickname ?? "")
                 .font(.system(size: 12.5))
                 .foregroundStyle(LobbyColors.ivory)
