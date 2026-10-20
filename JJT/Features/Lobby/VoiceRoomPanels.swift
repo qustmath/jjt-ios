@@ -591,8 +591,13 @@ struct VoiceRoomListSheet: View {
                         .padding(.top, 12)
                 } else {
                     ForEach(rooms) { room in
-                        LobbyRoomCard(room: room) { onEnter(room) }
-                            .padding(.top, 10)
+                        // 我正在里面（或「留在房里」未退房）的房间标「当前」
+                        LobbyRoomCard(
+                            room: room,
+                            isCurrent: room.id == VoiceRoomSession.shared.roomId
+                                || room.id == VoiceRoomSession.shared.presence?.roomId
+                        ) { onEnter(room) }
+                        .padding(.top, 10)
                     }
                 }
 
@@ -627,6 +632,8 @@ struct VoiceRoomListSheet: View {
 /// 统一暗玻璃常态卡（麦上有人不再变特卡，LIVE 信号降级为金色 Mic 小图标——对齐安卓 a4b4be5）。
 struct LobbyRoomCard: View {
     let room: LobbyVoiceRoom
+    /// 我当前所在的房间（房卡标「当前」，点击回房）
+    var isCurrent = false
     let onClick: () -> Void
 
     var body: some View {
@@ -642,6 +649,17 @@ struct LobbyRoomCard: View {
                     .font(.system(size: 14, weight: .semibold, design: .serif))
                     .foregroundStyle(LobbyColors.ivory)
                     .lineLimit(1)
+                if isCurrent {
+                    Spacer().frame(width: 6)
+                    Text("当前")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(LinearGradient(colors: [LobbyColors.gold, LobbyColors.deepGold], startPoint: .leading, endPoint: .trailing))
+                        .clipShape(Capsule())
+                        .fixedSize()
+                }
                 Spacer(minLength: 6)
                 if onMic {
                     Image(systemName: "mic.fill")

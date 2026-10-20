@@ -296,9 +296,20 @@ final class VoiceRoomSession: ObservableObject {
         let id = roomId
         guard id > 0 else { return }
         if room != nil, conn == .connected { return }
-        guard let t = try? await VoiceRoomAPI.token(roomId: id),
-              let url = t.url, !url.isEmpty,
-              let jwt = t.token, !jwt.isEmpty else { return }
+        // token 拉取失败不再静默：静默返回会让小标停在「未连语音」，用户不知道发生了什么
+        let t: VoiceRoomToken
+        do {
+            t = try await VoiceRoomAPI.token(roomId: id)
+        } catch {
+            conn = .failed
+            notice = "语音连接失败：\((error as? APIError)?.errorDescription ?? "token 获取异常")"
+            return
+        }
+        guard let url = t.url, !url.isEmpty, let jwt = t.token, !jwt.isEmpty else {
+            conn = .failed
+            notice = "语音连接失败：服务未返回连接地址"
+            return
+        }
         conn = .connecting
         disconnectLiveKit() // 重连前先清旧连接（同 identity 重连会踢前一个连接）
         leavingIntentionally = false // 新连接开始：后续被动断开按解散处理

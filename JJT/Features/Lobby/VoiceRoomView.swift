@@ -134,6 +134,10 @@ struct VoiceRoomView: View {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled else { break }
                 try? await session.refresh()
+                // 自愈：进了房但语音从未连上（如首次 token 拉取失败），补连一次
+                if session.conn == .idle {
+                    await session.connectLiveKit()
+                }
             }
         }
         .task(id: JoinTaskKey(canManage: canManage, inRoom: joinState == .inRoom, preview: preview)) {
@@ -285,43 +289,10 @@ struct VoiceRoomView: View {
         .fullScreenCover(item: $giftNav) { nav in
             GiftCenterView(receiverId: nav.userId, receiverName: nav.nickname)
         }
-        // 密码房：4 位数字输入，填对后带密码重进（.task 以凭据 key 重触发）
-        .alert("输入房间密码", isPresented: Binding(
-            get: { joinState == .password },
-            set: { if !$0, joinState == .password { joinState = .failed; showToast("已取消进房") } }
-        )) {
-            TextField("4 位数字密码", text: $pwInput)
-                .keyboardType(.numberPad)
-            Button("进房") {
-                let pw = String(pwInput.filter(\.isNumber).prefix(4))
-                if pw.count != 4 {
-                    showToast("请输入 4 位数字密码")
-                } else {
-                    pwError = nil
-                    joinPassword = pw
-                    joinAttempt += 1 // 同密码重试也要重触发
-                    joinState = .joining
-                }
-            }
-            Button("取消", role: .cancel) { joinState = .failed }
-        } message: {
-            Text(pwError ?? "向房主要 4 位数字密码，输对即可进房")
-        }
-        // 门票房：进房需支付门票——支付密码走统一守卫（未设置引导去设置）
-        .alert("进房门票", isPresented: Binding(
-            get: { joinState == .ticket },
-            set: { if !$0, joinState == .ticket { joinState = .failed; showToast("已取消进房") } }
-        )) {
-            Button("去支付") {
-                ticketGuard.require { pwd in
-                    ticketPwd = pwd
-                    joinAttempt += 1
-                    joinState = .joining
-                }
-            }
-            Button("取消", role: .cancel) { joinState = .failed }
-        } message: {
-            Text(ticketMessage)
+        // 密码房/门票房弹层：自定义浮层（不能用系统 alert——支付密码弹窗叠在 alert 上
+        // 会把 alert 顶掉，误触发「已取消进房」→自动退房，门票付到一半被踢出）
+        if joinState == .password || joinState == .ticket {
+            joinDialogOverlay
         }
         .payPasswordGuard(ticketGuard) { showPaySettings = true }
         .fullScreenCover(isPresented: $showPaySettings) {
@@ -333,6 +304,96 @@ struct VoiceRoomView: View {
         let canManage: Bool
         let inRoom: Bool
         let preview: Bool
+    }
+
+    // MARK: - 进房弹层（密码/门票）
+
+    /// 自定义暗卡弹层：密码房输 4 位数字；门票房确认支付（去支付拉支付密码守卫）
+    private var joinDialogOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { joinState = .failed }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(joinState == .password ? "输入房间密码" : "进房门票")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(LobbyColors.ivory)
+                    .frame(maxWidth: .infinity)
+                if joinState == .password {
+                    TextField("4 位数字密码", text: $pwInput)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 16))
+                        .foregroundColor(LobbyColors.ivory)
+                        .multilineTextAlignment(.center)
+                        .letterSpacing(6)
+                        .padding(.vertical, 10)
+                        .background(.white.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                            pwError == nil ? Noir.gold.opacity(0.35) : LobbyColors.crimson.opacity(0.7), lineWidth: 1))
+                        .padding(.top, 14)
+                    Text(pwError ?? "向房主要 4 位数字密码，输对即可进房")
+                        .font(.system(size: 11))
+                        .foregroundStyle(pwError == nil ? .white.opacity(0.4) : Color(red: 1, green: 0x6B/255, blue: 0x6B/255))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 6)
+                } else {
+                    Text(ticketMessage)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 12)
+                }
+                HStack(spacing: 12) {
+                    Button {
+                        joinState = .failed
+                    } label: {
+                        Text("取消")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(.white.opacity(0.05))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        if joinState == .password {
+                            let pw = String(pwInput.filter(\.isNumber).prefix(4))
+                            if pw.count != 4 {
+                                showToast("请输入 4 位数字密码")
+                            } else {
+                                pwError = nil
+                                joinPassword = pw
+                                joinAttempt += 1 // 同密码重试也要重触发
+                                joinState = .joining
+                            }
+                        } else {
+                            ticketGuard.require { pwd in
+                                ticketPwd = pwd
+                                joinAttempt += 1
+                                joinState = .joining
+                            }
+                        }
+                    } label: {
+                        Text(joinState == .password ? "进房" : "去支付")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(LobbyColors.goldLight)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(Capsule().fill(LobbyColors.gold.opacity(0.12)))
+                            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.45), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 16)
+            }
+            .padding(20)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(red: 0x1A/255, green: 0x12/255, blue: 0x16/255)))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.gold.opacity(0.3), lineWidth: 1))
+            .padding(.horizontal, 40)
+        }
+        .transition(.opacity)
     }
 
     // MARK: - 进房
