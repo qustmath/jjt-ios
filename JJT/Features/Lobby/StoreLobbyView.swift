@@ -67,104 +67,18 @@ struct StoreLobbyView: View {
                 // ① 全屏平面图即页面（场景化）：铺满 + 上下压暗氛围遮罩
                 planScene
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                LinearGradient(stops: [
-                    .init(color: LobbyColors.bg.opacity(0.55), location: 0),
-                    .init(color: LobbyColors.bg.opacity(0.12), location: 0.22),
-                    .init(color: LobbyColors.bg.opacity(0.10), location: 0.55),
-                    .init(color: LobbyColors.bg.opacity(0.88), location: 1),
-                ], startPoint: .top, endPoint: .bottom)
-                .allowsHitTesting(false)
-                .ignoresSafeArea(edges: .bottom)
+                atmosphereDim
 
                 // ② HUD：左上返回 + 右上三按钮（店长视频 / 排行榜 / 小房间）
-                VStack {
-                    HStack {
-                        Button {
-                            if chatFocus {
-                                closeFullScreenChat()
-                            } else {
-                                dismiss()
-                            }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .frame(width: 34, height: 34)
-                                .background(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.6))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                    }
-                    .padding(.leading, 12)
-                    .padding(.top, 12)
-                    Spacer()
-                }
-                VStack {
-                    HStack {
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 8) {
-                            HudIconButton(icon: "film", label: "店长视频", badge: !vm.videos.isEmpty ? "LIVE" : nil) {
-                                videoSheetOpen = true
-                            }
-                            HudIconButton(icon: "trophy.fill", label: "排行榜", live: !vm.heatTop.isEmpty) {
-                                rankSheetOpen = true
-                            }
-                            HudIconButton(icon: "mic.fill", label: "小房间",
-                                          live: voiceSession.presence?.storeId == storeId) {
-                                Task { await vm.refreshRooms(storeId: storeId) }
-                                roomListOpen = true
-                            }
-                        }
-                    }
-                    .padding(.trailing, 12)
-                    .padding(.top, 12)
-                    Spacer()
-                }
+                backHud
+                hudButtons
 
                 // ③ 左缘：楼层切换（竖排）+ 浮动招募卡（v75 游戏任务追踪式）
                 if vm.plans.count > 1 {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(vm.plans.enumerated()), id: \.element.id) { i, f in
-                            Text(f.label ?? "F\(i + 1)")
-                                .font(.system(size: 9))
-                                .foregroundStyle(i == floorIdx ? .white : .white.opacity(0.55))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background {
-                                    if i == floorIdx {
-                                        Capsule().fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
-                                    } else {
-                                        Capsule().fill(Color(red: 0x10/255, green: 0x07/255, blue: 0x0A/255).opacity(0.6))
-                                            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
-                                    }
-                                }
-                                .contentShape(Capsule())
-                                .onTapGesture { floorIdx = i }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.leading, 10)
-                    .padding(.top, geo.size.height * 0.11)
+                    floorRail(topInset: geo.size.height * 0.11)
                 }
                 if !vm.gaps.isEmpty {
-                    LobbyRecruitmentPanel(
-                        gaps: vm.gaps,
-                        plans: vm.plans,
-                        onLocate: { gap in
-                            // 跨楼层缺口：先从全楼层查桌，定位到桌后再切层 + 开抽屉，一次到位
-                            let target = vm.plans.first { p in (p.tables ?? []).contains { $0.id == gap.tableId } }
-                            if let target, let t = (target.tables ?? []).first(where: { $0.id == gap.tableId }) {
-                                floorIdx = vm.plans.firstIndex(where: { $0.id == target.id }) ?? floorIdx
-                                openDrawer(t)
-                            } else {
-                                showToast("该桌位不在平面图投影内")
-                            }
-                        }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.leading, 8)
-                    .padding(.top, geo.size.height * 0.18)
+                    recruitmentLayer(topInset: geo.size.height * 0.18)
                 }
 
                 // ④ 底部：图内聊天/显隐条 + 邀请/桌主待办 + 店名状态 + 输入（浮在场景上）
@@ -185,57 +99,8 @@ struct StoreLobbyView: View {
 
                 // 全屏公屏（v75 chatFocus）：不是新页面，是从底部升起的浮层；关闭时向下收起
                 if chatFocus {
-                    LobbyFullScreenChat(
-                        storeName: vm.store?.name ?? "门店",
-                        online: online,
-                        backdrop: plan?.image ?? vm.store?.cover,
-                        messages: boardMessages,
-                        inputHint: lobbyInputHint(seatedHere: seatedHere, state: seatSession.seat?.state, tableNo: seatSession.seat?.tableNo),
-                        sending: sending,
-                        autoFocusInput: chatFocusInput,
-                        onBackToPlan: { closeFullScreenChat() },
-                        onUserClick: { cardUser = $0.toCardTarget() },
-                        onReportRequest: { msg in
-                            if msg.canReport(myUserId: myUserId) { reportTarget = msg }
-                        },
-                        onSendText: { text in
-                            sending = true
-                            Task {
-                                let err = await LobbyImSession.shared.sendText(groupId: storeGroupId, text: text, seatedInStore: seatedHere)
-                                sending = false
-                                if let err { showToast(err) }
-                            }
-                        },
-                        onSendSticker: { pack, name in
-                            Task {
-                                if let err = await LobbyImSession.shared.sendSticker(groupId: storeGroupId, pack: pack, name: name, seatedInStore: seatedHere) {
-                                    showToast(err)
-                                }
-                            }
-                        },
-                        onPickImage: { showPicker = true },
-                        onGift: {
-                            if let t = myTable {
-                                giftCtx = lobbyGiftContext(t)
-                            } else {
-                                giftPickOpen = true
-                            }
-                        },
-                        onVoiceStop: { result in
-                            guard let path = result.path else {
-                                if let e = result.error { showToast(e) }
-                                return
-                            }
-                            sending = true
-                            Task {
-                                let err = await LobbyImSession.shared.sendVoice(groupId: storeGroupId, path: path, seconds: result.seconds, seatedInStore: seatedHere)
-                                sending = false
-                                if let err { showToast(err) }
-                            }
-                        },
-                        onError: { showToast($0) }
-                    )
-                    .transition(.move(edge: .bottom))
+                    fullScreenChatLayer
+                        .transition(.move(edge: .bottom))
                 }
 
                 // 浮层群（ZStack 顶层）
@@ -819,6 +684,173 @@ struct StoreLobbyView: View {
                 .padding(.top, 8)
             }
         }
+    }
+
+    // MARK: - 场景分层（拆出 body，编译器对超大表达式会超时）
+
+    /// 上下压暗氛围遮罩
+    private var atmosphereDim: some View {
+        LinearGradient(stops: [
+            .init(color: LobbyColors.bg.opacity(0.55), location: 0),
+            .init(color: LobbyColors.bg.opacity(0.12), location: 0.22),
+            .init(color: LobbyColors.bg.opacity(0.10), location: 0.55),
+            .init(color: LobbyColors.bg.opacity(0.88), location: 1),
+        ], startPoint: .top, endPoint: .bottom)
+        .allowsHitTesting(false)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    /// 左上返回（全屏公屏开着时先收公屏）
+    private var backHud: some View {
+        VStack {
+            HStack {
+                Button {
+                    if chatFocus {
+                        closeFullScreenChat()
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 34, height: 34)
+                        .background(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.6))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.leading, 12)
+            .padding(.top, 12)
+            Spacer()
+        }
+    }
+
+    /// 右上三 HUD 钮：店长视频 / 排行榜 / 小房间
+    private var hudButtons: some View {
+        VStack {
+            HStack {
+                Spacer()
+                VStack(alignment: .trailing, spacing: 8) {
+                    HudIconButton(icon: "film", label: "店长视频", badge: !vm.videos.isEmpty ? "LIVE" : nil) {
+                        videoSheetOpen = true
+                    }
+                    HudIconButton(icon: "trophy.fill", label: "排行榜", live: !vm.heatTop.isEmpty) {
+                        rankSheetOpen = true
+                    }
+                    HudIconButton(icon: "mic.fill", label: "小房间",
+                                  live: voiceSession.presence?.storeId == storeId) {
+                        Task { await vm.refreshRooms(storeId: storeId) }
+                        roomListOpen = true
+                    }
+                }
+            }
+            .padding(.trailing, 12)
+            .padding(.top, 12)
+            Spacer()
+        }
+    }
+
+    /// 左缘楼层切换（竖排）
+    private func floorRail(topInset: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(vm.plans.enumerated()), id: \.element.id) { i, f in
+                Text(f.label ?? "F\(i + 1)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(i == floorIdx ? .white : .white.opacity(0.55))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background {
+                        if i == floorIdx {
+                            Capsule().fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
+                        } else {
+                            Capsule().fill(Color(red: 0x10/255, green: 0x07/255, blue: 0x0A/255).opacity(0.6))
+                                .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
+                        }
+                    }
+                    .contentShape(Capsule())
+                    .onTapGesture { floorIdx = i }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.leading, 10)
+        .padding(.top, topInset)
+    }
+
+    /// 左缘招募呼吸卡
+    private func recruitmentLayer(topInset: CGFloat) -> some View {
+        LobbyRecruitmentPanel(
+            gaps: vm.gaps,
+            plans: vm.plans,
+            onLocate: { gap in
+                // 跨楼层缺口：先从全楼层查桌，定位到桌后再切层 + 开抽屉，一次到位
+                let target = vm.plans.first { p in (p.tables ?? []).contains { $0.id == gap.tableId } }
+                if let target, let t = (target.tables ?? []).first(where: { $0.id == gap.tableId }) {
+                    floorIdx = vm.plans.firstIndex(where: { $0.id == target.id }) ?? floorIdx
+                    openDrawer(t)
+                } else {
+                    showToast("该桌位不在平面图投影内")
+                }
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.leading, 8)
+        .padding(.top, topInset)
+    }
+
+    /// 全屏公屏浮层
+    private var fullScreenChatLayer: some View {
+        LobbyFullScreenChat(
+            storeName: vm.store?.name ?? "门店",
+            online: online,
+            backdrop: plan?.image ?? vm.store?.cover,
+            messages: boardMessages,
+            inputHint: lobbyInputHint(seatedHere: seatedHere, state: seatSession.seat?.state, tableNo: seatSession.seat?.tableNo),
+            sending: sending,
+            autoFocusInput: chatFocusInput,
+            onBackToPlan: { closeFullScreenChat() },
+            onUserClick: { cardUser = $0.toCardTarget() },
+            onReportRequest: { msg in
+                if msg.canReport(myUserId: myUserId) { reportTarget = msg }
+            },
+            onSendText: { text in
+                sending = true
+                Task {
+                    let err = await LobbyImSession.shared.sendText(groupId: storeGroupId, text: text, seatedInStore: seatedHere)
+                    sending = false
+                    if let err { showToast(err) }
+                }
+            },
+            onSendSticker: { pack, name in
+                Task {
+                    if let err = await LobbyImSession.shared.sendSticker(groupId: storeGroupId, pack: pack, name: name, seatedInStore: seatedHere) {
+                        showToast(err)
+                    }
+                }
+            },
+            onPickImage: { showPicker = true },
+            onGift: {
+                if let t = myTable {
+                    giftCtx = lobbyGiftContext(t)
+                } else {
+                    giftPickOpen = true
+                }
+            },
+            onVoiceStop: { result in
+                guard let path = result.path else {
+                    if let e = result.error { showToast(e) }
+                    return
+                }
+                sending = true
+                Task {
+                    let err = await LobbyImSession.shared.sendVoice(groupId: storeGroupId, path: path, seconds: result.seconds, seatedInStore: seatedHere)
+                    sending = false
+                    if let err { showToast(err) }
+                }
+            },
+            onError: { showToast($0) }
+        )
     }
 
     // MARK: - 场景：全屏平面图（v75 场景化——平面图即页面）
