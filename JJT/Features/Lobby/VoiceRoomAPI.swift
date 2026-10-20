@@ -13,17 +13,23 @@ enum VoiceRoomAPI {
 
     private static let client = APIClient.shared
 
-    /// 开小房间（门槛：本店入座 + 实名 + 在营上限）；返回房间 id
+    /// 开小房间（门槛：本店入座 + 实名 + 在营上限）；返回房间 id。
+    /// 访问控制二选一（服务端校验）：accessPassword（4 位数字）XOR coinThreshold（须带 coinType）
     @discardableResult
-    static func createRoom(storeId: Int64, title: String, tags: String?, mode: String) async throws -> Int64 {
+    static func createRoom(storeId: Int64, title: String, tags: String?, mode: String,
+                           accessPassword: String? = nil, coinType: String? = nil, coinThreshold: Int? = nil) async throws -> Int64 {
         struct Req: Encodable {
             let storeId: Int64
             let title: String
             let tags: String?
             let mode: String
+            let accessPassword: String?
+            let coinType: String?
+            let coinThreshold: Int?
         }
         return try await client.post("app-api/social/lobby/voice-room/create",
-                                     body: Req(storeId: storeId, title: title, tags: tags, mode: mode))
+                                     body: Req(storeId: storeId, title: title, tags: tags, mode: mode,
+                                               accessPassword: accessPassword, coinType: coinType, coinThreshold: coinThreshold))
     }
 
     /// 关闭房间（仅房主）
@@ -36,9 +42,13 @@ enum VoiceRoomAPI {
         try await client.get("app-api/social/lobby/voice-room/get", query: ["id": String(id)])
     }
 
-    /// 进房：public 直接进群 / approval 落申请待批 / invite 仅房主拉人（049）
-    static func join(roomId: Int64) async throws -> VoiceRoomJoinResult {
-        try await client.post("app-api/social/lobby/voice-room/join", query: ["roomId": String(roomId)])
+    /// 进房：public 直接进群 / approval 落申请待批 / invite 仅房主拉人（049）；密码房须带对 password（061）；
+    /// 门票房（063）须带 payPassword 支付门票，不退、房主免票、已在房不重复扣
+    static func join(roomId: Int64, password: String? = nil, payPassword: String? = nil) async throws -> VoiceRoomJoinResult {
+        var query = ["roomId": String(roomId)]
+        if let password { query["password"] = password }
+        if let payPassword { query["payPassword"] = payPassword }
+        return try await client.post("app-api/social/lobby/voice-room/join", query: query)
     }
 
     /// 拉人进房（房主/管理麦）
@@ -231,4 +241,8 @@ enum VoiceRoomConst {
     static let codeVoiceInviteOnly = 1_010_009_049
     /// 房间不存在或已关闭：进房撞上说明「在语音房」入口已过期
     static let codeVoiceRoomGone = 1_010_009_055
+    /// 密码房密码缺失/错误（061）：进房弹密码输入再重试
+    static let codeVoicePasswordWrong = 1_010_009_061
+    /// 门票房进房须支付门票（063）：弹门票确认框走支付密码
+    static let codeVoiceTicketPayPwdRequired = 1_010_009_063
 }

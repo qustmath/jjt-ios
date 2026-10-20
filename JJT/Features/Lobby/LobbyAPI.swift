@@ -16,6 +16,8 @@ struct LobbyStoreCard: Decodable, Identifiable {
     let seatedCount: Int?
     let avchatroomId: String?
     let latestMessage: String?
+    /// 实时围观数（state=stand 罚站在店围观；「在玩」=seated+standing 由 UI 相加。旧后端不返回为 nil）
+    let standingCount: Int?
 }
 
 /// 楼层平面图（LobbyFloorPlanRespVO）
@@ -43,7 +45,14 @@ struct LobbyTable: Decodable, Identifiable, Equatable {
     let hostUserId: Int64?
     let groupEventId: Int64?
     let reserveText: String?
+    /// 勿扰解锁价（兔币；仅 dnd 态非完全静音有值，nil=默认 300；旧后端不返回为 nil）
+    let dndUnlockPrice: Int64?
+    /// 勿扰级别（normal/silent；nil 时按可解锁勿扰对待，保持旧表现）
+    let dndLevel: String?
 }
+
+/// 金额上限（兔币）：与服务端 @Max(1_000_000) 同口径——勿扰解锁价/小房间门票输入共用，本地先拦避免服务端 400 回打
+let lobbyAmountMax: Int64 = 1_000_000
 
 /// 拼桌缺口（LobbyShareGapRespVO）
 struct LobbyShareGap: Decodable, Identifiable {
@@ -129,6 +138,12 @@ struct LobbyVoiceRoom: Decodable, Identifiable {
     let micTotal: Int?
     /// 建房时间：epoch 毫秒
     let createTime: Int64?
+    /// 是否密码房（2026-10-16 访问控制；旧后端不返回为 nil）
+    let hasPassword: Bool?
+    /// 门票币种：rabbit_coin兔币/radish_coin萝贝（无门票 nil）
+    let coinType: String?
+    /// 门票数额
+    let coinThreshold: Int?
 }
 
 /// 小房间详情（LobbyVoiceRoomDetailRespVO）
@@ -143,9 +158,15 @@ struct LobbyVoiceRoomDetail: Decodable {
     let mics: [LobbyMicItem]?
     let mySeatNo: Int?
     let inRoom: Bool?
-    /// 腾讯 IM 群 ID（App SDK 进群用）：仅在房用户返回
+    /// 腾讯 IM 群 ID（App SDK 进群用）：仅在房返回
     let imGroupIdStr: String?
     let complianceText: String?
+    /// 是否密码房（2026-10-16 访问控制；旧后端不返回为 nil）
+    let hasPassword: Bool?
+    /// 门票币种：rabbit_coin兔币/radish_coin萝贝（无门票 nil）
+    let coinType: String?
+    /// 门票数额
+    let coinThreshold: Int?
 }
 
 /// 麦位项（LobbyMicItemRespVO）
@@ -201,11 +222,13 @@ struct LobbyHostShoutReq: Encodable {
     let note: String?
 }
 
-/// 勿扰设置：note ≤50 字；silent=true 为完全静音档（不可付费解锁）
+/// 勿扰设置：note ≤50 字；silent=true 为完全静音档（不可付费解锁）；
+/// unlockPrice 为解锁价（兔币，普通勿扰由桌主指定，完全静音忽略）
 struct LobbyHostDndReq: Encodable {
     let tableId: Int64
     let note: String?
     let silent: Bool
+    let unlockPrice: Int64?
 }
 
 struct LobbyHostTransferReq: Encodable {
@@ -296,6 +319,17 @@ struct LobbyInviteAcceptReq: Encodable {
 }
 
 // ===================== 公屏非 IM 侧 =====================
+
+/// 公屏历史条目（服务端留痕原样；msgBody 是 TIM 回调 MsgBody 数组 JSON）
+struct LobbyChatHistoryMsg: Decodable {
+    let msgId: String?
+    let userId: Int64?
+    let msgType: String?
+    let msgBody: String?
+    let msgTime: Int64?
+    /// 全城聚合流历史行据此渲染「店名」前缀（2026-10-17 起聚合副本落库；旧后端无此字段=nil）
+    let storeId: Int64?
+}
 
 struct LobbyReportReq: Encodable {
     let msgId: String
@@ -488,10 +522,10 @@ enum LobbyAPI {
         let _: Bool = try await client.post("app-api/social/lobby/host/stop-shout", query: ["tableId": String(tableId)])
     }
 
-    /// 设置本桌勿扰（有人桌转勿扰态）
-    static func hostEnableDnd(tableId: Int64, note: String?, silent: Bool) async throws {
+    /// 设置本桌勿扰（有人桌转勿扰态）；unlockPrice=解锁价（普通勿扰必填，nil 容错旧后端）
+    static func hostEnableDnd(tableId: Int64, note: String?, silent: Bool, unlockPrice: Int64? = nil) async throws {
         let _: Bool = try await client.post("app-api/social/lobby/host/dnd",
-                                            body: LobbyHostDndReq(tableId: tableId, note: note, silent: silent))
+                                            body: LobbyHostDndReq(tableId: tableId, note: note, silent: silent, unlockPrice: unlockPrice))
     }
 
     /// 取消本桌勿扰：在途解锁订单由服务端逐单原路退款
@@ -594,6 +628,13 @@ enum LobbyAPI {
         struct Resp: Decodable { let groupId: String? }
         let resp: Resp = try await client.get("app-api/social/lobby/channel/aggregate")
         return resp.groupId
+    }
+
+    /// 公屏历史（2026-10-16：新用户进店回看）。服务端按群取最近 N 条留痕原样返回——
+    /// 仅门店群原文有库（聚合群副本 2026-10-17 起也落库），昵称头像由 App 按 userId 批量补。
+    static func chatHistory(groupId: String, limit: Int) async throws -> [LobbyChatHistoryMsg] {
+        try await client.get("app-api/social/lobby/channel/history",
+                             query: ["groupId": groupId, "limit": String(limit)])
     }
 
     /// 举报大厅消息：只上送 msgId + 原因编码，发送者/时间戳/门店由服务端查库补齐

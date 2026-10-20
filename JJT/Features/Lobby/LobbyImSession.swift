@@ -5,6 +5,26 @@ import ImSDK_Plus
 /// 平面图桌态的实时刷新源——他人坐席变化只走这条信号（对齐安卓 LobbyImSession.seatEvents）。
 extension Notification.Name {
     static let jjtLobbySeatEvent = Notification.Name("jjtLobbySeatEvent")
+    /// 礼物广播动效事件（object = LobbyGiftEvent）：本店/全门店礼物特效副本到达即发，
+    /// 相应页面（门店大厅听门店群、暗夜大厅听聚合群）据此播全屏动效；发送者按 senderId 跳过防双播。
+    static let jjtLobbyGiftEvent = Notification.Name("jjtLobbyGiftEvent")
+}
+
+/// 礼物广播动效事件（对齐安卓 LobbyGiftEvent；载荷取自消息 meta）
+struct LobbyGiftEvent {
+    let groupId: String
+    let giftName: String
+    let animationUrl: String
+    /// 特效素材可能挂在 icon（内置 gift2d:*，animationUrl 为空）——补播合成项据此兜底
+    let icon: String?
+    let iconScale: Int?
+    let quantity: Int
+    let senderNickname: String
+    let receiverNickname: String
+    let storeName: String
+    let tableNo: String
+    let scope: String
+    let senderId: Int64
 }
 
 /// 大厅公屏消息（对齐安卓 LobbyChatMessage：门店群原文 + 聚合群扇出副本统一模型）
@@ -35,6 +55,8 @@ struct LobbyChatMessage: Identifiable {
     var storeName: String?
     var tableNo: String?
     var seatState: String?
+    /// 消息归属门店ID（扇出副本/聚合群历史行携带；门店群原文与系统行为 nil——暗夜大厅门店卡简报按它归店）
+    var storeId: Int64? = nil
 
     var id: String { msgId }
     var isUserMessage: Bool { kind != .system }
@@ -61,6 +83,8 @@ final class LobbyImSession: ObservableObject {
 
     /// 消息内存上限
     static let maxMessages = 200
+    /// 公屏历史条数（对齐安卓 HISTORY_LIMIT）
+    static let historyLimit = 50
     /// 10013 = 已在群里（本地状态丢了而已），按成功处理
     static let codeAlreadyMember = 10013
 
@@ -71,6 +95,11 @@ final class LobbyImSession: ObservableObject {
     /// 自己的 IM 名片缓存（本地回显用）
     private(set) var selfNickname: String?
     private(set) var selfAvatar: String?
+    /// 门店 ID→店名（全城流历史行「店名」前缀渲染用；进暗夜大厅时由页面用门店列表 seed。
+    /// 实时流的店名走 CloudCustomData 元数据，不经此表）
+    private(set) var storeNames: [Int64: String] = [:]
+    /// 已拉过历史的群（每次登录/清空后重置；msgId 去重兜底重复）
+    private var historyLoadedGroups: Set<String> = []
 
     private var joinedGroups: Set<String> = []
     private var joiningGroups: Set<String> = []
@@ -110,6 +139,8 @@ final class LobbyImSession: ObservableObject {
         joiningGroups.removeAll()
         aggregateGroupId = nil
         soundElems.removeAll()
+        storeNames = [:]
+        historyLoadedGroups.removeAll()
         imReady = false
         selfNickname = nil
         selfAvatar = nil
@@ -193,6 +224,87 @@ final class LobbyImSession: ObservableObject {
         ensureJoined(groupId)
     }
 
+    /// 门店 ID→店名表（进暗夜大厅时用门店列表喂，历史行前缀渲染用）
+    func seedStoreNames(_ names: [Int64: String]) {
+        guard !names.isEmpty else { return }
+        storeNames = names
+    }
+
+    // MARK: - 公屏历史
+
+    /// 公屏历史（新用户进店回看）：AVChatRoom 只推在线消息，历史从服务端留痕接口拉最近 N 条，
+    /// 解析文本/表情包后**前插**到内存流（每群一次 + msgId 去重兜底）。
+    /// 语音/图片历史不还原（留痕无可用 URL，语义即「上线前的媒体不看回放」）；失败静默且不置位（下次重试）。
+    func loadHistory(_ groupId: String?) async {
+        guard let groupId, !groupId.isEmpty else { return }
+        guard !historyLoadedGroups.contains(groupId) else { return }
+        guard let rows = try? await LobbyAPI.chatHistory(groupId: groupId, limit: Self.historyLimit) else { return }
+        if rows.isEmpty {
+            historyLoadedGroups.insert(groupId)
+            return
+        }
+        let parsed = rows.compactMap {
+            Self.parseHistoryRow(groupId, row: $0, aggregateGroupId: aggregateGroupId, storeNames: storeNames)
+        }
+        // 发言人会员名片顺路补（等级/头像框/昵称头像；渲染层以名片缓存优先，IM 名片兜底）
+        let ids = parsed.map(\.senderId).filter { $0 > 0 }
+        if !ids.isEmpty {
+            MemberCardStore.shared.fetchMissing(ids)
+        }
+        let known = Set(messages.map(\.msgId))
+        let fresh = parsed.filter { !known.contains($0.msgId) }
+        messages = Array((fresh + messages).suffix(Self.maxMessages))
+        historyLoadedGroups.insert(groupId)
+    }
+
+    /// 留痕行 → 公屏消息（仅文本/表情包可还原；解析失败跳过该条）
+    private static func parseHistoryRow(_ groupId: String, row: LobbyChatHistoryMsg,
+                                        aggregateGroupId: String?, storeNames: [Int64: String]) -> LobbyChatMessage? {
+        guard let msgId = row.msgId, let body = row.msgBody else { return nil }
+        // 全城聚合流的历史行带 storeId（签名副本落库时取自元数据）：渲染「店名」前缀与实时流对齐；
+        // 门店群历史行本店即语境，无需前缀（与实时行为一致）
+        var historyStoreName: String?
+        if let sid = row.storeId, groupId == aggregateGroupId {
+            historyStoreName = storeNames[sid]
+        }
+        guard let arr = (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [[String: Any]],
+              let first = arr.first else { return nil }
+        guard let type = first["MsgType"] as? String else { return nil }
+        let content = first["MsgContent"] as? [String: Any]
+        switch type {
+        case "TIMTextElem":
+            guard let text = content?["Text"] as? String, !text.isEmpty else { return nil }
+            return historyMessage(msgId, groupId: groupId, row: row, kind: .text, text: text, storeName: historyStoreName)
+        case "TIMCustomElem":
+            guard let dataStr = content?["Data"] as? String,
+                  let obj = (try? JSONSerialization.jsonObject(with: Data(dataStr.utf8))) as? [String: Any],
+                  obj["type"] as? String == "sticker" else { return nil }
+            return historyMessage(msgId, groupId: groupId, row: row, kind: .sticker,
+                                  stickerPack: obj["pack"] as? String, stickerName: obj["name"] as? String,
+                                  storeName: historyStoreName)
+        default:
+            return nil
+        }
+    }
+
+    /// 历史消息骨架（昵称头像先占位，名片缓存批量补）
+    private static func historyMessage(_ msgId: String, groupId: String, row: LobbyChatHistoryMsg,
+                                       kind: LobbyChatMessage.Kind, text: String? = nil,
+                                       stickerPack: String? = nil, stickerName: String? = nil,
+                                       storeName: String?) -> LobbyChatMessage {
+        var m = LobbyChatMessage(
+            msgId: msgId, groupId: groupId, senderId: row.userId ?? 0,
+            nickname: "", avatar: nil,
+            timeSec: row.msgTime ?? 0,
+            kind: kind, text: text, voiceSeconds: 0
+        )
+        m.stickerPack = stickerPack
+        m.stickerName = stickerName
+        m.storeName = storeName
+        m.storeId = row.storeId
+        return m
+    }
+
     private func ensureJoined(_ groupId: String?) {
         guard let groupId, !groupId.isEmpty else { return }
         guard !joinedGroups.contains(groupId), !joiningGroups.contains(groupId) else { return }
@@ -224,6 +336,10 @@ final class LobbyImSession: ObservableObject {
         if meta?["sys"] as? String == "seat" {
             NotificationCenter.default.post(name: .jjtLobbySeatEvent, object: nil)
         }
+        if meta?["msg_kind"] as? String == "lobby_gift_broadcast",
+           let event = Self.giftEvent(from: msg, meta: meta, groupId: groupId) {
+            NotificationCenter.default.post(name: .jjtLobbyGiftEvent, object: event)
+        }
         guard let parsed = Self.parse(msg, meta: meta) else { return }
         // 留住收到的语音 elem：取 URL 与点击自愈都从这里拿对象
         if parsed.kind == .voice, parsed.voicePath == nil, let elem = msg.soundElem {
@@ -241,12 +357,34 @@ final class LobbyImSession: ObservableObject {
         }
     }
 
-    /// cloudCustomData → 扇出副本/系统播报元数据（snake_case：store_id/store_name/table_no/seat_state/sys）
+    /// cloudCustomData → 扇出副本/系统播报元数据（snake_case：store_id/store_name/table_no/seat_state/sys
+    /// + 礼物广播载荷 msg_kind/scope/gift_*/animation_url/icon/icon_scale/quantity/收发昵称）
     private static func parseMeta(_ data: Data?) -> [String: Any]? {
         guard let data,
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               !obj.isEmpty else { return nil }
         return obj
+    }
+
+    /// meta + IM 消息 → 礼物广播事件。发送者解析不了返回 nil 整条跳过：
+    /// 回退 0 会让页面级「senderId != 我」过滤失效，发送者也再播一遍（防双播失效）
+    private static func giftEvent(from msg: V2TIMMessage, meta: [String: Any]?, groupId: String) -> LobbyGiftEvent? {
+        guard let rawSender = msg.sender ?? msg.userID, let senderId = Int64(rawSender) else { return nil }
+        let icon = meta?["icon"] as? String
+        return LobbyGiftEvent(
+            groupId: groupId,
+            giftName: meta?["gift_name"] as? String ?? "",
+            animationUrl: meta?["animation_url"] as? String ?? "",
+            icon: (icon?.isEmpty == true) ? nil : icon,
+            iconScale: (meta?["icon_scale"] as? NSNumber)?.intValue,
+            quantity: (meta?["quantity"] as? NSNumber)?.intValue ?? 1,
+            senderNickname: meta?["sender_nickname"] as? String ?? "",
+            receiverNickname: meta?["receiver_nickname"] as? String ?? "",
+            storeName: meta?["store_name"] as? String ?? "",
+            tableNo: meta?["table_no"] as? String ?? "",
+            scope: meta?["scope"] as? String ?? "",
+            senderId: senderId
+        )
     }
 
     /// V2TIMMessage → 公屏消息。只解析文本/语音/图片/表情包四类；未知元素返回 null。
@@ -279,6 +417,7 @@ final class LobbyImSession: ObservableObject {
             m.storeName = meta["store_name"] as? String
             m.tableNo = meta["table_no"] as? String
             m.seatState = meta["seat_state"] as? String
+            m.storeId = (meta["store_id"] as? NSNumber)?.int64Value
         }
         switch msg.elemType {
         case .ELEM_TYPE_TEXT:
@@ -324,6 +463,18 @@ final class LobbyImSession: ObservableObject {
 
     // MARK: - 发言（IM 直发；服务端发送前回调做罚站限频与禁言判定）
 
+    /// 发言随带的坐席元数据（{table_no, seat_state}）：全城聚合流渲染桌号与坐席点用；
+    /// 聚合群副本由服务端重签（带店名/storeId），不靠这份
+    private static func lobbyMeta(_ seatedInStore: Bool) -> String? {
+        let seat = seatedInStore ? LobbySeatSession.shared.seat : nil
+        let obj: [String: Any] = [
+            "table_no": seat?.tableNo ?? "",
+            "seat_state": seatedInStore ? "seated" : "stand"
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     /// 发文本。返回 nil=成功；返回文案=失败提示（本地回显只在成功后做）。
     @discardableResult
     func sendText(groupId: String?, text: String, seatedInStore: Bool) async -> String? {
@@ -331,7 +482,7 @@ final class LobbyImSession: ObservableObject {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
         do {
-            try await ImManager.shared.sendText(body, to: gid, isGroup: true)
+            try await ImManager.shared.sendText(body, to: gid, isGroup: true, cloudCustomData: Self.lobbyMeta(seatedInStore))
             appendLocal(gid, .text, text: body)
             return nil
         } catch {
@@ -344,7 +495,8 @@ final class LobbyImSession: ObservableObject {
     func sendVoice(groupId: String?, path: String, seconds: Int, seatedInStore: Bool) async -> String? {
         guard let gid = validGroup(groupId) else { return "本店公屏暂未开通（门店群未建）" }
         do {
-            try await ImManager.shared.sendSound(path, seconds: Int32(seconds), to: gid, isGroup: true)
+            try await ImManager.shared.sendSound(path, seconds: Int32(seconds), to: gid, isGroup: true,
+                                                 cloudCustomData: Self.lobbyMeta(seatedInStore))
             appendLocal(gid, .voice, voiceSeconds: seconds, voicePath: path)
             return nil
         } catch {
@@ -357,7 +509,7 @@ final class LobbyImSession: ObservableObject {
     func sendImage(groupId: String?, path: String, seatedInStore: Bool) async -> String? {
         guard let gid = validGroup(groupId) else { return "本店公屏暂未开通（门店群未建）" }
         do {
-            try await ImManager.shared.sendImage(path, to: gid, isGroup: true)
+            try await ImManager.shared.sendImage(path, to: gid, isGroup: true, cloudCustomData: Self.lobbyMeta(seatedInStore))
             appendLocal(gid, .image, imagePath: path)
             return nil
         } catch {
@@ -372,7 +524,8 @@ final class LobbyImSession: ObservableObject {
         let payload: [String: Any] = ["type": "sticker", "pack": pack, "name": name]
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         do {
-            try await ImManager.shared.sendCustom(String(data: data, encoding: .utf8) ?? "", to: gid, isGroup: true)
+            try await ImManager.shared.sendCustom(String(data: data, encoding: .utf8) ?? "", to: gid, isGroup: true,
+                                                  cloudCustomData: Self.lobbyMeta(seatedInStore))
             appendLocal(gid, .sticker, stickerPack: pack, stickerName: name)
             return nil
         } catch {

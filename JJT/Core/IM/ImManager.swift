@@ -173,13 +173,15 @@ final class ImManager: NSObject {
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
-    func sendImage(_ localPath: String, to peerId: String, isGroup: Bool) async throws {
+    func sendImage(_ localPath: String, to peerId: String, isGroup: Bool, cloudCustomData: String? = nil) async throws {
         guard let msg = V2TIMManager.sharedInstance().createImageMessage(imagePath: localPath) else { return }
+        msg.cloudCustomData = cloudCustomData?.data(using: .utf8)
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
-    func sendCustom(_ jsonData: String, to peerId: String, isGroup: Bool) async throws {
+    func sendCustom(_ jsonData: String, to peerId: String, isGroup: Bool, cloudCustomData: String? = nil) async throws {
         guard let msg = V2TIMManager.sharedInstance().createCustomMessage(data: Data(jsonData.utf8)) else { return }
+        msg.cloudCustomData = cloudCustomData?.data(using: .utf8)
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
@@ -237,8 +239,9 @@ final class ImManager: NSObject {
     }
 
     /// 发送语音消息（本地录音文件路径 + 时长秒；大厅语音公屏用）
-    func sendSound(_ localPath: String, seconds: Int32, to peerId: String, isGroup: Bool) async throws {
+    func sendSound(_ localPath: String, seconds: Int32, to peerId: String, isGroup: Bool, cloudCustomData: String? = nil) async throws {
         guard let msg = V2TIMManager.sharedInstance().createSoundMessage(audioFilePath: localPath, duration: seconds) else { return }
+        msg.cloudCustomData = cloudCustomData?.data(using: .utf8)
         try await send(msg, to: peerId, isGroup: isGroup)
     }
 
