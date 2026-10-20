@@ -291,9 +291,13 @@ struct VoiceRoomView: View {
         }
         // 密码房/门票房弹层：自定义浮层（不能用系统 alert——支付密码弹窗叠在 alert 上
         // 会把 alert 顶掉，误触发「已取消进房」→自动退房，门票付到一半被踢出）
-        if joinState == .password || joinState == .ticket {
-            joinDialogOverlay
+        .overlay {
+            if joinState == .password || joinState == .ticket {
+                joinDialogOverlay
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeOut(duration: 0.2), value: joinState)
         .payPasswordGuard(ticketGuard) { showPaySettings = true }
         .fullScreenCover(isPresented: $showPaySettings) {
             PayPasswordSettingsView()
@@ -323,10 +327,9 @@ struct VoiceRoomView: View {
                 if joinState == .password {
                     TextField("4 位数字密码", text: $pwInput)
                         .keyboardType(.numberPad)
-                        .font(.system(size: 16))
+                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
                         .foregroundColor(LobbyColors.ivory)
                         .multilineTextAlignment(.center)
-                        .letterSpacing(6)
                         .padding(.vertical, 10)
                         .background(.white.opacity(0.06))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(
