@@ -235,72 +235,21 @@ struct StoreLobbyView: View {
         }
         // 勿扰付费解锁面板（三档并列）
         .sheet(item: $unlockFor) { t in
-            LobbyDndUnlockSheet(
-                table: t,
-                hostNickname: drawerSpectate(t)?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
-                myOrders: vm.myOrders,
-                onRefreshOrders: { Task { await vm.refreshMyOrders() } },
-                onResolved: { msg in
-                    unlockFor = nil
-                    showToast(msg)
-                    Task { await vm.refreshMyOrders() }
-                },
-                onDismiss: { unlockFor = nil },
-                onGiftTier: {
-                    unlockFor = nil
-                    let hostName = drawerSpectate(t)?.members?
-                        .first { $0.host == true || $0.userId == t.hostUserId }?.nickname
-                    giftCtx = LobbyGiftContext(
-                        tableId: t.id, tableNo: t.tableNo, scene: "lobby_dnd",
-                        receivers: [], toName: hostName ?? "桌主")
-                },
-                onOrderPlaced: {
-                    unlockFor = nil
-                    showToast("解锁订单已支付 · 等桌主响应（10 分钟内，超时自动退款）")
-                    Task { await vm.refreshMyOrders() }
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationBackground(LobbyColors.panel)
+            unlockSheetBuilder(t)
+                .presentationDetents([.medium, .large])
+                .presentationBackground(LobbyColors.panel)
         }
         // 送桌前先选桌（未入座路径）
         .sheet(isPresented: $giftPickOpen) {
-            LobbyGiftTargetSheet(
-                tables: vm.plans.flatMap { $0.tables ?? [] }
-                    .filter { ($0.currentCount ?? 0) > 0 }
-                    .sorted { ($0.currentCount ?? 0) > ($1.currentCount ?? 0) },
-                onDismiss: { giftPickOpen = false },
-                onPick: { t in
-                    giftPickOpen = false
-                    Task {
-                        spectate = await vm.spectate(tableId: t.id)
-                        giftCtx = lobbyGiftContext(t)
-                    }
-                }
-            )
-            .presentationDetents([.medium])
-            .presentationBackground(LobbyColors.panel)
+            giftTargetSheetBuilder
+                .presentationDetents([.medium])
+                .presentationBackground(LobbyColors.panel)
         }
         // 礼物面板（三级广播）
         .sheet(item: $giftCtx) { ctx in
-            LobbyGiftSheet(
-                tableId: ctx.tableId,
-                tableNo: ctx.tableNo,
-                scene: ctx.scene,
-                receivers: ctx.receivers,
-                toName: ctx.toName,
-                onClose: { giftCtx = nil },
-                onSent: { gift in
-                    showToast(ctx.scene == "lobby_dnd" ? "礼物已送出 · 达门槛即解锁" : "\(gift.name) 已送出")
-                    // 送礼会改热力榜与桌况：刷新平面图 + 我的订单（勿扰档可能已发通行证）
-                    Task {
-                        await vm.refreshPlan(storeId: storeId)
-                        await vm.refreshMyOrders()
-                    }
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationBackground(LobbyColors.panel)
+            giftSheetBuilder(ctx)
+                .presentationDetents([.medium, .large])
+                .presentationBackground(LobbyColors.panel)
         }
         // 排行榜浮层（v75：独立页改浮层）
         .sheet(isPresented: $rankSheetOpen) {
@@ -321,35 +270,15 @@ struct StoreLobbyView: View {
         }
         // 表演区房间列表（20s 轮询在 sheet 内）
         .sheet(isPresented: $roomListOpen) {
-            VoiceRoomListSheet(
-                storeId: storeId,
-                rooms: vm.rooms,
-                onRefresh: { Task { await vm.refreshRooms(storeId: storeId) } },
-                onEnter: { room in
-                    roomListOpen = false
-                    voiceRoomNav = VoiceRoomNav(roomId: room.id)
-                },
-                onCreate: {
-                    roomListOpen = false
-                    createRoomOpen = true
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationBackground(LobbyColors.panel)
+            roomListSheetBuilder
+                .presentationDetents([.medium, .large])
+                .presentationBackground(LobbyColors.panel)
         }
         // 开小房间（门槛全在服务端；建成功直接进房）
         .sheet(isPresented: $createRoomOpen) {
-            VoiceRoomCreateSheet(
-                storeId: storeId,
-                onDismiss: { createRoomOpen = false },
-                onCreated: { id in
-                    createRoomOpen = false
-                    Task { await vm.refreshRooms(storeId: storeId) }
-                    voiceRoomNav = VoiceRoomNav(roomId: id)
-                }
-            )
-            .presentationDetents([.medium])
-            .presentationBackground(LobbyColors.panel)
+            createRoomSheetBuilder
+                .presentationDetents([.medium])
+                .presentationBackground(LobbyColors.panel)
         }
         // 语音房（LiveKit + IM 群公屏 + 麦位管理）
         .fullScreenCover(item: $voiceRoomNav) { nav in
@@ -1084,6 +1013,99 @@ struct StoreLobbyView: View {
             .init(color: LobbyColors.bg.opacity(0.8), location: 0.28),
             .init(color: LobbyColors.bg.opacity(0.95), location: 1),
         ], startPoint: .top, endPoint: .bottom))
+    }
+
+    // MARK: - Sheet 构建器（拆出 modifier 链，编译器对超大表达式会超时）
+
+    private func unlockSheetBuilder(_ t: LobbyTable) -> some View {
+        LobbyDndUnlockSheet(
+            table: t,
+            hostNickname: drawerSpectate(t)?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
+            myOrders: vm.myOrders,
+            onRefreshOrders: { Task { await vm.refreshMyOrders() } },
+            onResolved: { msg in
+                unlockFor = nil
+                showToast(msg)
+                Task { await vm.refreshMyOrders() }
+            },
+            onDismiss: { unlockFor = nil },
+            onGiftTier: {
+                unlockFor = nil
+                let hostName = drawerSpectate(t)?.members?
+                    .first { $0.host == true || $0.userId == t.hostUserId }?.nickname
+                giftCtx = LobbyGiftContext(
+                    tableId: t.id, tableNo: t.tableNo, scene: "lobby_dnd",
+                    receivers: [], toName: hostName ?? "桌主")
+            },
+            onOrderPlaced: {
+                unlockFor = nil
+                showToast("解锁订单已支付 · 等桌主响应（10 分钟内，超时自动退款）")
+                Task { await vm.refreshMyOrders() }
+            }
+        )
+    }
+
+    private var giftTargetSheetBuilder: some View {
+        LobbyGiftTargetSheet(
+            tables: vm.plans.flatMap { $0.tables ?? [] }
+                .filter { ($0.currentCount ?? 0) > 0 }
+                .sorted { ($0.currentCount ?? 0) > ($1.currentCount ?? 0) },
+            onDismiss: { giftPickOpen = false },
+            onPick: { t in
+                giftPickOpen = false
+                Task {
+                    spectate = await vm.spectate(tableId: t.id)
+                    giftCtx = lobbyGiftContext(t)
+                }
+            }
+        )
+    }
+
+    private func giftSheetBuilder(_ ctx: LobbyGiftContext) -> some View {
+        LobbyGiftSheet(
+            tableId: ctx.tableId,
+            tableNo: ctx.tableNo,
+            scene: ctx.scene,
+            receivers: ctx.receivers,
+            toName: ctx.toName,
+            onClose: { giftCtx = nil },
+            onSent: { gift in
+                showToast(ctx.scene == "lobby_dnd" ? "礼物已送出 · 达门槛即解锁" : "\(gift.name) 已送出")
+                // 送礼会改热力榜与桌况：刷新平面图 + 我的订单（勿扰档可能已发通行证）
+                Task {
+                    await vm.refreshPlan(storeId: storeId)
+                    await vm.refreshMyOrders()
+                }
+            }
+        )
+    }
+
+    private var roomListSheetBuilder: some View {
+        VoiceRoomListSheet(
+            storeId: storeId,
+            rooms: vm.rooms,
+            onRefresh: { Task { await vm.refreshRooms(storeId: storeId) } },
+            onEnter: { room in
+                roomListOpen = false
+                voiceRoomNav = VoiceRoomNav(roomId: room.id)
+            },
+            onCreate: {
+                roomListOpen = false
+                createRoomOpen = true
+            }
+        )
+    }
+
+    private var createRoomSheetBuilder: some View {
+        VoiceRoomCreateSheet(
+            storeId: storeId,
+            onDismiss: { createRoomOpen = false },
+            onCreated: { id in
+                createRoomOpen = false
+                Task { await vm.refreshRooms(storeId: storeId) }
+                voiceRoomNav = VoiceRoomNav(roomId: id)
+            }
+        )
     }
 
     // MARK: - 全屏公屏开合
