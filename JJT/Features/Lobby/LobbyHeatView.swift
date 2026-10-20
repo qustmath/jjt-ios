@@ -104,6 +104,7 @@ struct LobbyHeatView: View {
             // 资料卡（榜单无消息上下文，不带举报入口）
             if let u = cardUser {
                 LobbyUserCard(
+                    userId: u.userId ?? -1,
                     nickname: u.nickname ?? "大厅用户",
                     avatar: u.avatar,
                     tableNo: nil,

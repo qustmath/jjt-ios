@@ -53,6 +53,11 @@ struct HomeView: View {
                     ticker
 
                     Spacer().frame(height: 20)
+                    // 聊天室广场入口卡（蜜兔会正上方，对齐安卓；目录入口维持隐藏与安卓同口径）
+                    LobbyPlazaCard(onClick: { showLobby = true })
+                        .padding(.horizontal, 20)
+
+                    Spacer().frame(height: 20)
                     mituEntrance.padding(.horizontal, 20)
 
                     Spacer().frame(height: 32)

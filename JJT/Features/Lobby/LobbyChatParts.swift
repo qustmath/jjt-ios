@@ -876,8 +876,8 @@ struct LobbyUserCard: View {
         }
         .task(id: userId) {
             guard userId > 0 else { return }
-            async let p = try? ProfileAPI.getProfile(userId: userId)
-            async let b = try? MeAPI.userBadgeWall(userId: userId)
+            async let p = try? UserAPI.getProfile(userId: userId)
+            async let b = try? UserAPI.userBadgeWall(userId: userId)
             profile = await p
             badges = ((await b) ?? []).filter { $0.owned }
         }

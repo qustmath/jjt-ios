@@ -82,6 +82,10 @@ struct LobbyTableDrawerView: View {
         return a
     }
 
+    @ObservedObject private var cardStore = MemberCardStore.shared
+    /// 围观视角提示（别人的桌「围观」动作）
+    @State private var spectating = false
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -106,21 +110,10 @@ struct LobbyTableDrawerView: View {
                         .padding(.top, 4)
                 }
 
-                // ── 入座成员 + 虚位 ──
-                Text(isHost ? "入座成员 · 长按可转让桌主/移出" : "入座成员 · 点开资料卡")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.35))
-                    .padding(.top, 14)
-                MemberLane(
-                    members: members,
-                    emptySeats: capRaw.map { max($0 - cur, 0) },
-                    myUserId: myUserId,
-                    hostUserId: table.hostUserId,
-                    canHostAct: isHost,
-                    onClick: { onMemberClick($0) },
-                    onHostAction: { memberOpsFor = $0 }
-                )
-                .padding(.top, 8)
+                // ── 桌主卡（v75 口径：自己的桌也单独一行；成员宫格不再挂桌主标） ──
+                hostCard
+
+                // ── 桌主：待审批拼桌申请（拼桌中 / 有人桌审批制） ──
 
                 // ── 桌主：待审批拼桌申请（拼桌中 / 有人桌审批制） ──
                 if isHost && (status == .sharing || status == .occupied) {
@@ -172,6 +165,34 @@ struct LobbyTableDrawerView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.25))
                     .padding(.top, 10)
+
+                // ── 同桌成员（v75 口径：放在最底部，四列宫格） ──
+                HStack(spacing: 0) {
+                    Text("同桌成员")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.35))
+                    Spacer().frame(width: 6)
+                    Text(capRaw.map { "\(cur)/\($0)" } ?? "\(cur)")
+                        .font(.lobbyNumber(9))
+                        .foregroundStyle(LobbyColors.goldLight)
+                    if isHost {
+                        Spacer()
+                        Text("长按可转让/移出")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(.white.opacity(0.25))
+                    }
+                }
+                .padding(.top, 16)
+                MemberLane(
+                    members: members,
+                    emptySeats: capRaw.map { max($0 - cur, 0) },
+                    myUserId: myUserId,
+                    hostUserId: table.hostUserId,
+                    canHostAct: isHost,
+                    onClick: { onMemberClick($0) },
+                    onHostAction: { memberOpsFor = $0 }
+                )
+                .padding(.top, 8)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 28)
@@ -210,6 +231,45 @@ struct LobbyTableDrawerView: View {
             .presentationDetents([.medium])
             .presentationBackground(LobbyColors.panel)
         }
+    }
+
+    /// 三列动作宫格（2026-10-18 用户口径）
+    private func drawerActionGrid(_ actions: [DrawerSpec]) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            ForEach(actions) { a in
+                drawerAction(a)
+            }
+        }
+    }
+
+    private func drawerAction(_ a: DrawerSpec) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: a.icon)
+                .font(.system(size: 15))
+            Text(a.label)
+                .font(.system(size: 9.5))
+                .lineLimit(1)
+        }
+        .foregroundStyle(a.gold ? Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255)
+                            : (a.primary ? .white : LobbyColors.ivory))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 11)
+        .background {
+            if a.gold {
+                RoundedRectangle(cornerRadius: 14).fill(LinearGradient(colors: [LobbyColors.goldPale, LobbyColors.gold], startPoint: .leading, endPoint: .trailing))
+            } else if a.primary {
+                RoundedRectangle(cornerRadius: 14).fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
+            } else {
+                RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.05))
+            }
+        }
+        .overlay {
+            if !a.gold && !a.primary {
+                RoundedRectangle(cornerRadius: 14).stroke(LobbyColors.gold.opacity(0.3), lineWidth: 1)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { a.action() }
     }
 
     private var tableNote: String? {
@@ -281,54 +341,112 @@ struct LobbyTableDrawerView: View {
         }
     }
 
+    // MARK: - 桌主卡（v75：自己的桌也单独一行）
+
+    @ViewBuilder
+    private var hostCard: some View {
+        let host = members.first { $0.userId == table.hostUserId }
+            ?? members.first { $0.host == true }
+            ?? members.first
+        if let host {
+            let card = cardStore.card(host.userId)
+            let hostIsMe = host.userId == myUserId
+            HStack(spacing: 10) {
+                LobbyMemberAvatar(userId: host.userId, fallbackAvatar: host.avatar, size: 52)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 0) {
+                        Text(hostIsMe ? "我" : memberDisplayName(card, host.nickname))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(LobbyColors.ivory)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text("桌主")
+                            .font(.system(size: 9))
+                            .foregroundStyle(LobbyColors.gold)
+                        if card?.vipName?.isEmpty == false {
+                            Spacer().frame(width: 6)
+                            LobbyVipChip(vipName: card?.vipName, vipColor: card?.vipColor, levelInTier: card?.levelInTier)
+                        }
+                    }
+                    Text(hostIsMe
+                         ? (capRaw.map { "你是桌主 · 本桌 \(cur)/\($0) 人" } ?? "你是桌主 · 本桌 \(cur) 人")
+                         : (capRaw.map { "本桌桌主 · 本桌 \(cur)/\($0) 人" } ?? "本桌桌主 · 本桌 \(cur) 人"))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(LobbyColors.gold.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(LobbyColors.gold.opacity(0.25), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .contentShape(Rectangle())
+            .onTapGesture { onMemberClick(host) }
+            .padding(.top, 12)
+            .task(id: host.userId) { MemberCardStore.shared.fetchMissing([host.userId]) }
+        }
+    }
+
     // MARK: - 行动区
 
     @ViewBuilder
     private var actionArea: some View {
         if isMine {
-            if isHost {
-                switch status {
-                case .sharing:
-                    SeatActionButton(label: "停止拼桌", icon: "person.3", primary: false) { onStopShout() }
-                case .dnd:
-                    SeatActionButton(label: "取消勿扰（在途订单原路退款）", icon: "lock", primary: false) { onCancelDnd() }
-                case .occupied:
-                    SeatActionButton(label: "喊人拼桌", icon: "person.3") { shoutNote = ""; shoutOpen = true }
-                    SeatActionButton(label: "设置本桌勿扰", icon: "lock", primary: false) { dndNote = ""; dndSilent = false; dndPrice = ""; dndPriceError = nil; dndOpen = true }
-                        .padding(.top, 8)
-                case .free:
-                    HintActionRow(label: "开桌后再喊人拼桌（先入座成为有人桌）")
-                default:
-                    HintActionRow(label: "该桌当前不可发起拼桌/勿扰")
-                }
-                // 邀请不破勿扰/预定（服务端创建/核销双侧拦）：入口只在可入桌态露出
-                if status == .free || status == .sharing || status == .occupied {
-                    SeatActionButton(label: "邀请好友补位", icon: "person.badge.plus", primary: false) { inviteOpen = true }
-                        .padding(.top, 8)
-                }
-            } else {
+            // 我的桌：三列动作宫格（2026-10-18 用户口径）
+            if !isHost {
                 Text("桌主可喊人拼桌 / 设置勿扰 / 邀请补位 / 转让与移出成员")
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.3))
+            } else {
+                switch status {
+                case .free:
+                    HintActionRow(label: "开桌后再喊人拼桌（先入座成为有人桌）")
+                case .grouping, .reserved:
+                    HintActionRow(label: "该桌当前不可发起拼桌/勿扰")
+                default:
+                    EmptyView()
+                }
             }
-            SeatActionButton(label: "送礼给本桌成员", icon: "storefront", primary: false) { onGiftToTable() }
-                .padding(.top, 8)
-            SeatActionButton(label: "主动离桌（回罚站）", icon: "rectangle.portrait.and.arrow.right", primary: false) { onLeave() }
-                .padding(.top, 8)
+            drawerActionGrid(myTableActions)
         } else {
             othersActions
-            // 围观也能送礼（后端口径：送方不要求入座/到店）；前提是本桌确有人可收
-            if members.contains(where: { $0.userId != myUserId }) {
-                SeatActionButton(label: "送礼给本桌成员", icon: "storefront", primary: false) { onGiftToTable() }
+            if spectating {
+                StatusCard(text: "当前为围观视角 · 对方看不到你", dim: true)
                     .padding(.top, 8)
             }
         }
     }
 
+    /// 我的桌动作（桌主按桌态追加，送礼/离桌始终有）
+    private var myTableActions: [DrawerSpec] {
+        var list: [DrawerSpec] = []
+        if isHost {
+            switch status {
+            case .sharing:
+                list.append(DrawerSpec(label: "停止拼桌", icon: "person.3", primary: true) { onStopShout() })
+                list.append(DrawerSpec(label: "邀请补位", icon: "person.badge.plus") { inviteOpen = true })
+            case .dnd:
+                list.append(DrawerSpec(label: "取消勿扰", icon: "lock", primary: true) { onCancelDnd() })
+            case .occupied:
+                list.append(DrawerSpec(label: "喊人拼桌", icon: "person.3", primary: true) { shoutNote = ""; shoutOpen = true })
+                list.append(DrawerSpec(label: "勿扰设置", icon: "lock") { dndNote = ""; dndSilent = false; dndPrice = ""; dndPriceError = nil; dndOpen = true })
+                list.append(DrawerSpec(label: "邀请补位", icon: "person.badge.plus") { inviteOpen = true })
+            case .free:
+                list.append(DrawerSpec(label: "邀请补位", icon: "person.badge.plus") { inviteOpen = true })
+            default:
+                break
+            }
+        }
+        list.append(DrawerSpec(label: "送礼", icon: "gift.fill", gold: true) { onGiftToTable() })
+        list.append(DrawerSpec(label: "离桌", icon: "rectangle.portrait.and.arrow.right") { onLeave() })
+        return list
+    }
+
     @ViewBuilder
     private var othersActions: some View {
+        // 入座后取消自由换桌（2026-10-16 用户口径）：要换桌先去我的桌主动离桌
         if lobbySeatableFor(status, full: full) && seat?.state == "seated" {
-            SeatActionButton(label: "换到 \(table.tableNo ?? "该桌") 桌", icon: "chair.lounge") { onSwitch() }
+            HintActionRow(label: "已入座本店 · 换桌请先离桌")
         } else if lobbySeatableFor(status, full: full) {
             SeatActionButton(label: "扫码入座 \(table.tableNo ?? "") 桌", icon: "qrcode") { onCheckIn() }
         } else if (status == .sharing || status == .occupied) && full {
@@ -337,7 +455,15 @@ struct LobbyTableDrawerView: View {
             // 已有在途申请：不再给按钮（服务端也会拒重复申请），避免无谓请求与错误提示
             HintActionRow(label: "已申请 · 等桌主审批（30 分钟窗口）")
         } else if status == .sharing || status == .occupied {
-            SeatActionButton(label: "申请拼桌", icon: "person.3") { onApplyShare() }
+            // v75 三连动作：申请 / 敬全场（送礼给全桌）/ 围观 并排等宽
+            HStack(spacing: 8) {
+                drawerAction(DrawerSpec(label: "申请拼桌", icon: "person.3", primary: true) { onApplyShare() })
+                    .frame(maxWidth: .infinity)
+                drawerAction(DrawerSpec(label: "敬全场", icon: "gift.fill", gold: true) { onGiftToTable() })
+                    .frame(maxWidth: .infinity)
+                drawerAction(DrawerSpec(label: "围观", icon: "eye") { spectating = true })
+                    .frame(maxWidth: .infinity)
+            }
         } else if status == .dnd {
             // 勿扰：付费解锁（送礼档/订单档）；持证者给扫码入口（走与空闲桌同一套扫码核销链路）；
             // 无证才给付费按钮——持证者付费会被服务端拦，入口直接分流
@@ -507,64 +633,93 @@ private struct MemberLane: View {
     let onClick: (LobbySpectateMember) -> Void
     let onHostAction: (LobbySpectateMember) -> Void
 
+    @ObservedObject private var cardStore = MemberCardStore.shared
+
+    /// 桌主标只信平面图快照的 hostUserId（随播报/轮询实时刷新）——宫格内不再挂桌主标（v75：桌主有单独大卡）
     var body: some View {
-        if members.isEmpty && (emptySeats == nil || emptySeats! <= 0) {
+        let empty = max(emptySeats ?? 0, 0)
+        if members.isEmpty && empty == 0 {
             Text("暂无人入座")
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.3))
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach(members) { m in
-                        VStack(spacing: 4) {
-                            ZStack(alignment: .top) {
-                                LobbyMemberAvatar(userId: m.userId, fallbackAvatar: m.avatar, size: 46)
-                                    .contentShape(Circle())
-                                    .onTapGesture { onClick(m) }
-                                    .simultaneousGesture(
-                                        LongPressGesture().onEnded { _ in
-                                            if canHostAct && m.userId != myUserId { onHostAction(m) }
-                                        }
-                                    )
-                                // 桌主标只信平面图快照的 hostUserId（随播报/轮询实时刷新）
-                                if m.userId == hostUserId {
-                                    Text("桌主")
-                                        .font(.system(size: 7))
-                                        .foregroundStyle(Color(red: 0x1A/255, green: 0x14/255, blue: 0x08/255))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(LinearGradient(colors: [LobbyColors.gold, LobbyColors.deepGold], startPoint: .leading, endPoint: .trailing))
-                                        .clipShape(Capsule())
-                                        .offset(y: -8)
-                                }
-                            }
-                            Text(m.userId == myUserId ? "我" : (m.nickname ?? ""))
-                                .font(.system(size: 9))
-                                .foregroundStyle(.white.opacity(0.65))
-                                .lineLimit(1)
-                                .frame(width: 52)
-                        }
-                    }
-                    // 虚位：按容量补足空座（容量未知不画）
-                    ForEach(0..<max(emptySeats ?? 0, 0), id: \.self) { _ in
-                        VStack(spacing: 4) {
-                            Circle()
-                                .stroke(.white.opacity(0.12), lineWidth: 1)
-                                .frame(width: 46, height: 46)
-                                .overlay(
-                                    Text("虚")
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(.white.opacity(0.18))
-                                )
-                            Text("虚位")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.white.opacity(0.25))
-                        }
+            let cells: [MemberCellItem] = {
+                var list: [MemberCellItem] = members.map { .member($0) }
+                for _ in 0..<empty { list.append(.empty) }
+                return list
+            }()
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 14) {
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, item in
+                    switch item {
+                    case .member(let m):
+                        memberCell(m)
+                    case .empty:
+                        emptySeatCell
                     }
                 }
             }
+            .task(id: members.map(\.userId)) {
+                MemberCardStore.shared.fetchMissing(members.map(\.userId))
+            }
         }
     }
+
+    private enum MemberCellItem {
+        case member(LobbySpectateMember)
+        case empty
+    }
+
+    private func memberCell(_ m: LobbySpectateMember) -> some View {
+        let card = cardStore.card(m.userId)
+        let isSelf = m.userId == myUserId
+        return VStack(spacing: 4) {
+            LobbyMemberAvatar(userId: m.userId, fallbackAvatar: m.avatar, size: 50)
+                .contentShape(Circle())
+                .onTapGesture { onClick(m) }
+                .simultaneousGesture(
+                    LongPressGesture().onEnded { _ in
+                        if canHostAct && !isSelf { onHostAction(m) }
+                    }
+                )
+            Text(isSelf ? "我" : memberDisplayName(card, m.nickname))
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.65))
+                .lineLimit(1)
+            if card?.vipName?.isEmpty == false {
+                LobbyVipChip(vipName: card?.vipName, vipColor: card?.vipColor, levelInTier: card?.levelInTier, fontSize: 7.5)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// 虚位：金色虚线圆（v75）
+    private var emptySeatCell: some View {
+        VStack(spacing: 4) {
+            Circle()
+                .stroke(LobbyColors.gold.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                .frame(width: 50, height: 50)
+                .overlay(
+                    Text("虚")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.18))
+                )
+            Text("虚位")
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.25))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// 抽屉动作（图标在上文字在下；primary 酒红 / gold 鎏金 / 常态描边）
+struct DrawerSpec: Identifiable {
+    let label: String
+    let icon: String
+    var primary = false
+    var gold = false
+    let action: () -> Void
+
+    var id: String { label }
 }
 
 // MARK: - 审批 / 订单行
