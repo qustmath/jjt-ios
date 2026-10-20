@@ -92,6 +92,7 @@ struct NightLobbyView: View {
         .fullScreenCover(item: $storeNav) { nav in
             StoreLobbyView(storeId: nav.storeId)
         }
+        .lobbyPageEnter()
     }
 
     // MARK: - 状态派生

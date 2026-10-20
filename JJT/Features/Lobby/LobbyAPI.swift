@@ -447,7 +447,7 @@ enum LobbyAPI {
         try await client.get("app-api/social/lobby/query/sharing-gaps", query: ["storeId": String(storeId)])
     }
 
-    /// 门店视频区（上架 + 近 24h）
+    /// 门店视频区（店长后台上传；服务端在线窗口 7 天，客户端另有 7 天过滤双保险）
     static func listVideos(storeId: Int64) async throws -> [LobbyVideo] {
         try await client.get("app-api/social/lobby/video/list", query: ["storeId": String(storeId)])
     }

@@ -47,6 +47,10 @@ final class StoreLobbyViewModel: ObservableObject {
 
     private(set) var storeId: Int64?
 
+    /// 店长视频展示窗口（2026-10-19 口径：仅最近 7 天，publishTime 缺失按过期丢弃；
+    /// 与后端在线窗口同口径，双保险）
+    static let videoWindowMs: Int64 = 7 * 24 * 3600 * 1000
+
     /// 只读数据整体加载。**平面图是页面主内容**：失败写 error（页面渲染失败态 + 重试，
     /// 与「该门店尚未配置平面图」的空态区分开）；门店卡片/视频/拼桌投影/热力横幅为富化，失败静默。
     func load(storeId: Int64) async {
@@ -61,7 +65,8 @@ final class StoreLobbyViewModel: ObservableObject {
         if let all = try? await LobbyAPI.listStores() {
             store = all.first { $0.id == storeId }
         }
-        videos = (try? await LobbyAPI.listVideos(storeId: storeId)) ?? []
+        let since = Int64(Date().timeIntervalSince1970 * 1000) - Self.videoWindowMs
+        videos = ((try? await LobbyAPI.listVideos(storeId: storeId)) ?? []).filter { ($0.publishTime ?? 0) >= since }
         gaps = (try? await LobbyAPI.listSharingGaps(storeId: storeId)) ?? []
         if let board = try? await LobbyAPI.heatBoard(storeId: storeId, type: "realtime", limit: 3) {
             heatTop = board.list ?? []

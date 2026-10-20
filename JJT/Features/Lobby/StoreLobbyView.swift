@@ -53,30 +53,201 @@ struct StoreLobbyView: View {
     // 资料卡动作跳转
     @State private var giftNav: NightLobbyView.LobbyNavTarget?
     @State private var chatNav: NightLobbyView.LobbyNavTarget?
-    @State private var showHeat = false
+    // 排行榜浮层（v75：独立页改浮层）
+    @State private var rankSheetOpen = false
+    // 店长视频抽屉（v75 2 列网格）
+    @State var videoSheetOpen = false
+    // 全屏公屏（v75 chatFocus）：图内点「展开公屏」进入，返回键/「回到座位图」退出；换店重置
+    @State private var chatFocus = false
+    @State private var chatFocusInput = false
 
     var body: some View {
-        ZStack {
-            BlurredStoreBackdrop(cover: vm.store?.cover)
+        GeometryReader { geo in
+            ZStack {
+                // ① 全屏平面图即页面（场景化）：铺满 + 上下压暗氛围遮罩
+                planScene
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                LinearGradient(stops: [
+                    .init(color: LobbyColors.bg.opacity(0.55), location: 0),
+                    .init(color: LobbyColors.bg.opacity(0.12), location: 0.22),
+                    .init(color: LobbyColors.bg.opacity(0.10), location: 0.55),
+                    .init(color: LobbyColors.bg.opacity(0.88), location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+                .allowsHitTesting(false)
+                .ignoresSafeArea(edges: .bottom)
 
-            VStack(spacing: 0) {
-                topBar
-                inviteBanner
-                hostPendingBanner
-                videosSection
-                heatBanner
-                planSection
-                legendRow
-                speechSection
+                // ② HUD：左上返回 + 右上三按钮（店长视频 / 排行榜 / 小房间）
+                VStack {
+                    HStack {
+                        Button {
+                            if chatFocus {
+                                closeFullScreenChat()
+                            } else {
+                                dismiss()
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 34, height: 34)
+                                .background(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.6))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                    }
+                    .padding(.leading, 12)
+                    .padding(.top, 12)
+                    Spacer()
+                }
+                VStack {
+                    HStack {
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 8) {
+                            HudIconButton(icon: "film", label: "店长视频", badge: !vm.videos.isEmpty ? "LIVE" : nil) {
+                                videoSheetOpen = true
+                            }
+                            HudIconButton(icon: "trophy.fill", label: "排行榜", live: !vm.heatTop.isEmpty) {
+                                rankSheetOpen = true
+                            }
+                            HudIconButton(icon: "mic.fill", label: "小房间",
+                                          live: voiceSession.presence?.storeId == storeId) {
+                                Task { await vm.refreshRooms(storeId: storeId) }
+                                roomListOpen = true
+                            }
+                        }
+                    }
+                    .padding(.trailing, 12)
+                    .padding(.top, 12)
+                    Spacer()
+                }
+
+                // ③ 左缘：楼层切换（竖排）+ 浮动招募卡（v75 游戏任务追踪式）
+                if vm.plans.count > 1 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(vm.plans.enumerated()), id: \.element.id) { i, f in
+                            Text(f.label ?? "F\(i + 1)")
+                                .font(.system(size: 9))
+                                .foregroundStyle(i == floorIdx ? .white : .white.opacity(0.55))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background {
+                                    if i == floorIdx {
+                                        Capsule().fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
+                                    } else {
+                                        Capsule().fill(Color(red: 0x10/255, green: 0x07/255, blue: 0x0A/255).opacity(0.6))
+                                            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
+                                    }
+                                }
+                                .contentShape(Capsule())
+                                .onTapGesture { floorIdx = i }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.leading, 10)
+                    .padding(.top, geo.size.height * 0.11)
+                }
+                if !vm.gaps.isEmpty {
+                    LobbyRecruitmentPanel(
+                        gaps: vm.gaps,
+                        plans: vm.plans,
+                        onLocate: { gap in
+                            // 跨楼层缺口：先从全楼层查桌，定位到桌后再切层 + 开抽屉，一次到位
+                            let target = vm.plans.first { p in (p.tables ?? []).contains { $0.id == gap.tableId } }
+                            if let target, let t = (target.tables ?? []).first(where: { $0.id == gap.tableId }) {
+                                floorIdx = vm.plans.firstIndex(where: { $0.id == target.id }) ?? floorIdx
+                                openDrawer(t)
+                            } else {
+                                showToast("该桌位不在平面图投影内")
+                            }
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.leading, 8)
+                    .padding(.top, geo.size.height * 0.18)
+                }
+
+                // ④ 底部：图内聊天/显隐条 + 邀请/桌主待办 + 店名状态 + 输入（浮在场景上）
+                VStack(spacing: 0) {
+                    Spacer()
+                    if chatFocus {
+                        EmptyView()
+                    } else if showChat && plan != nil {
+                        planChatPanel
+                    } else if plan != nil {
+                        hiddenChatBar
+                    }
+                    inviteBanner
+                    hostPendingBanner
+                    storeStatusLine
+                    speechSection
+                }
+
+                // 全屏公屏（v75 chatFocus）：不是新页面，是从底部升起的浮层；关闭时向下收起
+                if chatFocus {
+                    LobbyFullScreenChat(
+                        storeName: vm.store?.name ?? "门店",
+                        online: online,
+                        backdrop: plan?.image ?? vm.store?.cover,
+                        messages: boardMessages,
+                        inputHint: lobbyInputHint(seatedHere: seatedHere, state: seatSession.seat?.state, tableNo: seatSession.seat?.tableNo),
+                        sending: sending,
+                        autoFocusInput: chatFocusInput,
+                        onBackToPlan: { closeFullScreenChat() },
+                        onUserClick: { cardUser = $0.toCardTarget() },
+                        onReportRequest: { msg in
+                            if msg.canReport(myUserId: myUserId) { reportTarget = msg }
+                        },
+                        onSendText: { text in
+                            sending = true
+                            Task {
+                                let err = await LobbyImSession.shared.sendText(groupId: storeGroupId, text: text, seatedInStore: seatedHere)
+                                sending = false
+                                if let err { showToast(err) }
+                            }
+                        },
+                        onSendSticker: { pack, name in
+                            Task {
+                                if let err = await LobbyImSession.shared.sendSticker(groupId: storeGroupId, pack: pack, name: name, seatedInStore: seatedHere) {
+                                    showToast(err)
+                                }
+                            }
+                        },
+                        onPickImage: { showPicker = true },
+                        onGift: {
+                            if let t = myTable {
+                                giftCtx = lobbyGiftContext(t)
+                            } else {
+                                giftPickOpen = true
+                            }
+                        },
+                        onVoiceStop: { result in
+                            guard let path = result.path else {
+                                if let e = result.error { showToast(e) }
+                                return
+                            }
+                            sending = true
+                            Task {
+                                let err = await LobbyImSession.shared.sendVoice(groupId: storeGroupId, path: path, seconds: result.seconds, seatedInStore: seatedHere)
+                                sending = false
+                                if let err { showToast(err) }
+                            }
+                        },
+                        onError: { showToast($0) }
+                    )
+                    .transition(.move(edge: .bottom))
+                }
+
+                // 浮层群（ZStack 顶层）
+                if let u = cardUser { userCard(u) }
+                if let msg = reportTarget { reportSheet(msg) }
+                if let t = toast { LobbyToastView(text: t) }
+
+                // 本店/全门店礼物动效接收端补播：门店大厅听本店群
+                LobbyGiftBroadcastOverlay(listenGroupId: storeGroupId, myUserId: myUserId)
             }
-
-            // 浮层群（ZStack 顶层）
-            if let u = cardUser { userCard(u) }
-            if let msg = reportTarget { reportSheet(msg) }
-            if let t = toast { LobbyToastView(text: t) }
-
-            // 本店/全门店礼物动效接收端补播：门店大厅听本店群
-            LobbyGiftBroadcastOverlay(listenGroupId: storeGroupId, myUserId: myUserId)
+            .animation(.easeOut(duration: 0.28), value: chatFocus)
+            .lobbyPageEnter()
         }
         .task { await initialLoad() }
         .task { await LobbySeatSession.shared.heartbeatLoop() }
@@ -260,9 +431,22 @@ struct StoreLobbyView: View {
             .presentationDetents([.medium, .large])
             .presentationBackground(LobbyColors.panel)
         }
-        // 热力榜
-        .fullScreenCover(isPresented: $showHeat) {
-            LobbyHeatView(storeId: storeId, storeName: vm.store?.name)
+        // 排行榜浮层（v75：独立页改浮层）
+        .sheet(isPresented: $rankSheetOpen) {
+            LobbyRankSheet(storeId: storeId) { item in
+                rankSheetOpen = false
+                cardUser = LobbyCardTarget(userId: item.userId ?? 0,
+                                           nickname: item.nickname ?? "本店用户",
+                                           avatar: item.avatar)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationBackground(LobbyColors.panel)
+        }
+        // 店长视频抽屉（v75 2 列网格；点击全屏播放）
+        .sheet(isPresented: $videoSheetOpen) {
+            LobbyVideoSheet(videos: vm.videos)
+                .presentationDetents([.medium, .large])
+                .presentationBackground(LobbyColors.panel)
         }
         // 表演区房间列表（20s 轮询在 sheet 内）
         .sheet(isPresented: $roomListOpen) {
@@ -526,67 +710,6 @@ struct StoreLobbyView: View {
             toName: u.nickname)
     }
 
-    // MARK: - 顶栏
-
-    private var topBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
-                .frame(width: 34, height: 34)
-                .background(.white.opacity(0.05))
-                .clipShape(Circle())
-                .contentShape(Circle())
-                .onTapGesture { dismiss() }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(vm.store?.name ?? "门店大厅")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(LobbyColors.ivory)
-                    .lineLimit(1)
-                Text("座位图 · 点桌看成员与拼桌")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.3))
-            }
-            Spacer()
-            HStack(spacing: 5) {
-                Circle().fill(LobbyColors.seated).frame(width: 6, height: 6)
-                Text("\(online)")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.55))
-                Text("入座")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.35))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(LobbyColors.gold.opacity(0.06))
-            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
-            .clipShape(Capsule())
-            // 进行中语音房入口：「留在房里」退出页面但未退房时常驻提示，点击直接回房；
-            // 退房/解散即消失。只在本店房间显示
-            if let p = voiceSession.presence, p.storeId == storeId {
-                HStack(spacing: 4) {
-                    Circle().fill(LobbyColors.crimson).frame(width: 6, height: 6)
-                    Text("在语音房")
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .foregroundStyle(LobbyColors.crimson.opacity(0.95))
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .background(LobbyColors.crimson.opacity(0.14))
-                .overlay(Capsule().stroke(LobbyColors.crimson.opacity(0.45), lineWidth: 1))
-                .clipShape(Capsule())
-                .contentShape(Capsule())
-                .onTapGesture { voiceRoomNav = VoiceRoomNav(roomId: p.roomId) }
-            }
-            LobbyIconAction(icon: "square.and.arrow.up", tint: .white.opacity(0.6)) {
-                showToast("门店分享链接另立票")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-    }
-
     // MARK: - 桌位邀请横幅
 
     @ViewBuilder
@@ -692,158 +815,24 @@ struct StoreLobbyView: View {
         }
     }
 
-    // MARK: - 门店视频区（只读列表）
+    // MARK: - 场景：全屏平面图（v75 场景化——平面图即页面）
 
     @ViewBuilder
-    private var videosSection: some View {
-        if !vm.videos.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(vm.videos) { v in
-                        VStack(alignment: .leading, spacing: 3) {
-                            ZStack {
-                                if let cover = v.videoCover, !cover.isEmpty, let url = webImageURL(cover) {
-                                    WebImage(url: url) {
-                                        Color(red: 0x14/255, green: 0x10/255, blue: 0x18/255)
-                                    }
-                                } else {
-                                    Color(red: 0x14/255, green: 0x10/255, blue: 0x18/255)
-                                }
-                                LinearGradient(
-                                    colors: [Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.1), Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.7)],
-                                    startPoint: .top, endPoint: .bottom
-                                )
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(LobbyColors.goldLight)
-                                VStack {
-                                    HStack {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "record.circle").font(.system(size: 6)).foregroundStyle(.white)
-                                            Text("LIVE").font(.system(size: 6.5, weight: .bold)).foregroundStyle(.white)
-                                        }
-                                        .padding(.horizontal, 3)
-                                        .padding(.vertical, 1)
-                                        .background(LobbyColors.crimson)
-                                        .cornerRadius(3)
-                                        Spacer()
-                                    }
-                                    .padding(4)
-                                    Spacer()
-                                    if let sec = v.durationSec {
-                                        HStack {
-                                            Spacer()
-                                            Text("\(sec)s")
-                                                .font(.system(size: 6.5))
-                                                .foregroundStyle(.white.opacity(0.8))
-                                                .padding(.horizontal, 3)
-                                                .background(Color.black.opacity(0.6))
-                                                .cornerRadius(3)
-                                                .padding(3)
-                                        }
-                                    }
-                                }
-                            }
-                            .frame(width: 92, height: 52)
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
-                            .contentShape(Rectangle())
-                            .onTapGesture { showToast("视频播放待接入（仅只读列表）") }
-                            Text(v.title ?? "")
-                                .font(.system(size: 8))
-                                .foregroundStyle(.white.opacity(0.55))
-                                .lineLimit(1)
-                        }
-                        .frame(width: 92)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .padding(.top, 10)
+    private var planScene: some View {
+        if vm.loading && vm.plans.isEmpty {
+            ProgressView().tint(LobbyColors.gold)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.plans.isEmpty, let err = vm.error {
+            LobbyLoadFailed(message: err, onRetry: { Task { await vm.load(storeId: storeId) } })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.plans.isEmpty {
+            Text("该门店尚未配置平面图")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.3))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            planContent
         }
-    }
-
-    // MARK: - 热力榜横幅
-
-    private var heatBanner: some View {
-        Button {
-            showHeat = true
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "trophy.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(LobbyColors.goldPale)
-                    .frame(width: 34, height: 34)
-                    .background(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("门店排行榜")
-                            .font(.system(size: 12.5, weight: .bold))
-                            .foregroundStyle(LobbyColors.ivory)
-                        HStack(spacing: 3) {
-                            Circle().fill(LobbyColors.seated).frame(width: 4, height: 4)
-                            Text("实时")
-                                .font(.system(size: 7.5, weight: .bold))
-                                .foregroundStyle(LobbyColors.seated)
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .overlay(Capsule().stroke(LobbyColors.seated.opacity(0.4), lineWidth: 1))
-                    }
-                    Text("总榜 / 周榜 / 实时热力 · 送礼拼桌组局均可上榜")
-                        .font(.system(size: 8.5))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
-                Spacer()
-                // 前三迷你领奖台（实时榜）
-                HStack(alignment: .bottom, spacing: 2) {
-                    ForEach(Array(vm.heatTop.prefix(3).enumerated()), id: \.element.id) { i, item in
-                        AppAvatar(url: item.avatar, size: i == 0 ? 32 : 25)
-                            .offset(y: i == 0 ? -4 : 0)
-                            .overlay(Circle().stroke(i == 0 ? LobbyColors.goldLight : LobbyColors.gold.opacity(0.5), lineWidth: i == 0 ? 2 : 1))
-                    }
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13))
-                    .foregroundStyle(LobbyColors.gold)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(LinearGradient(colors: [Color(red: 0x18/255, green: 0x10/255, blue: 0x0A/255).opacity(0.96), Color(red: 0x28/255, green: 0x0C/255, blue: 0x12/255).opacity(0.96)], startPoint: .leading, endPoint: .trailing))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(LobbyColors.crimson.opacity(0.35), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-    }
-
-    // MARK: - 主区：座位平面图
-
-    private var planSection: some View {
-        ZStack {
-            Color(red: 0x0C/255, green: 0x0A/255, blue: 0x0D/255)
-                .contentShape(Rectangle())
-                .onTapGesture { showChat.toggle() }
-
-            if vm.loading && vm.plans.isEmpty {
-                ProgressView().tint(LobbyColors.gold)
-            } else if vm.plans.isEmpty, let err = vm.error {
-                LobbyLoadFailed(message: err, onRetry: { Task { await vm.load(storeId: storeId) } })
-            } else if vm.plans.isEmpty {
-                Text("该门店尚未配置平面图")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.3))
-            } else {
-                planContent
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
     }
 
     private var planContent: some View {
@@ -874,7 +863,6 @@ struct StoreLobbyView: View {
                 // 图内顶部：拼桌/组局滚动条
                 VStack {
                     LobbyGapMarquee(gaps: vm.gaps) { gap in
-                        // 跨楼层缺口：先从全楼层查桌，定位到桌后再切层 + 开抽屉，一次到位
                         let target = vm.plans.first { p in (p.tables ?? []).contains { $0.id == gap.tableId } }
                         if let target, let t = (target.tables ?? []).first(where: { $0.id == gap.tableId }) {
                             floorIdx = vm.plans.firstIndex(where: { $0.id == target.id }) ?? floorIdx
@@ -886,32 +874,6 @@ struct StoreLobbyView: View {
                     .padding(.horizontal, 8)
                     .padding(.top, 8)
                     Spacer()
-                }
-
-                // 图内左上：楼层切换
-                if vm.plans.count > 1 {
-                    HStack(spacing: 6) {
-                        ForEach(Array(vm.plans.enumerated()), id: \.element.id) { i, f in
-                            Text(f.label ?? "F\(i + 1)")
-                                .font(.system(size: 9))
-                                .foregroundStyle(i == floorIdx ? .white : .white.opacity(0.55))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background {
-                                    if i == floorIdx {
-                                        Capsule().fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
-                                    } else {
-                                        Capsule().fill(Color(red: 0x10/255, green: 0x07/255, blue: 0x0A/255).opacity(0.6))
-                                            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
-                                    }
-                                }
-                                .contentShape(Capsule())
-                                .onTapGesture { floorIdx = i }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.leading, 8)
-                    .padding(.top, 44)
                 }
 
                 // 表演区热点：开启小房间（列表/开房/进房）
@@ -941,44 +903,119 @@ struct StoreLobbyView: View {
                     }
                 }
 
-                // 图内底部：公屏消息流（点击图面空白显隐）
-                if showChat {
-                    VStack {
-                        Spacer()
-                        LobbyChatList(
-                            messages: boardMessages,
-                            showStorePrefix: false,
-                            emptyText: "本店公屏暂无消息 · 说点什么都行 ✨",
-                            onUserClick: { cardUser = $0.toCardTarget() },
-                            onMessageLongPress: { msg in
-                                if msg.canReport(myUserId: myUserId) { reportTarget = msg }
-                            }
-                        )
-                        .frame(height: h * 0.67 - 8)
-                        .background(Color.black.opacity(0.4))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 8)
-                    }
-                } else {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Text("💬 聊天已隐藏 · 点击图面显示")
-                                .font(.system(size: 9))
-                                .foregroundStyle(LobbyColors.goldLight.opacity(0.75))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color(red: 0x10/255, green: 0x07/255, blue: 0x0A/255).opacity(0.55))
-                        .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
-                        .clipShape(Capsule())
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                    }
-                }
+                // 点图面空白 = 显隐聊天（图内点聊天只显隐，升全屏走「展开公屏」钮）
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { showChat.toggle() }
             }
         }
+    }
+
+    // MARK: - 底部：图内聊天（PLAN 态）与显隐条
+
+    /// 图内公屏（v75：42% 高、PLAN 五态、上缘渐隐）；点聊天区隐藏，「展开公屏」升全屏
+    private var planChatPanel: some View {
+        ZStack(alignment: .topTrailing) {
+            LobbyChatList(
+                messages: boardMessages,
+                showStorePrefix: false,
+                style: .plan,
+                emptyText: "本店公屏暂无消息 · 说点什么都行 ✨",
+                fadeTop: true,
+                onBodyClick: { showChat = false },
+                onUserClick: { cardUser = $0.toCardTarget() },
+                onMessageLongPress: { msg in
+                    if msg.canReport(myUserId: myUserId) { reportTarget = msg }
+                }
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+
+            Button {
+                openFullScreenChat(focusInput: false)
+            } label: {
+                Text("展开公屏 ↗")
+                    .font(.system(size: 8))
+                    .foregroundStyle(LobbyColors.goldLight)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.6)))
+                    .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+            .padding(.trailing, 12)
+        }
+        .frame(height: UIScreen.main.bounds.height * 0.42)
+        .contentShape(Rectangle())
+        .onTapGesture { showChat = false }
+    }
+
+    /// 聊天隐藏态：图例 + 「💬 点图显示聊天」+ 围观 chip
+    private var hiddenChatBar: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 4) {
+                ForEach(LobbyTableStatus.allCases, id: \.rawValue) { s in
+                    Circle().fill(LobbyTableStyle.color(s)).frame(width: 5, height: 5)
+                    Text(s.label)
+                        .font(.system(size: 7))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Spacer().frame(width: 4)
+                }
+                Text("💬 点图显示聊天")
+                    .font(.system(size: 8))
+                    .foregroundStyle(LobbyColors.goldLight.opacity(0.7))
+            }
+            Spacer()
+            let standing = vm.store?.standingCount ?? 0
+            if standing > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 8))
+                        .foregroundStyle(LobbyColors.standing)
+                    Text("围观 \(standing)")
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(LobbyColors.standing)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(red: 0x10/255, green: 0x07/255, blue: 0x0A/255).opacity(0.8))
+                .overlay(Capsule().stroke(LobbyColors.standing.opacity(0.45), lineWidth: 1))
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+                .onTapGesture { showToast("围观区 \(standing) 人 · 对方看不到你") }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    /// 店名/楼层/在线：紧贴输入框上方（v75 口径），渐变融入底栏
+    private var storeStatusLine: some View {
+        Text("\(vm.store?.name ?? "门店") · \(plan?.label ?? "") · \(online) 人在店")
+            .font(.system(size: 9.5))
+            .foregroundStyle(.white.opacity(0.5))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+            .padding(.bottom, 2)
+            .background(LinearGradient(stops: [
+                .init(color: LobbyColors.bg.opacity(0), location: 0),
+                .init(color: LobbyColors.bg.opacity(0.8), location: 0.28),
+                .init(color: LobbyColors.bg.opacity(0.95), location: 1),
+            ], startPoint: .top, endPoint: .bottom))
+    }
+
+    // MARK: - 全屏公屏开合
+
+    private func openFullScreenChat(focusInput: Bool) {
+        chatFocusInput = focusInput
+        showChat = false
+        chatFocus = true
+    }
+
+    private func closeFullScreenChat() {
+        chatFocus = false
+        chatFocusInput = false
     }
 
     private func openDrawer(_ t: LobbyTable) {
@@ -992,37 +1029,6 @@ struct StoreLobbyView: View {
         }
         let isHost = seatSession.seat?.tableId == t.id && t.hostUserId == myUserId
         Task { await vm.loadTableOps(tableId: t.id, status: t.status, isHost: isHost) }
-    }
-
-    // MARK: - 图例
-
-    private var legendRow: some View {
-        HStack(spacing: 0) {
-            ForEach(LobbyTableStatus.allCases, id: \.rawValue) { s in
-                HStack(spacing: 3) {
-                    Circle().fill(LobbyTableStyle.color(s)).frame(width: 6, height: 6)
-                    Text(s.label)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-                .padding(.trailing, 10)
-            }
-            HStack(spacing: 3) {
-                Circle()
-                    .stroke(LobbyColors.goldLight, lineWidth: 1.5)
-                    .frame(width: 9, height: 9)
-                Text("我的桌")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            Spacer()
-            Text("点击空白显隐聊天")
-                .font(.system(size: 8))
-                .foregroundStyle(.white.opacity(0.25))
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 2)
     }
 
     // MARK: - 底部发言区
@@ -1226,6 +1232,7 @@ struct LobbyTableMarker: View {
             .background(Color(red: 0x06/255, green: 0x05/255, blue: 0x08/255).opacity(0.82))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(markerAlpha), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .lobbyGlow(RoundedRectangle(cornerRadius: 6), color: color, spread: 24, intensity: markerAlpha * 0.6)
         }
         .scaleEffect(markerScale)
         .onAppear { startAnimationIfNeeded() }
@@ -1239,11 +1246,11 @@ struct LobbyTableMarker: View {
         status == .sharing ? (pulse ? 1.12 : 1) : 1
     }
 
-    /// 只有需要动画的桌位才启动 repeatForever 动画
+    /// 只有需要动画的桌位才启动 repeatForever 动画；呼吸必须线性（端点不减速，拍板口径）
     private func startAnimationIfNeeded() {
         switch status {
         case .grouping where !breathe:
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: true)) {
                 breathe = true
             }
         case .sharing where !pulse:
@@ -1347,5 +1354,287 @@ struct LobbyGapMarquee: View {
         withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
             offset = -distance
         }
+    }
+}
+
+// MARK: - v75 场景化零件
+
+/// 右上 HUD 圆形按钮（v75：视频/排行榜/小房间竖排；36pt 圆 + 金描边 42%）。
+/// LIVE 徽标挂左上角（贴屏幕右缘，挂右侧会被裁掉）；live=右上绿点。
+struct HudIconButton: View {
+    let icon: String
+    let label: String
+    var badge: String? = nil
+    var live = false
+    let onClick: () -> Void
+
+    var body: some View {
+        ZStack {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(LobbyColors.goldLight)
+            if live {
+                Circle()
+                    .fill(LobbyColors.seated)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 13, y: -13)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .background(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.6))
+        .overlay(Circle().stroke(LobbyColors.gold.opacity(0.42), lineWidth: 1))
+        .clipShape(Circle())
+        .overlay(alignment: .topLeading) {
+            if let badge {
+                LobbyLiveBadge()
+                    .offset(x: -5, y: -3)
+            }
+        }
+        .contentShape(Circle())
+        .onTapGesture { onClick() }
+        .accessibilityLabel(label)
+    }
+}
+
+/// 左缘招募面板（v75 游戏任务追踪式）：最多 3 张组局红/拼桌紫浮动卡，整组 2.6s 线性呼吸，
+/// 点击切层并打开桌位。
+struct LobbyRecruitmentPanel: View {
+    let gaps: [LobbyShareGap]
+    let plans: [LobbyFloorPlan]
+    let onLocate: (LobbyShareGap) -> Void
+
+    @State private var breathe = false
+
+    private var tablesById: [Int64: LobbyTable] {
+        var map: [Int64: LobbyTable] = [:]
+        for p in plans {
+            for t in p.tables ?? [] { map[t.id] = t }
+        }
+        return map
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 3) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color(red: 1, green: 0x7D/255, blue: 0x9C/255))
+                Text("今夜招募 · \(gaps.count)")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color(red: 1, green: 0x7D/255, blue: 0x9C/255).opacity(0.8))
+                    .lineLimit(1)
+            }
+            Spacer().frame(height: 6)
+            ForEach(gaps.prefix(3)) { gap in
+                recruitCard(gap)
+                    .padding(.bottom, 8)
+            }
+        }
+        .frame(width: 104)
+        .scaleEffect(breathe ? 1.18 : 1)
+        .onAppear {
+            // 线性往返：端点不减速，避免到最大后看起来停顿（拍板口径）
+            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
+    }
+
+    private func recruitCard(_ gap: LobbyShareGap) -> some View {
+        let status = LobbyTableStatus.of(tablesById[gap.tableId]?.status)
+        let grouping = status == .grouping
+        let color = grouping ? Color(red: 1, green: 0x3D/255, blue: 0x62/255) : Color(red: 0xA0/255, green: 0x8B/255, blue: 1)
+        let shape = UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 6, bottomTrailingRadius: 18, topTrailingRadius: 18)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                ZStack {
+                    Circle().fill(color).frame(width: 16, height: 16)
+                    Image(systemName: grouping ? "flame.fill" : "person.2")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.white)
+                }
+                Text("\(gap.tableNo ?? "?")桌")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(LobbyColors.ivory)
+                    .lineLimit(1)
+                if (gap.gap ?? 0) > 0 {
+                    Spacer(minLength: 2)
+                    Text("缺\(gap.gap ?? 0)")
+                        .font(.system(size: 7, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(3)
+                        .background(Circle().fill(LobbyColors.crimson))
+                        .fixedSize()
+                }
+            }
+            Text(gap.note?.replacingOccurrences(of: "拼桌中 · ", with: "") ?? (grouping ? "组局中" : "拼桌中"))
+                .font(.system(size: 8))
+                .foregroundStyle(.white.opacity(0.45))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(
+            colors: grouping
+                ? [Color(red: 0x2E/255, green: 0x0A/255, blue: 0x14/255).opacity(0.78), Color(red: 0x1C/255, green: 0x07/255, blue: 0x0E/255).opacity(0.66)]
+                : [Color(red: 0x1E/255, green: 0x14/255, blue: 0x34/255).opacity(0.78), Color(red: 0x12/255, green: 0x0D/255, blue: 0x22/255).opacity(0.66)],
+            startPoint: .topLeading, endPoint: .bottomTrailing))
+        .overlay(shape.stroke(color.opacity(0.8), lineWidth: 1))
+        .clipShape(shape)
+        .lobbyGlow(shape, color: color, spread: 26, intensity: 0.6)
+        .contentShape(Rectangle())
+        .onTapGesture { onLocate(gap) }
+    }
+}
+
+/// 排行榜浮层（v75：三档胶囊 + 榜单行；独立页已下线）
+struct LobbyRankSheet: View {
+    let storeId: Int64
+    let onUserClick: (LobbyHeatItem) -> Void
+
+    enum RankTab: String, CaseIterable {
+        case total, week, realtime
+
+        var wire: String { rawValue }
+        var label: String {
+            switch self {
+            case .total: return "总榜"
+            case .week: return "周榜"
+            case .realtime: return "实时"
+            }
+        }
+    }
+
+    @State private var tab: RankTab = .realtime
+    @State private var board: LobbyHeatBoard?
+    @State private var loading = true
+    @State private var error: String?
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Capsule()
+                    .fill(.white.opacity(0.15))
+                    .frame(width: 40, height: 4)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 14)
+
+                HStack(alignment: .bottom, spacing: 8) {
+                    Text("门店排行榜")
+                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .foregroundStyle(LobbyColors.ivory)
+                    Text("RANKING")
+                        .font(.system(size: 9).italic())
+                        .kerning(1.2)
+                        .foregroundStyle(.white.opacity(0.25))
+                    Spacer()
+                    if tab == .realtime {
+                        HStack(spacing: 4) {
+                            Circle().fill(LobbyColors.seated).frame(width: 6, height: 6)
+                            Text("实时更新")
+                                .font(.system(size: 9))
+                                .foregroundStyle(LobbyColors.seated)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(RankTab.allCases, id: \.self) { t in
+                        Text(t.label)
+                            .font(.system(size: 11.5, weight: t == tab ? .semibold : .regular))
+                            .foregroundStyle(t == tab ? .white : .white.opacity(0.5))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background {
+                                if t == tab {
+                                    Capsule().fill(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
+                                } else {
+                                    Capsule().stroke(LobbyColors.gold.opacity(0.3), lineWidth: 1)
+                                }
+                            }
+                            .contentShape(Capsule())
+                            .onTapGesture { tab = t }
+                    }
+                }
+                .padding(.top, 12)
+
+                if loading && (board?.list ?? []).isEmpty {
+                    ProgressView().tint(LobbyColors.gold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 80)
+                } else if let err = error, (board?.list ?? []).isEmpty {
+                    VStack(spacing: 12) {
+                        Text("加载失败：\(err)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.45))
+                        Text("重试")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(LobbyColors.goldLight)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.45), lineWidth: 1))
+                            .onTapGesture { Task { await load() } }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 60)
+                } else if (board?.list ?? []).isEmpty {
+                    Text("还没人上榜 · 送礼拼桌组局均可上榜")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                } else {
+                    ForEach(Array((board?.list ?? []).enumerated()), id: \.element.id) { idx, item in
+                        rankRow(rank: idx + 1, item: item)
+                        if idx < (board?.list ?? []).count - 1 {
+                            Rectangle().fill(.white.opacity(0.05)).frame(height: 1)
+                        }
+                    }
+                    .padding(.top, 10)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
+        }
+        .task(id: tab) { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        error = nil
+        do {
+            board = try await LobbyAPI.heatBoard(storeId: storeId, type: tab.wire, limit: 50)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        loading = false
+    }
+
+    private func rankRow(rank: Int, item: LobbyHeatItem) -> some View {
+        Button {
+            onUserClick(item)
+        } label: {
+            HStack(spacing: 10) {
+                Text("\(rank)")
+                    .font(.lobbyNumber(13, weight: .bold))
+                    .foregroundStyle(rank <= 3 ? LobbyColors.goldLight : .white.opacity(0.4))
+                    .frame(width: 22)
+                LobbyMemberAvatar(userId: item.userId, fallbackAvatar: item.avatar, size: 34)
+                Text(memberDisplayName(nil, item.nickname))
+                    .font(.system(size: 12))
+                    .foregroundStyle(LobbyColors.ivory)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(item.score ?? 0)")
+                    .font(.lobbyNumber(12, weight: .semibold))
+                    .foregroundStyle(LobbyColors.goldLight)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.25))
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 7)
     }
 }
