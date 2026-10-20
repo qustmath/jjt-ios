@@ -33,8 +33,8 @@ struct LobbyPlazaCard: View {
                 .padding(1.5)
                 .clipShape(RoundedRectangle(cornerRadius: 24.5))
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26))
         .frame(height: 190)
+        .clipShape(RoundedRectangle(cornerRadius: 26))
         .contentShape(RoundedRectangle(cornerRadius: 26))
         .onTapGesture { onClick() }
         .onAppear {

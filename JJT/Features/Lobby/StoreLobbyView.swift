@@ -902,11 +902,6 @@ struct StoreLobbyView: View {
                         roomListOpen = true
                     }
                 }
-
-                // 点图面空白 = 显隐聊天（图内点聊天只显隐，升全屏走「展开公屏」钮）
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { showChat.toggle() }
             }
         }
     }
@@ -965,6 +960,8 @@ struct StoreLobbyView: View {
                 Text("💬 点图显示聊天")
                     .font(.system(size: 8))
                     .foregroundStyle(LobbyColors.goldLight.opacity(0.7))
+                    .contentShape(Rectangle())
+                    .onTapGesture { showChat = true }
             }
             Spacer()
             let standing = vm.store?.standingCount ?? 0
@@ -990,19 +987,57 @@ struct StoreLobbyView: View {
         .padding(.vertical, 6)
     }
 
-    /// 店名/楼层/在线：紧贴输入框上方（v75 口径），渐变融入底栏
+    /// 店名/楼层/在线 + 我的桌 chip + 在语音房回房入口：紧贴输入框上方（v75 口径），渐变融入底栏
     private var storeStatusLine: some View {
-        Text("\(vm.store?.name ?? "门店") · \(plan?.label ?? "") · \(online) 人在店")
-            .font(.system(size: 9.5))
-            .foregroundStyle(.white.opacity(0.5))
-            .frame(maxWidth: .infinity)
-            .padding(.top, 12)
-            .padding(.bottom, 2)
-            .background(LinearGradient(stops: [
-                .init(color: LobbyColors.bg.opacity(0), location: 0),
-                .init(color: LobbyColors.bg.opacity(0.8), location: 0.28),
-                .init(color: LobbyColors.bg.opacity(0.95), location: 1),
-            ], startPoint: .top, endPoint: .bottom))
+        HStack(spacing: 4) {
+            Circle().fill(LobbyColors.seated).frame(width: 5, height: 5)
+            Text(vm.store?.name ?? "门店大厅")
+                .font(.system(size: 9.5, weight: .semibold, design: .serif))
+                .foregroundStyle(LobbyColors.goldLight.opacity(0.85))
+                .lineLimit(1)
+            Text("· \(plan?.label ?? "大厅") · \(online) 人在店")
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.3))
+                .lineLimit(1)
+            if seatedHere, let tableNo = seatSession.seat?.tableNo {
+                Spacer().frame(width: 6)
+                Text("我的桌 \(tableNo)")
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(LobbyColors.goldLight)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(LobbyColors.gold.opacity(0.14)))
+                    .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.4), lineWidth: 1))
+                    .fixedSize()
+            }
+            Spacer(minLength: 8)
+            // 「留在房里」退出页面但未退房时常驻提示，点击直接回房；退房/解散即消失
+            if let p = voiceSession.presence, p.storeId == storeId {
+                HStack(spacing: 3) {
+                    Circle().fill(LobbyColors.crimson).frame(width: 5, height: 5)
+                    Text("在语音房")
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(LobbyColors.crimson.opacity(0.95))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(LobbyColors.crimson.opacity(0.14)))
+                .overlay(Capsule().stroke(LobbyColors.crimson.opacity(0.45), lineWidth: 1))
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+                .onTapGesture { voiceRoomNav = VoiceRoomNav(roomId: p.roomId) }
+                .fixedSize()
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+        .padding(.bottom, 2)
+        .background(LinearGradient(stops: [
+            .init(color: LobbyColors.bg.opacity(0), location: 0),
+            .init(color: LobbyColors.bg.opacity(0.8), location: 0.28),
+            .init(color: LobbyColors.bg.opacity(0.95), location: 1),
+        ], startPoint: .top, endPoint: .bottom))
     }
 
     // MARK: - 全屏公屏开合
@@ -1034,45 +1069,15 @@ struct StoreLobbyView: View {
     // MARK: - 底部发言区
 
     private var speechSection: some View {
+        // 底部输入框只作入口：点它从底部升起全屏公屏并自动聚焦（真实输入在全屏公屏里）
         LobbySpeechInput(
             hint: lobbyInputHint(seatedHere: seatedHere, state: seatSession.seat?.state, tableNo: seatSession.seat?.tableNo),
             sending: sending,
-            onSendText: { text in
-                sending = true
-                Task {
-                    let err = await LobbyImSession.shared.sendText(groupId: storeGroupId, text: text, seatedInStore: seatedHere)
-                    sending = false
-                    if let err { showToast(err) }
-                }
-            },
-            onSendSticker: { pack, name in
-                Task {
-                    if let err = await LobbyImSession.shared.sendSticker(groupId: storeGroupId, pack: pack, name: name, seatedInStore: seatedHere) {
-                        showToast(err)
-                    }
-                }
-            },
-            onPickImage: { showPicker = true },
-            onGift: {
-                // 礼物面板：入座者直接对本桌开面板；未入座引导走选桌（收礼人须正入座某桌）
-                if let t = myTable {
-                    giftCtx = lobbyGiftContext(t)
-                } else {
-                    giftPickOpen = true
-                }
-            },
-            onVoiceStop: { result in
-                guard let path = result.path else {
-                    if let e = result.error { showToast(e) }
-                    return
-                }
-                sending = true
-                Task {
-                    let err = await LobbyImSession.shared.sendVoice(groupId: storeGroupId, path: path, seconds: result.seconds, seatedInStore: seatedHere)
-                    sending = false
-                    if let err { showToast(err) }
-                }
-            },
+            onEntryClick: { openFullScreenChat(focusInput: true) },
+            onSendText: { _ in },
+            onSendSticker: { _, _ in },
+            onPickImage: {},
+            onVoiceStop: { _ in },
             onError: { showToast($0) }
         )
         .padding(.horizontal, 12)
@@ -1508,9 +1513,13 @@ struct LobbyRankSheet: View {
     }
 
     @State private var tab: RankTab = .realtime
+    @State private var reloadKey = 0
     @State private var board: LobbyHeatBoard?
     @State private var loading = true
     @State private var error: String?
+    @ObservedObject private var cardStore = MemberCardStore.shared
+
+    private var items: [LobbyHeatItem] { board?.list ?? [] }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -1540,6 +1549,7 @@ struct LobbyRankSheet: View {
                     }
                 }
 
+                // 三档胶囊（v75：未选中金边描边，选中酒红渐变）
                 HStack(spacing: 8) {
                     ForEach(RankTab.allCases, id: \.self) { t in
                         Text(t.label)
@@ -1560,44 +1570,41 @@ struct LobbyRankSheet: View {
                 }
                 .padding(.top, 12)
 
-                if loading && (board?.list ?? []).isEmpty {
+                if loading && items.isEmpty {
                     ProgressView().tint(LobbyColors.gold)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 80)
-                } else if let err = error, (board?.list ?? []).isEmpty {
-                    VStack(spacing: 12) {
-                        Text("加载失败：\(err)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.45))
-                        Text("重试")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(LobbyColors.goldLight)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 7)
-                            .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.45), lineWidth: 1))
-                            .onTapGesture { Task { await load() } }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 60)
-                } else if (board?.list ?? []).isEmpty {
-                    Text("还没人上榜 · 送礼拼桌组局均可上榜")
-                        .font(.system(size: 11))
+                        .frame(height: 180)
+                } else if let err = error, items.isEmpty {
+                    LobbyLoadFailed(message: err, onRetry: { reloadKey += 1 })
+                        .frame(height: 180)
+                        .frame(maxWidth: .infinity)
+                } else if items.isEmpty {
+                    Text("本店暂无热力记录 · 送礼 / 拼桌 / 组局即可上榜 ✨")
+                        .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.3))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
+                        .frame(height: 140)
                 } else {
-                    ForEach(Array((board?.list ?? []).enumerated()), id: \.element.id) { idx, item in
-                        rankRow(rank: idx + 1, item: item)
-                        if idx < (board?.list ?? []).count - 1 {
-                            Rectangle().fill(.white.opacity(0.05)).frame(height: 1)
-                        }
+                    // 榜单行（v75：奖牌 + 头像框 + 昵称/等级 + 热力；第一行鎏金底）
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        rankRow(index: index, item: item)
+                            .padding(.bottom, 6)
+                            .task(id: item.userId) {
+                                if let uid = item.userId, uid > 0 { MemberCardStore.shared.fetchMissing([uid]) }
+                            }
                     }
-                    .padding(.top, 10)
                 }
+
+                Text("送礼 / 拼桌 / 组局均可获得热力值 · 实时榜每分钟刷新")
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(.white.opacity(0.25))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 24)
         }
+        .task(id: reloadKey) { await load() }
         .task(id: tab) { await load() }
     }
 
@@ -1612,30 +1619,59 @@ struct LobbyRankSheet: View {
         loading = false
     }
 
-    private func rankRow(rank: Int, item: LobbyHeatItem) -> some View {
-        Button {
+    private func rankRow(index: Int, item: LobbyHeatItem) -> some View {
+        let card = cardStore.card(item.userId)
+        let first = index == 0
+        let medal: String = {
+            switch index {
+            case 0: return "🥇"
+            case 1: return "🥈"
+            case 2: return "🥉"
+            default: return "\(item.rank ?? index + 1)"
+            }
+        }()
+        return Button {
             onUserClick(item)
         } label: {
             HStack(spacing: 10) {
-                Text("\(rank)")
-                    .font(.lobbyNumber(13, weight: .bold))
-                    .foregroundStyle(rank <= 3 ? LobbyColors.goldLight : .white.opacity(0.4))
-                    .frame(width: 22)
-                LobbyMemberAvatar(userId: item.userId, fallbackAvatar: item.avatar, size: 34)
-                Text(memberDisplayName(nil, item.nickname))
-                    .font(.system(size: 12))
-                    .foregroundStyle(LobbyColors.ivory)
-                    .lineLimit(1)
-                Spacer()
+                Text(medal)
+                    .font(.system(size: index < 3 ? 15 : 12, weight: .bold))
+                    .foregroundStyle(index < 3 ? LobbyColors.goldLight : .white.opacity(0.35))
+                    .frame(width: 28)
+                LobbyMemberAvatar(userId: item.userId, fallbackAvatar: item.avatar, size: 40)
+                HStack(spacing: 0) {
+                    Text(memberDisplayName(card, item.nickname))
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(LobbyColors.ivory)
+                        .lineLimit(1)
+                    if card?.vipName?.isEmpty == false {
+                        Spacer().frame(width: 6)
+                        LobbyVipChip(vipName: card?.vipName, vipColor: card?.vipColor,
+                                     levelInTier: card?.levelInTier, fontSize: 8)
+                    }
+                    Spacer(minLength: 0)
+                }
                 Text("\(item.score ?? 0)")
-                    .font(.lobbyNumber(12, weight: .semibold))
+                    .font(.lobbyNumber(12, weight: .bold))
                     .foregroundStyle(LobbyColors.goldLight)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10))
+                Text("热力")
+                    .font(.system(size: 8.5))
                     .foregroundStyle(.white.opacity(0.25))
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 16).fill(
+                first
+                    ? LinearGradient(colors: [LobbyColors.gold.opacity(0.16), LobbyColors.crimson.opacity(0.10)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)
+                    : LinearGradient(colors: [.white.opacity(0.025), .white.opacity(0.025)],
+                                     startPoint: .leading, endPoint: .trailing)
+            ))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(
+                first ? LobbyColors.goldLight.opacity(0.45) : LobbyColors.gold.opacity(0.14),
+                lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 7)
     }
 }

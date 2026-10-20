@@ -1067,6 +1067,8 @@ struct LobbySpeechInput: View {
     let sending: Bool
     /// 出现即聚焦并弹键盘（全屏公屏从输入框进入时）
     var autoFocus = false
+    /// 非空=输入框只作入口（门店大厅底部点它升起全屏公屏），不承载真实输入
+    var onEntryClick: (() -> Void)? = nil
     let onSendText: (String) -> Void
     let onSendSticker: (String, String) -> Void
     let onPickImage: () -> Void
@@ -1105,6 +1107,32 @@ struct LobbySpeechInput: View {
     }
 
     private var inputBar: some View {
+        if let onEntryClick {
+            // 入口模式：整条胶囊只是入口，点它升起全屏公屏（真实输入在全屏公屏里）
+            HStack(spacing: 6) {
+                Text(hint)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "face.smiling")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(.white.opacity(0.06))
+            .overlay(Capsule().stroke(Noir.gold.opacity(0.3), lineWidth: 1))
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+            .onTapGesture { onEntryClick() }
+        } else {
+            fullInputBar
+        }
+    }
+
+    private var fullInputBar: some View {
         HStack(spacing: 6) {
             // 模式切换：文字模式显示麦克风（去录音）、语音模式显示键盘（回打字）
             circleIconButton(icon: voiceMode ? "keyboard" : "mic.fill", active: false) {
