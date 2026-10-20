@@ -540,7 +540,9 @@ struct VoiceRoomView: View {
                     LobbyChatList(
                         messages: roomMessages,
                         showStorePrefix: false,
+                        style: .room,
                         emptyText: "房间公屏暂无消息 · 打个招呼吧 ✨",
+                        fadeTop: true,
                         onUserClick: { msg in
                             // 点人 → 资料卡（可抱麦/送礼/私信）：只有真用户行有 userId
                             if msg.senderId > 0 {

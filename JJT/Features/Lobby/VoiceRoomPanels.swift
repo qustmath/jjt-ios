@@ -544,8 +544,8 @@ struct VoiceRoomCreateSheet: View {
     }
 }
 
-/// 表演区小房间列表（对齐安卓 RoomListSheet；20s 轮询刷新，进房失败由房间页自动退回列表）。
-/// 预览入口保留可达性（roomId=-1 的壳）。
+/// 表演区小房间列表（对齐安卓 RoomListSheet；样式 v75「表演区 · 小房间」弹层）。
+/// 20s 轮询刷新，进房失败由房间页自动退回列表。预览入口已下线（对齐安卓）。
 struct VoiceRoomListSheet: View {
 
     let storeId: Int64
@@ -553,7 +553,6 @@ struct VoiceRoomListSheet: View {
     /// 外部触发的刷新（宿主页 20s 轮询 / 打开面板即刷）
     let onRefresh: () -> Void
     let onEnter: (LobbyVoiceRoom) -> Void
-    let onPreview: () -> Void
     let onCreate: () -> Void
 
     var body: some View {
@@ -566,82 +565,48 @@ struct VoiceRoomListSheet: View {
                     .padding(.bottom, 14)
 
                 HStack(spacing: 8) {
-                    Text("表演区小房间")
-                        .font(.system(size: 16, weight: .bold))
+                    Text("表演区 · 小房间")
+                        .font(.system(size: 16, weight: .bold, design: .serif))
                         .foregroundStyle(LobbyColors.ivory)
-                    Text("\(rooms.count) 间在营")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.35))
+                    Text("VOICE ROOMS")
+                        .font(.system(size: 9).italic())
+                        .kerning(2.2)
+                        .foregroundStyle(.white.opacity(0.25))
+                    Spacer()
+                    Circle().fill(LobbyColors.seated).frame(width: 5, height: 5)
+                    Text("入座+实名可开房")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.3))
                 }
 
                 if rooms.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("今晚暂无小房间 · 开一个吧")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.3))
-                        HStack(spacing: 8) {
-                            Button {
-                                onCreate()
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "mic").font(.system(size: 11))
-                                    Text("开小房间")
-                                        .font(.system(size: 11, weight: .semibold))
-                                }
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            Button {
-                                onPreview()
-                            } label: {
-                                Text("预览界面")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(LobbyColors.goldLight)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 7)
-                                    .overlay(Capsule().stroke(Noir.gold.opacity(0.4), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 22)
-                    .background(.white.opacity(0.03))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.top, 12)
+                    Text("今晚暂无小房间 · 抢先开一个吧")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 22)
+                        .background(.white.opacity(0.04))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.07), lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .padding(.top, 12)
                 } else {
                     ForEach(rooms) { room in
-                        roomRow(room)
-                            .padding(.top, 8)
+                        LobbyRoomCard(room: room) { onEnter(room) }
+                            .padding(.top, 10)
                     }
-                    // 开房入口
-                    Button {
-                        onCreate()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "mic")
-                                .font(.system(size: 11))
-                                .foregroundStyle(LobbyColors.goldLight)
-                            Text("开小房间")
-                                .font(.system(size: 11.5, weight: .semibold))
-                                .foregroundStyle(LobbyColors.goldLight)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .overlay(Capsule().stroke(Noir.gold.opacity(0.4), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 10)
                 }
 
-                Text("开房门槛：本店入座 + 实名 + 一人一店一间在营；进房后即可语音与公屏")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white.opacity(0.25))
-                    .padding(.top, 6)
+                // 虚线金边 CTA（v75）
+                Text("＋ 我也要开一个小房间")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(LobbyColors.goldLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(LobbyColors.gold.opacity(0.06), in: Capsule())
+                    .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [8, 5])))
+                    .contentShape(Capsule())
+                    .onTapGesture { onCreate() }
+                    .padding(.top, rooms.isEmpty ? 10 : 12)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 28)
@@ -656,37 +621,83 @@ struct VoiceRoomListSheet: View {
             }
         }
     }
+}
 
-    private func roomRow(_ room: LobbyVoiceRoom) -> some View {
-        HStack(spacing: 10) {
-            AppAvatar(url: nil, size: 38)
-            VStack(alignment: .leading, spacing: 2) {
+/// v75 房卡：Row1 标题 + [麦上有人🎤] + 免费/门票 chip（贴右）；Row2 标签 + 人数·模式。
+/// 统一暗玻璃常态卡（麦上有人不再变特卡，LIVE 信号降级为金色 Mic 小图标——对齐安卓 a4b4be5）。
+struct LobbyRoomCard: View {
+    let room: LobbyVoiceRoom
+    let onClick: () -> Void
+
+    var body: some View {
+        let onMic = (room.micOccupied ?? 0) > 0
+        let tags = (room.tags ?? "")
+            .split(whereSeparator: { ",，、|".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                // 标题吃满空隙，尾排 chip 才贴得住右缘
                 Text(room.title ?? "未命名房间")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold, design: .serif))
                     .foregroundStyle(LobbyColors.ivory)
                     .lineLimit(1)
-                Text("\(room.ownerNickname ?? "") · \(voiceRoomModeLabel(room.mode)) · 麦上 \(room.micOccupied ?? 0)/\(room.micTotal ?? 8)")
-                    .font(.system(size: 9.5))
+                Spacer(minLength: 6)
+                if onMic {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(LobbyColors.gold)
+                        .padding(.trailing, 6)
+                }
+                if let threshold = room.coinThreshold, threshold > 0 {
+                    Text("\(threshold) \(room.coinType == "radish_coin" ? "萝贝" : "兔币")")
+                        .font(.lobbyNumber(10))
+                        .foregroundStyle(LobbyColors.goldLight)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(LobbyColors.gold.opacity(0.15)))
+                        .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.45), lineWidth: 1))
+                        .fixedSize()
+                } else {
+                    Text("免费")
+                        .font(.system(size: 10))
+                        .foregroundStyle(LobbyColors.seated)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .overlay(Capsule().stroke(LobbyColors.seated.opacity(0.4), lineWidth: 1))
+                        .fixedSize()
+                }
+            }
+            HStack(spacing: 0) {
+                ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { _, tag in
+                    Text(tag)
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color(red: 1, green: 0x7D/255, blue: 0x9C/255))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(LobbyColors.crimson.opacity(0.10)))
+                        .padding(.trailing, 6)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "person.2")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.4))
+                Text(" \((room.micOccupied ?? 0))/\((room.micTotal ?? 8))")
+                    .font(.lobbyNumber(10))
+                    .foregroundStyle(.white.opacity(0.4))
+                Text(" · \(voiceRoomModeLabel(room.mode))")
+                    .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.4))
             }
-            Spacer()
-            HStack(spacing: 4) {
-                Image(systemName: "mic").font(.system(size: 10))
-                Text("进房")
-                    .font(.system(size: 10.5, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(LinearGradient(colors: [LobbyColors.crimson, LobbyColors.crimsonTail], startPoint: .leading, endPoint: .trailing))
-            .clipShape(Capsule())
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(.white.opacity(0.04))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Noir.gold.opacity(0.2), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.vertical, 13)
+        .background(LinearGradient(
+            colors: [Color.white.opacity(0.05), Color.white.opacity(0.04)],
+            startPoint: .topLeading, endPoint: .bottomTrailing))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.07), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .contentShape(Rectangle())
-        .onTapGesture { onEnter(room) }
+        .onTapGesture { onClick() }
     }
 }

@@ -274,10 +274,6 @@ struct StoreLobbyView: View {
                     roomListOpen = false
                     voiceRoomNav = VoiceRoomNav(roomId: room.id)
                 },
-                onPreview: {
-                    roomListOpen = false
-                    voiceRoomNav = VoiceRoomNav(roomId: -1)
-                },
                 onCreate: {
                     roomListOpen = false
                     createRoomOpen = true

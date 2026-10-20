@@ -15,6 +15,153 @@ func lobbyChatTime(_ sec: Int64) -> String {
     return lobbyChatTimeFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(sec)))
 }
 
+// MARK: - 公屏消息样式（v75 五态，对齐安卓 LobbyChatStyle）
+
+/// 公屏消息样式（v75 五态）：同一份消息在五个场景用不同密度与气泡形态。
+/// - feed：暗夜大厅全城流——无气泡、紧凑行、容器上缘渐隐
+/// - immersive：暗夜沉浸视图——无气泡、大字号、文字阴影、非当前店整行淡化
+/// - plan：门店大厅图内——小气泡、元信息在气泡首行、半透明底
+/// - fullscreen：全屏公屏——大气泡、元信息在气泡首行、可读性优先
+/// - room：语音房——轻气泡、元信息在气泡外、头像带框
+enum LobbyChatStyle {
+    case feed, immersive, plan, fullscreen, room
+
+    var avatarSize: CGFloat {
+        switch self {
+        case .feed: return 28
+        case .immersive: return 32
+        case .plan: return 24
+        case .fullscreen: return 32
+        case .room: return 30
+        }
+    }
+
+    var avatarGap: CGFloat {
+        switch self {
+        case .feed: return 8
+        case .immersive: return 10
+        case .plan: return 6
+        case .fullscreen: return 8
+        case .room: return 6
+        }
+    }
+
+    var metaSize: CGFloat {
+        switch self {
+        case .feed: return 9
+        case .immersive: return 10
+        case .plan: return 8
+        case .fullscreen: return 9
+        case .room: return 8.5
+        }
+    }
+
+    var bodySize: CGFloat {
+        switch self {
+        case .feed: return 11.5
+        case .immersive: return 13
+        case .plan: return 11
+        case .fullscreen: return 12.5
+        case .room: return 11
+        }
+    }
+
+    var timeSize: CGFloat {
+        switch self {
+        case .feed: return 8
+        case .immersive: return 9
+        case .plan: return 7
+        case .fullscreen: return 7.5
+        case .room: return 7.5
+        }
+    }
+
+    var dotSize: CGFloat {
+        switch self {
+        case .feed: return 5
+        case .immersive: return 6
+        default: return 4
+        }
+    }
+
+    var rowGap: CGFloat {
+        switch self {
+        case .feed: return 8
+        case .immersive: return 16
+        case .plan: return 6
+        case .fullscreen: return 10
+        case .room: return 8
+        }
+    }
+
+    var hasBubble: Bool { self == .plan || self == .fullscreen || self == .room }
+
+    /// 元信息是否在气泡首行（v75 图内/全屏口径）；语音房与暗夜流放在气泡外
+    var metaInsideBubble: Bool { self == .plan || self == .fullscreen }
+
+    var bubbleColor: Color {
+        switch self {
+        case .plan: return Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.95)   // 压在平面图上仍可读
+        case .fullscreen: return Color(red: 0x0E/255, green: 0x0B/255, blue: 0x0F/255).opacity(0.78) // + 模糊背景
+        case .room: return Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.66)
+        default: return .clear
+        }
+    }
+
+    var bubbleBorderAlpha: Double {
+        switch self {
+        case .plan: return 0.22
+        case .fullscreen: return 0.28
+        case .room: return 0.2
+        default: return 0
+        }
+    }
+
+    /// 左上小角（对齐安卓 topStart=4）
+    var bubbleShape: UnevenRoundedRectangle {
+        switch self {
+        case .fullscreen:
+            return UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 16, bottomTrailingRadius: 16, topTrailingRadius: 16)
+        default:
+            return UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 12)
+        }
+    }
+
+    var bubblePaddingH: CGFloat {
+        switch self {
+        case .fullscreen: return 12
+        case .room: return 10
+        default: return 8
+        }
+    }
+
+    var bubblePaddingV: CGFloat {
+        switch self {
+        case .fullscreen: return 8
+        case .room: return 6
+        default: return 5
+        }
+    }
+
+    var bodyShadow: Bool { self == .immersive }
+
+    var contentHorizontal: CGFloat {
+        switch self {
+        case .plan: return 8
+        case .immersive, .fullscreen: return 16
+        default: return 10
+        }
+    }
+
+    var contentVertical: CGFloat {
+        switch self {
+        case .immersive: return 8
+        case .fullscreen: return 12
+        default: return 6
+        }
+    }
+}
+
 // MARK: - 公屏消息列表
 
 /// 公屏消息列表（对齐安卓 LobbyChatList）：新消息在底部，自动滚到底。
@@ -24,10 +171,22 @@ struct LobbyChatList: View {
 
     let messages: [LobbyChatMessage]
     var showStorePrefix = false
+    /// 五态样式（默认全屏公屏口径）
+    var style: LobbyChatStyle = .fullscreen
     var emptyText = "还没有人说话，来当第一个 ✨"
+    /// 顶部欢迎语（全屏公屏用；随消息一起滚动）
+    var headerText: String? = nil
+    /// 列表上缘渐隐（暗夜流/沉浸/图内小窗）
+    var fadeTop = false
+    /// 整行淡化（沉浸视图非当前店）
+    var dimmed: (LobbyChatMessage) -> Bool = { _ in false }
+    /// 点气泡正文（图内小窗 → 展开全屏公屏）；nil = 不响应
+    var onBodyClick: (() -> Void)? = nil
     var onUserClick: (LobbyChatMessage) -> Void = { _ in }
     /// 长按消息（举报入口）；nil = 不给长按动作
     var onMessageLongPress: ((LobbyChatMessage) -> Void)? = nil
+
+    @ObservedObject private var cardStore = MemberCardStore.shared
 
     var body: some View {
         if messages.isEmpty {
@@ -37,31 +196,59 @@ struct LobbyChatList: View {
                     .foregroundStyle(.white.opacity(0.3))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if fadeTop {
+            listContent.mask {
+                // 上缘渐隐（v75 聊天容器 mask-image）：列表顶部 26% 淡出
+                LinearGradient(stops: [
+                    .init(color: .black.opacity(0), location: 0),
+                    .init(color: .black, location: 0.26),
+                ], startPoint: .top, endPoint: .bottom)
+            }
         } else {
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 6) {
-                        ForEach(messages) { msg in
-                            if msg.kind == .system {
-                                LobbySystemLine(text: msg.text ?? "")
-                            } else {
-                                LobbyMessageRow(
-                                    msg: msg,
-                                    showStorePrefix: showStorePrefix,
-                                    onUserClick: { onUserClick(msg) },
-                                    onLongPress: { onMessageLongPress?(msg) }
-                                )
+            listContent
+        }
+    }
+
+    private var listContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: style.rowGap) {
+                    // 顶部欢迎语随历史滚到顶部
+                    if let headerText, !headerText.isEmpty {
+                        Text(headerText)
+                            .font(.system(size: 9))
+                            .foregroundStyle(LobbyColors.gold.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    // 发言人会员名片按消息批量补（等级小标/头像框以名片缓存优先）
+                    ForEach(messages) { msg in
+                        if msg.kind == .system {
+                            LobbySystemLine(text: msg.text ?? "")
+                        } else {
+                            LobbyMessageRow(
+                                msg: msg,
+                                card: cardStore.card(msg.senderId),
+                                style: style,
+                                showStorePrefix: showStorePrefix,
+                                dimmed: dimmed(msg),
+                                onBodyClick: onBodyClick,
+                                onUserClick: { onUserClick(msg) },
+                                onLongPress: { onMessageLongPress?(msg) }
+                            )
+                            .task(id: msg.senderId) {
+                                if msg.senderId > 0 { MemberCardStore.shared.fetchMissing([msg.senderId]) }
                             }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
                 }
-                .onChange(of: messages.count) { _, _ in
-                    // 新消息到达自动贴底（用户上翻时立即被新消息拽回，与安卓「只跟最后一条」行为一致）
-                    if let last = messages.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+                .padding(.horizontal, style.contentHorizontal)
+                .padding(.vertical, style.contentVertical)
+            }
+            .onChange(of: messages.count) { _, _ in
+                // 新消息到达自动贴底（用户上翻时立即被新消息拽回，与安卓「只跟最后一条」行为一致）
+                if let last = messages.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
         }
@@ -80,95 +267,169 @@ struct LobbySystemLine: View {
     }
 }
 
-/// 单条用户消息（头像 + 门店前缀 + 昵称 + 座位态点 + 桌号 + 时间 + 气泡）
+/// 元信息行：店名前缀 + 桌号（图内/全屏为金底小胶囊） + 昵称 + VIP 段位 + 座位态点 + 时间
+private struct LobbyChatMetaLine: View {
+    let msg: LobbyChatMessage
+    let card: LobbyMemberCard?
+    let style: LobbyChatStyle
+    let showStorePrefix: Bool
+    /// true=气泡外元信息（占满整行、时间靠右）；false=气泡内（随气泡收窄，时间紧跟元信息）
+    let fillWidth: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 0) {
+                if showStorePrefix, let prefix = msg.storePrefix {
+                    Text("【\(prefix)】")
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(LobbyColors.gold.opacity(0.9))
+                        .lineLimit(1)
+                        .fixedSize()
+                    Spacer().frame(width: 3)
+                }
+                let chippedTable = style == .plan || style == .fullscreen
+                if chippedTable, let tableNo = msg.tableNo, !tableNo.isEmpty {
+                    LobbyTableChip(tableNo: tableNo, fontSize: style.timeSize)
+                    Spacer().frame(width: 4)
+                }
+                Text(memberDisplayName(card, msg.nickname))
+                    .font(.system(size: style.metaSize))
+                    .foregroundStyle(style.hasBubble ? LobbyColors.goldLight.opacity(0.85) : .white.opacity(0.7))
+                    .lineLimit(1)
+                    .frame(maxWidth: fillWidth ? nil : 120, alignment: .leading)
+                    .layoutPriority(1)
+                if card?.vipName?.isEmpty == false {
+                    Spacer().frame(width: 3)
+                    LobbyVipChip(vipName: card?.vipName, vipColor: card?.vipColor,
+                                 levelInTier: card?.levelInTier, fontSize: style.metaSize)
+                }
+                // 暗夜流：纯文本桌号；语音房不显示桌号
+                if !chippedTable, style != .room, let tableNo = msg.tableNo, !tableNo.isEmpty {
+                    Spacer().frame(width: 4)
+                    Text(tableNo)
+                        .font(.system(size: style.timeSize))
+                        .foregroundStyle(LobbyColors.goldLight.opacity(0.8))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                Spacer().frame(width: 4)
+                LobbyStateDot(seated: msg.seatState == "seated", size: style.dotSize)
+                if fillWidth {
+                    Spacer(minLength: 4)
+                } else {
+                    Spacer().frame(width: 6)
+                }
+            }
+            if fillWidth {
+                Spacer(minLength: 0)
+            }
+            Text(lobbyChatTime(msg.timeSec))
+                .font(.lobbyNumber(style.timeSize))
+                .foregroundStyle(.white.opacity(style == .feed ? 0.45 : 0.3))
+                .lineLimit(1)
+                .fixedSize()
+        }
+    }
+}
+
+/// 桌号小胶囊（v75：金底金边 + 鎏金字）
+private struct LobbyTableChip: View {
+    let tableNo: String
+    let fontSize: CGFloat
+
+    var body: some View {
+        Text(tableNo)
+            .font(.lobbyNumber(fontSize, weight: .semibold))
+            .foregroundStyle(LobbyColors.goldLight)
+            .lineLimit(1)
+            .padding(.horizontal, 3)
+            .padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 3).fill(LobbyColors.gold.opacity(0.18)))
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(LobbyColors.gold.opacity(0.35), lineWidth: 1))
+            .fixedSize()
+    }
+}
+
+/// 单条用户消息（v75 五态：头像 + 元信息 + 气泡/无气泡正文）
 private struct LobbyMessageRow: View {
 
     let msg: LobbyChatMessage
+    let card: LobbyMemberCard?
+    let style: LobbyChatStyle
     let showStorePrefix: Bool
+    let dimmed: Bool
+    let onBodyClick: (() -> Void)?
     let onUserClick: () -> Void
     let onLongPress: () -> Void
 
+    /// 表情包无气泡（同单聊）：即使图内/全屏的元信息口径在气泡内，也让表情保持无底
+    private var bareSticker: Bool { msg.kind == .sticker }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            AppAvatar(url: msg.avatar, size: 26)
-                .overlay(Circle().stroke(Noir.gold.opacity(0.4), lineWidth: 1))
-                .clipShape(Circle())
-                .contentShape(Circle())
-                .onTapGesture { onUserClick() }
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 0) {
-                    if showStorePrefix, let prefix = msg.storePrefix {
-                        Text("【\(prefix)】")
-                            .font(.system(size: 8.5))
-                            .foregroundStyle(Noir.gold.opacity(0.9))
-                        Spacer().frame(width: 4)
-                    }
-                    Text(msg.nickname)
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .lineLimit(1)
-                        .layoutPriority(1)
-                    if let tableNo = msg.tableNo, !tableNo.isEmpty {
-                        Spacer().frame(width: 4)
-                        Text(tableNo)
-                            .font(.system(size: 8))
-                            .foregroundStyle(Noir.goldLight.opacity(0.8))
-                    }
-                    Spacer().frame(width: 4)
-                    Circle()
-                        .fill(msg.seatState == "seated" ? LobbyColors.seated : LobbyColors.standing)
-                        .frame(width: 5, height: 5)
-                    Spacer(minLength: 4)
-                    Text(lobbyChatTime(msg.timeSec))
-                        .font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(0.45))
+        HStack(alignment: .top, spacing: style.avatarGap) {
+            avatar
+            VStack(alignment: .leading, spacing: 3) {
+                // 语音房/暗夜流：元信息在气泡外；图内/全屏：元信息在气泡首行
+                if !style.metaInsideBubble || bareSticker {
+                    LobbyChatMetaLine(msg: msg, card: card, style: style,
+                                      showStorePrefix: showStorePrefix, fillWidth: true)
                 }
-
-                if msg.kind == .sticker {
-                    // 表情包无气泡底（同单聊）；点击开资料卡与文字消息一致
-                    stickerImage
-                        .frame(width: 84, height: 84)
-                        .contentShape(Rectangle())
-                        .onTapGesture { onUserClick() }
-                        .simultaneousGesture(LongPressGesture().onEnded { _ in onLongPress() })
+                if style.hasBubble && !bareSticker {
+                    VStack(alignment: .leading, spacing: style == .plan ? 2 : 4) {
+                        if style.metaInsideBubble {
+                            LobbyChatMetaLine(msg: msg, card: card, style: style,
+                                              showStorePrefix: showStorePrefix, fillWidth: false)
+                        }
+                        messageBody
+                    }
+                    .padding(.horizontal, style.bubblePaddingH)
+                    .padding(.vertical, style.bubblePaddingV)
+                    .background(style.bubbleShape.fill(style.bubbleColor))
+                    .overlay(style.bubbleShape.stroke(Noir.gold.opacity(style.bubbleBorderAlpha), lineWidth: 1))
+                    .frame(maxWidth: 280, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onBodyClick?() }
+                    .simultaneousGesture(LongPressGesture().onEnded { _ in onLongPress() })
                 } else {
-                    // 底色 95% 不透明：压在门店平面图上时正文仍可读；左上小角（对齐安卓 topStart=4）
-                    bubbleContent
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 4, bottomLeadingRadius: 12,
-                                bottomTrailingRadius: 12, topTrailingRadius: 12)
-                                .fill(Color(red: 0x0A/255, green: 0x08/255, blue: 0x0B/255).opacity(0.95))
-                        )
-                        .overlay(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 4, bottomLeadingRadius: 12,
-                                bottomTrailingRadius: 12, topTrailingRadius: 12)
-                                .stroke(Noir.gold.opacity(0.22), lineWidth: 1)
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture {}
-                        .simultaneousGesture(LongPressGesture().onEnded { _ in onLongPress() })
+                    messageBody
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .opacity(dimmed ? 0.55 : 1)
+    }
+
+    /// 头像框靠溢出圆外呈现（AppAvatar 内部自裁圆），外挂裁剪会把框裁成圆内；
+    /// 金色描边只在无框时画，避免与框叠圈
+    private var avatar: some View {
+        let hasFrame = !(card?.avatarFrame ?? "").isEmpty
+        return LobbyMemberAvatar(userId: msg.senderId, fallbackAvatar: msg.avatar,
+                                 size: style.avatarSize, frameScale: 1.2)
+            .modifier(AvatarTap { onUserClick() })
+            .modifier(AvatarRing(hasFrame: hasFrame))
     }
 
     @ViewBuilder
-    private var bubbleContent: some View {
+    private var messageBody: some View {
         switch msg.kind {
+        case .sticker:
+            stickerImage
+                .frame(width: style == .plan ? 76 : 84, height: style == .plan ? 76 : 84)
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+                .onTapGesture { onUserClick() }
+                .simultaneousGesture(LongPressGesture().onEnded { _ in onLongPress() })
         case .voice:
-            LobbyVoiceBubble(msg: msg)
+            LobbyVoiceBubble(msg: msg, timeSize: style.timeSize)
         case .image:
-            LobbyChatImage(msg: msg)
+            LobbyChatImage(msg: msg, size: style == .plan ? 96 : 110)
         default:
             Text(msg.text ?? "")
-                .font(.system(size: 11.5))
+                .font(.system(size: style.bodySize))
+                .lineSpacing(style.bodySize * 0.45)
                 .foregroundStyle(LobbyColors.textBody)
+                .shadow(color: style.bodyShadow ? .black.opacity(0.9) : .clear,
+                        radius: 5, x: 0, y: 1)
         }
     }
 
@@ -188,10 +449,31 @@ private struct LobbyMessageRow: View {
     }
 }
 
+/// 头像点击热区（圆外溢出的框也可点）
+private struct AvatarTap: ViewModifier {
+    let onTap: () -> Void
+    func body(content: Content) -> some View {
+        content.contentShape(Circle()).onTapGesture { onTap() }
+    }
+}
+
+/// 无框时的金描边（有框不画，避免与框叠圈）
+private struct AvatarRing: ViewModifier {
+    let hasFrame: Bool
+    func body(content: Content) -> some View {
+        if hasFrame {
+            content
+        } else {
+            content.overlay(Circle().stroke(Noir.gold.opacity(0.4), lineWidth: 1))
+        }
+    }
+}
+
 /// 语音气泡（播放键 + 波形 + 秒数）。URL 未到位时点击触发现场重取（自愈）
 struct LobbyVoiceBubble: View {
 
     let msg: LobbyChatMessage
+    var timeSize: CGFloat = 9.5
     @ObservedObject private var player = LobbyVoicePlayer.shared
 
     var body: some View {
@@ -208,7 +490,7 @@ struct LobbyVoiceBubble: View {
                 }
             }
             Text(msg.voicePath == nil ? "语音 \(msg.voiceSeconds)″ · 加载中" : "\(msg.voiceSeconds)″")
-                .font(.system(size: 9.5))
+                .font(.lobbyNumber(timeSize))
                 .foregroundStyle(.white.opacity(0.5))
         }
         .contentShape(Rectangle())
@@ -226,6 +508,7 @@ struct LobbyVoiceBubble: View {
 struct LobbyChatImage: View {
 
     let msg: LobbyChatMessage
+    var size: CGFloat = 110
 
     var body: some View {
         Group {
@@ -239,11 +522,141 @@ struct LobbyChatImage: View {
                 Text("图片加载失败")
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.4))
-                    .frame(width: 110, height: 110)
+                    .frame(width: size, height: size)
             }
         }
-        .frame(width: 110, height: 110)
+        .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - 全屏公屏
+
+/// 全屏公屏（v75 chatFocus）：平面图高斯模糊 + 压暗作背景，顶部店名/在线/回到座位图，
+/// 大号消息流 + 与图内同源的发言栏。状态由门店大厅持有（chatFocus），从底部升起不是新页面。
+struct LobbyFullScreenChat: View {
+    let storeName: String
+    let online: Int
+    /// 背景：当前楼层平面图（无则门店封面）
+    let backdrop: String?
+    let messages: [LobbyChatMessage]
+    let inputHint: String
+    let sending: Bool
+    /// 从底部输入框进入时自动聚焦并弹键盘；从聊天内容进入时不弹
+    let autoFocusInput: Bool
+    let onBackToPlan: () -> Void
+    let onUserClick: (LobbyChatMessage) -> Void
+    let onReportRequest: (LobbyChatMessage) -> Void
+    let onSendText: (String) -> Void
+    let onSendSticker: (String, String) -> Void
+    let onPickImage: () -> Void
+    let onGift: (() -> Void)?
+    let onVoiceStop: (LobbyVoiceRecorder.Result) -> Void
+    let onError: (String) -> Void
+
+    var body: some View {
+        ZStack {
+            if let backdrop, !backdrop.isEmpty, let url = webImageURL(backdrop) {
+                WebImage(url: url) { LobbyColors.bg }
+                    .blur(radius: 26)
+                    .scaleEffect(1.08)
+                    .ignoresSafeArea()
+            }
+            // 双向压暗，像场内灯光调暗
+            LinearGradient(stops: [
+                .init(color: dim(0.75), location: 0),
+                .init(color: dim(0.45), location: 0.3),
+                .init(color: dim(0.55), location: 0.7),
+                .init(color: dim(0.92), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // 底部抽屉拖拽柄：视觉上表明这是从底部升起的浮层，不是新页面
+                Capsule()
+                    .fill(.white.opacity(0.2))
+                    .frame(width: 40, height: 4)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
+                    .padding(.bottom, 2)
+
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("\(storeName) · 公屏")
+                                .font(.system(size: 15, weight: .bold, design: .serif))
+                                .foregroundStyle(LobbyColors.ivory)
+                                .lineLimit(1)
+                            HStack(spacing: 3) {
+                                Circle().fill(LobbyColors.seated).frame(width: 4, height: 4)
+                                Text("\(online)")
+                                    .font(.lobbyNumber(8, weight: .bold))
+                                    .foregroundStyle(LobbyColors.seated)
+                                Text("在线")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(LobbyColors.seated)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .overlay(Capsule().stroke(LobbyColors.seated.opacity(0.4), lineWidth: 1))
+                        }
+                        Text("消息实时同步门店大屏")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        onBackToPlan()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "map")
+                                .font(.system(size: 9))
+                            Text("回到座位图")
+                                .font(.system(size: 10.5, weight: .semibold))
+                        }
+                        .foregroundStyle(LobbyColors.goldLight)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(LobbyColors.gold.opacity(0.12)))
+                        .overlay(Capsule().stroke(LobbyColors.gold.opacity(0.45), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+
+                LobbyChatList(
+                    messages: messages,
+                    showStorePrefix: false,
+                    style: .fullscreen,
+                    emptyText: "本店公屏暂无消息 · 说点什么都行 ✨",
+                    headerText: "—— 欢迎进入\(storeName)大厅 🍷 ——",
+                    fadeTop: true,
+                    onUserClick: onUserClick,
+                    onMessageLongPress: { onReportRequest($0) }
+                )
+
+                Spacer().frame(height: 6)
+                LobbySpeechInput(
+                    hint: inputHint,
+                    sending: sending,
+                    autoFocus: autoFocusInput,
+                    onSendText: onSendText,
+                    onSendSticker: onSendSticker,
+                    onPickImage: onPickImage,
+                    onGift: onGift,
+                    onVoiceStop: onVoiceStop,
+                    onError: onError
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+            }
+        }
+    }
+
+    private func dim(_ alpha: Double) -> Color {
+        Color(red: 0x08/255, green: 0x06/255, blue: 0x09/255).opacity(alpha)
     }
 }
 
@@ -450,6 +863,8 @@ struct LobbySpeechInput: View {
 
     let hint: String
     let sending: Bool
+    /// 出现即聚焦并弹键盘（全屏公屏从输入框进入时）
+    var autoFocus = false
     let onSendText: (String) -> Void
     let onSendSticker: (String, String) -> Void
     let onPickImage: () -> Void
@@ -479,6 +894,11 @@ struct LobbySpeechInput: View {
                     if showPlus { plusPanel }
                 }
                 .padding(.bottom, 52)
+            }
+            .onAppear {
+                if autoFocus {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true }
+                }
             }
     }
 

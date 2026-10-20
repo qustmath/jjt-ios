@@ -263,7 +263,9 @@ struct NightLobbyView: View {
             LobbyChatList(
                 messages: aggregateMessages,
                 showStorePrefix: true,
+                style: .feed,
                 emptyText: "全城公屏暂无消息 · 进门店大厅开个场 ✨",
+                fadeTop: true,
                 onUserClick: { cardUser = $0 },
                 onMessageLongPress: { msg in
                     if msg.canReport(myUserId: TokenManager.shared.userId ?? -1) { reportTarget = msg }
@@ -353,7 +355,10 @@ struct NightLobbyView: View {
                     LobbyChatList(
                         messages: aggregateMessages,
                         showStorePrefix: true,
+                        style: .immersive,
                         emptyText: "全城公屏暂无消息 ✨",
+                        fadeTop: true,
+                        dimmed: { $0.storeId != vm.stores[storeIdx].id },
                         onUserClick: { cardUser = $0 },
                         onMessageLongPress: { msg in
                             if msg.canReport(myUserId: TokenManager.shared.userId ?? -1) { reportTarget = msg }
@@ -746,7 +751,7 @@ struct LobbyStoreCardView: View {
                     }
                     Spacer(minLength: 0)
                 }
-                Text(previewText(msg))
+                Text(lobbyBriefingPreview(msg))
                     .font(.system(size: 10.5))
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)

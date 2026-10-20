@@ -252,3 +252,89 @@ func lobbyLatestPreview(_ msg: String?) -> String? {
     guard let msg, !msg.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
     return String(msg.prefix(60))
 }
+
+// MARK: - v75 视觉底座（对齐安卓 LobbyParts 三件套）
+
+/// 霓虹外发光层参数：由内向外宽度递增、透明度递减（峰值约 0.45，扩散到 spread 才收净——
+/// 亮而不刺眼、范围大；对齐安卓 lobbyGlow 2026-10-18 两轮调优定稿值）
+enum LobbyGlowLayers {
+    static let layers: [(fraction: Double, alpha: Double)] = [
+        (0.08, 0.22), (0.18, 0.13), (0.30, 0.08), (0.44, 0.05),
+        (0.60, 0.032), (0.76, 0.020), (0.88, 0.012), (1.00, 0.006),
+    ]
+}
+
+extension View {
+    /// 霓虹外发光（对齐安卓 lobbyGlow）：沿形状外沿叠八层递减透明描边。
+    /// 用法：**先 clipShape 再 lobbyGlow**（辉光画在 background、SwiftUI 不裁剪 background，
+    /// 顺序反了会被前面的 clip 连光晕一起裁掉）；描边内半侧被宿主前景盖住，只留外侧光晕。
+    func lobbyGlow<S: Shape>(_ shape: S, color: Color, spread: CGFloat = 16, intensity: Double = 1) -> some View {
+        background(
+            ZStack {
+                ForEach(Array(LobbyGlowLayers.layers.enumerated()), id: \.offset) { _, layer in
+                    shape.stroke(color.opacity(layer.alpha * intensity),
+                                 style: StrokeStyle(lineWidth: spread * layer.fraction, lineCap: .round, lineJoin: .round))
+                }
+            }
+        )
+    }
+}
+
+extension Font {
+    /// 大厅数字（Serif + 等宽数字，对齐安卓 LobbyNumberStyle）：桌号/时间/价格/榜单数
+    static func lobbyNumber(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        Font.system(size: size, weight: weight, design: .serif).monospacedDigit()
+    }
+}
+
+/// 页面进场（对齐安卓 pageEnter）：淡入 + 14pt 上移，360ms。大厅三页共用。
+private struct LobbyPageEnter: ViewModifier {
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 14)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.36)) { shown = true }
+            }
+    }
+}
+
+extension View {
+    func lobbyPageEnter() -> some View { modifier(LobbyPageEnter()) }
+}
+
+/// LIVE 徽标（6sp 瘦身胶囊，Crimson 底白字；对齐安卓 a4b4be5 定稿值——SwiftUI 无字体留白问题，
+/// 固定小字号 + 纵 1pt 横 2pt padding 即得四边齐平）。withDot=视频卡版（带白点）。
+struct LobbyLiveBadge: View {
+    var withDot = false
+
+    var body: some View {
+        HStack(spacing: 2) {
+            if withDot {
+                Circle().fill(.white).frame(width: 4, height: 4)
+            }
+            Text("LIVE")
+                .font(.system(size: 6, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, withDot ? 3 : 2)
+        .padding(.vertical, 1)
+        .background(LobbyColors.crimson)
+        .clipShape(RoundedRectangle(cornerRadius: 3))
+        .fixedSize()
+    }
+}
+
+/// 坐席状态点（公屏元信息行：绿=在座）
+struct LobbyStateDot: View {
+    let seated: Bool
+    var size: CGFloat = 4
+
+    var body: some View {
+        Circle()
+            .fill(seated ? LobbyColors.seated : LobbyColors.idle)
+            .frame(width: size, height: size)
+    }
+}
