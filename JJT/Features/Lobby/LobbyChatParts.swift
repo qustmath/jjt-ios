@@ -1106,6 +1106,7 @@ struct LobbySpeechInput: View {
             }
     }
 
+    @ViewBuilder
     private var inputBar: some View {
         if let onEntryClick {
             // 入口模式：整条胶囊只是入口，点它升起全屏公屏（真实输入在全屏公屏里）
