@@ -74,6 +74,9 @@ struct StoreLobbyView: View {
             if let u = cardUser { userCard(u) }
             if let msg = reportTarget { reportSheet(msg) }
             if let t = toast { LobbyToastView(text: t) }
+
+            // 本店/全门店礼物动效接收端补播：门店大厅听本店群
+            LobbyGiftBroadcastOverlay(listenGroupId: storeGroupId, myUserId: myUserId)
         }
         .task { await initialLoad() }
         .task { await LobbySeatSession.shared.heartbeatLoop() }
@@ -149,9 +152,9 @@ struct StoreLobbyView: View {
                 onInvite: { uid in runDrawerAction(toastOK: "已邀请 · 到店核销后入座") { try await vm.invite(tableId: live.id, inviteeId: uid) } },
                 onShout: { note in runDrawerAction(toastOK: "已喊人拼桌 · 本店滚动条高亮 3 分钟") { try await vm.shout(tableId: live.id, note: note) } },
                 onStopShout: { runDrawerAction(toastOK: "已停止拼桌") { try await vm.stopShout(tableId: live.id) } },
-                onEnableDnd: { note, silent in
-                    runDrawerAction(toastOK: silent ? "已设为完全静音 · 不可付费解锁" : "已设为勿扰桌 · 可付费解锁打扰") {
-                        try await vm.enableDnd(tableId: live.id, note: note, silent: silent)
+                onEnableDnd: { note, silent, price in
+                    runDrawerAction(toastOK: silent ? "已设为完全静音 · 不可付费解锁" : "已设为勿扰桌 · 解锁价 \(price ?? 0) 兔币") {
+                        try await vm.enableDnd(tableId: live.id, note: note, silent: silent, unlockPrice: price)
                     }
                 },
                 onCancelDnd: { runDrawerAction(toastOK: "已取消勿扰") { try await vm.cancelDnd(tableId: live.id) } },
@@ -365,9 +368,11 @@ struct StoreLobbyView: View {
         await vm.load(storeId: storeId)
         await vm.refreshInvites(storeId: storeId)
         await LobbySeatSession.shared.refresh()
-        // 先补 IM 登录（大厅原本不登 IM，直接发言会 sdk not init），再入本店群
+        // 先补 IM 登录（大厅原本不登 IM，直接发言会 sdk not init），再入本店群；
+        // 随后拉最近 50 条公屏历史前插（新用户进店回看，loadHistory 自身幂等）
         await LobbyImSession.shared.ensureImReady()
         LobbyImSession.shared.ensureStoreJoined(storeGroupId)
+        await LobbyImSession.shared.loadHistory(storeGroupId)
     }
 
     private func showToast(_ msg: String) {

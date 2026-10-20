@@ -475,3 +475,34 @@ struct LobbyGiftTargetSheet: View {
         }
     }
 }
+
+// MARK: - 礼物广播接收端补播（对齐安卓 LobbyGiftBroadcastOverlay）
+
+/// 监听 .jjtLobbyGiftEvent：命中 listenGroupId 且非本人发送的特效副本，直接用载荷素材播同款全屏动效
+/// （素材 animation_url 优先、icon 兜底；不拉礼物详情）。发送者本地已播过，按 senderId 跳过防双播。
+/// 挂载：门店大厅听门店群、暗夜大厅听聚合群。
+struct LobbyGiftBroadcastOverlay: View {
+    let listenGroupId: String?
+    let myUserId: Int64
+
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .jjtLobbyGiftEvent)) { note in
+                guard let e = note.object as? LobbyGiftEvent,
+                      e.groupId == listenGroupId,
+                      e.senderId != myUserId else { return }
+                JJTWindowOverlay.show(
+                    GiftSendOverlay(gift: syntheticGift(e), combo: max(e.quantity, 1)) {
+                        JJTWindowOverlay.dismiss()
+                    }
+                )
+            }
+    }
+
+    private func syntheticGift(_ e: LobbyGiftEvent) -> GiftItem {
+        GiftItem(id: 0, name: e.giftName, description: nil, icon: e.icon,
+                 categoryId: nil, categoryName: nil, priceRabbit: nil,
+                 animationUrl: e.animationUrl.isEmpty ? nil : e.animationUrl,
+                 iconScale: e.iconScale ?? 100, broadcastScope: e.scope)
+    }
+}

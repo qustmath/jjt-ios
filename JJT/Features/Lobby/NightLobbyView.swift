@@ -55,9 +55,22 @@ struct NightLobbyView: View {
             if let u = cardUser { userCard(u) }
             if let msg = reportTarget { reportSheet(msg) }
             if let t = toast { LobbyToastView(text: t) }
+
+            // 本店/全门店礼物动效接收端补播：暗夜大厅听聚合群副本
+            LobbyGiftBroadcastOverlay(listenGroupId: imSession.aggregateGroupId,
+                                      myUserId: TokenManager.shared.userId ?? -1)
         }
         .task { await initialLoad() }
         .task { await LobbySeatSession.shared.heartbeatLoop() }
+        // 门店卡入座/围观数轮询：坐席播报只发门店群，暗夜大厅只听聚合群收不到他人坐席变化，
+        // 真值只能周期拉——页面可见期间 15s 一刷（仅空列表才显示 loading，轮询不闪屏）
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard !Task.isCancelled else { break }
+                await vm.load()
+            }
+        }
         .onAppear { LobbyImSession.shared.start() }
         .onDisappear { LobbyImSession.shared.stop() }
         .onReceive(NotificationCenter.default.publisher(for: .jjtLobbySeatChanged)) { _ in
@@ -114,10 +127,17 @@ struct NightLobbyView: View {
     private func initialLoad() async {
         await vm.load()
         await LobbySeatSession.shared.refresh()
-        // 暗夜大厅：先补 IM 登录（大厅原本不登 IM），再拉聚合群 ID 并加入
+        // 门店 ID→店名表（全城流历史行「店名」前缀渲染用）
+        LobbyImSession.shared.seedStoreNames(
+            Dictionary(vm.stores.compactMap { s in s.name.map { (s.id, $0) } },
+                       uniquingKeysWith: { _, new in new })
+        )
+        // 暗夜大厅：先补 IM 登录（大厅原本不登 IM），再拉聚合群 ID 并加入，
+        // 随后拉最近 50 条历史前插（loadHistory 自身幂等）
         await LobbyImSession.shared.ensureImReady()
         await LobbyImSession.shared.loadAggregateGroupId()
         LobbyImSession.shared.ensureAggregateJoined()
+        await LobbyImSession.shared.loadHistory(LobbyImSession.shared.aggregateGroupId)
     }
 
     private func showToast(_ msg: String) {
@@ -133,10 +153,8 @@ struct NightLobbyView: View {
 
     private var feedView: some View {
         VStack(spacing: 0) {
+            // 四宫格沉浸视图入口已撤下（对齐安卓 f78a091，产品节奏另行放开）
             LobbyHeader(title: "暗夜大厅", en: "GLOBAL LOUNGE", onBack: { dismiss() }) {
-                LobbyIconAction(icon: "square.grid.2x2.fill") {
-                    if !vm.stores.isEmpty { immersive = true }
-                }
                 SeatPill(seat: seatSession.seat, onClick: seatedStoreEntry)
             }
 
@@ -176,9 +194,25 @@ struct NightLobbyView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 40)
                         }
+                        // 门店卡简报数据源：全城流按 storeId 归店取最新一条用户消息
+                        //（消息列表时间升序，后写覆盖即最新；实时副本与历史行都带 storeId）；
+                        // 流内没有的店回退后端 latestMessage 纯文本（无身份）
+                        let latestByStore: [Int64: LobbyChatMessage] = {
+                            var map: [Int64: LobbyChatMessage] = [:]
+                            for m in aggregateMessages where m.isUserMessage {
+                                if let sid = m.storeId { map[sid] = m }
+                            }
+                            return map
+                        }()
                         ForEach(vm.stores) { store in
-                            LobbyStoreCardView(store: store) { storeNav = StoreNav(storeId: store.id) }
-                                .padding(.horizontal, 16)
+                            LobbyStoreCardView(
+                                store: store,
+                                isMine: seatSession.seat?.storeId == store.id,
+                                latest: latestByStore[store.id],
+                                onEnter: { storeNav = StoreNav(storeId: store.id) },
+                                onUserClick: { cardUser = $0 }
+                            )
+                            .padding(.horizontal, 16)
                             Spacer().frame(height: 16)
                         }
 
@@ -189,7 +223,7 @@ struct NightLobbyView: View {
                                 Image(systemName: "person.2")
                                     .font(.system(size: 10))
                                     .foregroundStyle(.white.opacity(0.3))
-                                Text("全城 \(vm.stores.reduce(0) { $0 + ($1.seatedCount ?? 0) }) 人入座中")
+                                Text("全城 \(vm.stores.reduce(0) { $0 + ($1.seatedCount ?? 0) + ($1.standingCount ?? 0) }) 人在玩")
                                     .font(.system(size: 9))
                                     .foregroundStyle(.white.opacity(0.25))
                             }
@@ -235,7 +269,7 @@ struct NightLobbyView: View {
                     if msg.canReport(myUserId: TokenManager.shared.userId ?? -1) { reportTarget = msg }
                 }
             )
-            .frame(height: 200)
+            .frame(height: 300)
             .background(.white.opacity(0.025))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.gold.opacity(0.18), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -547,13 +581,20 @@ private func lobbyDim(_ alpha: Double) -> Color {
     Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(alpha)
 }
 
-/// 门店卡片（暗夜大厅 feed；对齐安卓 StoreCard）
+/// 门店卡片（暗夜大厅 feed；对齐安卓 StoreCard）：
+/// 入座/围观双数 + 我的门店金胶囊 + 全城流简报行（带会员身份，点整行开资料卡）
 struct LobbyStoreCardView: View {
     let store: LobbyStoreCard
+    let isMine: Bool
+    let latest: LobbyChatMessage?
     let onEnter: () -> Void
+    let onUserClick: (LobbyChatMessage) -> Void
+
+    @ObservedObject private var cardStore = MemberCardStore.shared
 
     var body: some View {
-        let online = store.seatedCount ?? 0
+        let seated = store.seatedCount ?? 0
+        let standing = store.standingCount ?? 0
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if let cover = store.cover, !cover.isEmpty, let url = webImageURL(cover) {
@@ -568,17 +609,31 @@ struct LobbyStoreCardView: View {
                     colors: [Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.15), Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.9)],
                     startPoint: .top, endPoint: .bottom
                 )
-                if online > 0 {
-                    HStack(spacing: 3) {
-                        Image(systemName: "record.circle").font(.system(size: 9)).foregroundStyle(.white)
-                        Text("开局中").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
+                HStack(spacing: 6) {
+                    if isMine {
+                        // 我的门店金胶囊（原型 bound 徽标）：金渐变底 + 深字
+                        Text("我的门店")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(LinearGradient(colors: [Color(red: 0xF5/255, green: 0xE3/255, blue: 0xB8/255),
+                                                                Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255)],
+                                                       startPoint: .leading, endPoint: .trailing))
+                            .clipShape(Capsule())
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(LobbyColors.crimson)
-                    .clipShape(Capsule())
-                    .padding(12)
+                    if seated > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "record.circle").font(.system(size: 9)).foregroundStyle(.white)
+                            Text("开局中").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(LobbyColors.crimson)
+                        .clipShape(Capsule())
+                    }
                 }
+                .padding(12)
                 VStack(alignment: .leading, spacing: 2) {
                     Spacer()
                     Text(store.name ?? "未命名门店")
@@ -597,13 +652,24 @@ struct LobbyStoreCardView: View {
             .onTapGesture { onEnter() }
 
             HStack(spacing: 0) {
+                // 入座/围观双数（原型 v75 口径：绿点入座 + 金点围观）
                 Circle().fill(LobbyColors.seated).frame(width: 7, height: 7)
                 Spacer().frame(width: 6)
-                Text("\(online)")
+                Text("\(seated)")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(LobbyColors.seated)
                 Spacer().frame(width: 3)
                 Text("入座")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.55))
+                Spacer().frame(width: 16)
+                Circle().fill(LobbyColors.standing).frame(width: 7, height: 7)
+                Spacer().frame(width: 6)
+                Text("\(standing)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(LobbyColors.standing)
+                Spacer().frame(width: 3)
+                Text("围观")
                     .font(.system(size: 10.5))
                     .foregroundStyle(.white.opacity(0.55))
                 Spacer()
@@ -623,23 +689,91 @@ struct LobbyStoreCardView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
-            if let preview = lobbyLatestPreview(store.latestMessage) {
+            // 简报行：全城流最新一条带会员身份，直角边框，点整行开资料卡；
+            // 流内无该店消息时回退后端 latestMessage 纯文本
+            if let msg = latest {
+                briefingRow(msg)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
+            } else if let preview = lobbyLatestPreview(store.latestMessage) {
                 Text(preview)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(.white.opacity(0.03))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.gold.opacity(0.15), lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 0).stroke(Noir.gold.opacity(0.15), lineWidth: 1))
                     .padding(.horizontal, 16)
                     .padding(.bottom, 14)
             }
         }
         .background(Color(red: 0x0D/255, green: 0x0B/255, blue: 0x0F/255))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.gold.opacity(0.28), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(
+            isMine ? Color(red: 0xE8/255, green: 0xCF/255, blue: 0x9A/255).opacity(0.55) : Noir.gold.opacity(0.28),
+            lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 24))
+        .task(id: latest?.senderId) {
+            if let sid = latest?.senderId, sid > 0 {
+                MemberCardStore.shared.fetchMissing([sid])
+            }
+        }
+    }
+
+    private func briefingRow(_ msg: LobbyChatMessage) -> some View {
+        let card = cardStore.card(msg.senderId)
+        return HStack(spacing: 0) {
+            LobbyMemberAvatar(userId: msg.senderId, fallbackAvatar: msg.avatar, size: 26, frameScale: 1)
+            Spacer().frame(width: 8)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    Text(memberDisplayName(card, msg.nickname))
+                        .font(.system(size: 10))
+                        .foregroundStyle(LobbyColors.goldLight.opacity(0.8))
+                        .lineLimit(1)
+                    // 身份行顺序（用户口径）：昵称 → 等级 → 桌号，必须同一行
+                    if card?.vipName?.isEmpty == false {
+                        Spacer().frame(width: 4)
+                        LobbyVipChip(vipName: card?.vipName, vipColor: card?.vipColor, levelInTier: card?.levelInTier)
+                    }
+                    if let tableNo = msg.tableNo, !tableNo.isEmpty {
+                        Spacer().frame(width: 4)
+                        Text("· \(tableNo)")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.3))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(previewText(msg))
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+            Spacer().frame(width: 8)
+            Text(lobbyChatTime(msg.timeSec))
+                .font(.system(size: 8.5))
+                .foregroundStyle(.white.opacity(0.25))
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 12)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background(.white.opacity(0.03))
+        .overlay(RoundedRectangle(cornerRadius: 0).stroke(Noir.gold.opacity(0.15), lineWidth: 1))
+        .contentShape(Rectangle())
+        .onTapGesture { onUserClick(msg) }
+    }
+}
+
+/// 简报行文案：文本原样，其余类型给占位（语音/图片/表情也可当「最新一条」）
+private func lobbyBriefingPreview(_ msg: LobbyChatMessage) -> String {
+    switch msg.kind {
+    case .text: return msg.text ?? ""
+    case .sticker: return "[表情]"
+    case .voice: return msg.voiceSeconds > 0 ? "[语音] \(msg.voiceSeconds)s" : "[语音]"
+    case .image: return "[图片]"
+    case .system: return ""
     }
 }

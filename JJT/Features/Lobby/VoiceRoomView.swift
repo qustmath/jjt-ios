@@ -38,9 +38,31 @@ struct VoiceRoomView: View {
     @State private var pendingMicApplies = 0
     @State private var chatNav: NightLobbyView.LobbyNavTarget?
     @State private var giftNav: NightLobbyView.LobbyNavTarget?
+    // 密码房：密码输入后重触发进房；nil=首次尝试。joinAttempt 兜底——连输同一个错密码时
+    // joinPassword 不变，.task(id:) 的 equals 比对不会重触发，靠计数（对齐安卓审查 2026-10-16）
+    @State private var joinPassword: String?
+    @State private var joinAttempt = 0
+    /// 密码错误内联提示（跨 password→joining→password 往返存活）
+    @State private var pwError: String?
+    @State private var pwInput = ""
+    // 门票房（口径 B）：063 → 门票确认框，支付密码走统一守卫，确认后带票重进
+    @State private var ticketPwd: String?
+    @State private var ticketGuard = PayPasswordGuard()
+    @State private var showPaySettings = false
 
     enum JoinState: Equatable {
         case joining, inRoom, applied, inviteOnly, failed, preview
+        /// 密码房：弹 4 位数字密码输入（061）
+        case password
+        /// 门票房：弹进房门票确认（063）
+        case ticket
+    }
+
+    /// 进房重触发 key：任一凭据变化（含同密码重试的 attempt）都重新 join
+    struct JoinRetryKey: Equatable {
+        let pw: String?
+        let ticket: String?
+        let attempt: Int
     }
 
     /// 房间内临时成员视图（资料卡用；id/昵称/头像）
@@ -90,7 +112,7 @@ struct VoiceRoomView: View {
             // 麦位成员资料卡（房间内没有消息 id，故不带举报入口）
             if let m = selfCard { memberCard(m) }
         }
-        .task { await joinRoom() }
+        .task(id: JoinRetryKey(pw: joinPassword, ticket: ticketPwd, attempt: joinAttempt)) { await joinRoom() }
         .task(id: joinState) {
             // 审批制待批：10s 轮询详情，通过后服务端把人加进群（inRoom 变真）
             guard joinState == .applied else { return }
@@ -263,6 +285,48 @@ struct VoiceRoomView: View {
         .fullScreenCover(item: $giftNav) { nav in
             GiftCenterView(receiverId: nav.userId, receiverName: nav.nickname)
         }
+        // 密码房：4 位数字输入，填对后带密码重进（.task 以凭据 key 重触发）
+        .alert("输入房间密码", isPresented: Binding(
+            get: { joinState == .password },
+            set: { if !$0, joinState == .password { joinState = .failed; showToast("已取消进房") } }
+        )) {
+            TextField("4 位数字密码", text: $pwInput)
+                .keyboardType(.numberPad)
+            Button("进房") {
+                let pw = String(pwInput.filter(\.isNumber).prefix(4))
+                if pw.count != 4 {
+                    showToast("请输入 4 位数字密码")
+                } else {
+                    pwError = nil
+                    joinPassword = pw
+                    joinAttempt += 1 // 同密码重试也要重触发
+                    joinState = .joining
+                }
+            }
+            Button("取消", role: .cancel) { joinState = .failed }
+        } message: {
+            Text(pwError ?? "向房主要 4 位数字密码，输对即可进房")
+        }
+        // 门票房：进房需支付门票——支付密码走统一守卫（未设置引导去设置）
+        .alert("进房门票", isPresented: Binding(
+            get: { joinState == .ticket },
+            set: { if !$0, joinState == .ticket { joinState = .failed; showToast("已取消进房") } }
+        )) {
+            Button("去支付") {
+                ticketGuard.require { pwd in
+                    ticketPwd = pwd
+                    joinAttempt += 1
+                    joinState = .joining
+                }
+            }
+            Button("取消", role: .cancel) { joinState = .failed }
+        } message: {
+            Text(ticketMessage)
+        }
+        .payPasswordGuard(ticketGuard) { showPaySettings = true }
+        .fullScreenCover(isPresented: $showPaySettings) {
+            PayPasswordSettingsView()
+        }
     }
 
     struct JoinTaskKey: Equatable {
@@ -273,13 +337,20 @@ struct VoiceRoomView: View {
 
     // MARK: - 进房
 
+    /// 门票确认文案：一房一票——同一房间已购过票不再收（退房再进/页面退出重进均不重复扣）
+    private var ticketMessage: String {
+        let coinLabel = session.detail?.coinType == "radish_coin" ? "萝贝" : "兔币"
+        let amountText = session.detail?.coinThreshold.map { " \($0) \(coinLabel)" } ?? ""
+        return "进入本房间需支付门票\(amountText)（支付后不退；同一房间只收一次，退出再进不重复扣）"
+    }
+
     private func joinRoom() async {
         if preview {
             joinState = .preview
             return
         }
         do {
-            let r = try await VoiceRoomAPI.join(roomId: roomId)
+            let r = try await VoiceRoomAPI.join(roomId: roomId, password: joinPassword, payPassword: ticketPwd)
             switch r.result {
             case "joined", "already": joinState = .inRoom
             case "applied": joinState = .applied
@@ -288,6 +359,14 @@ struct VoiceRoomView: View {
         } catch let APIError.business(code, _) where code == VoiceRoomConst.codeVoiceInviteOnly {
             // 邀请制非成员是预期业务态（按错误码判定——文案会变，码稳定）
             joinState = .inviteOnly
+        } catch let APIError.business(code, _) where code == VoiceRoomConst.codeVoicePasswordWrong {
+            // 首次不带密码（joinPassword=nil）被要求密码 ≠ 密码错误——只有真输过密码才提示
+            joinState = .password
+            if joinPassword != nil { pwError = "密码错误，请重新输入" }
+        } catch let APIError.business(code, _) where code == VoiceRoomConst.codeVoiceTicketPayPwdRequired {
+            // 详情在进房成功后才拉——门票金额进房前要展示，先拉一次（非成员可读，含门票价）
+            joinState = .ticket
+            Task { try? await session.refresh() }
         } catch {
             joinState = .failed
             showToast(error.localizedDescription)

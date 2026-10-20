@@ -46,7 +46,7 @@ struct LobbyTableDrawerView: View {
     let onInvite: (Int64) -> Void
     let onShout: (String?) -> Void
     let onStopShout: () -> Void
-    let onEnableDnd: (String?, Bool) -> Void
+    let onEnableDnd: (String?, Bool, Int64?) -> Void
     let onCancelDnd: () -> Void
     let onApproveApply: (LobbyShareApply) -> Void
     let onRejectApply: (LobbyShareApply) -> Void
@@ -60,6 +60,9 @@ struct LobbyTableDrawerView: View {
     @State private var dndOpen = false
     @State private var dndNote = ""
     @State private var dndSilent = false
+    // 解锁价输入（普通勿扰档；桌主自定义解锁价）
+    @State private var dndPrice = ""
+    @State private var dndPriceError: String?
     @State private var inviteOpen = false
 
     private var status: LobbyTableStatus { LobbyTableStatus.of(table.status) }
@@ -291,7 +294,7 @@ struct LobbyTableDrawerView: View {
                     SeatActionButton(label: "取消勿扰（在途订单原路退款）", icon: "lock", primary: false) { onCancelDnd() }
                 case .occupied:
                     SeatActionButton(label: "喊人拼桌", icon: "person.3") { shoutNote = ""; shoutOpen = true }
-                    SeatActionButton(label: "设置本桌勿扰", icon: "lock", primary: false) { dndNote = ""; dndSilent = false; dndOpen = true }
+                    SeatActionButton(label: "设置本桌勿扰", icon: "lock", primary: false) { dndNote = ""; dndSilent = false; dndPrice = ""; dndPriceError = nil; dndOpen = true }
                         .padding(.top, 8)
                 case .free:
                     HintActionRow(label: "开桌后再喊人拼桌（先入座成为有人桌）")
@@ -342,8 +345,13 @@ struct LobbyTableDrawerView: View {
                 SeatActionButton(label: "凭通行证扫码入座 \(table.tableNo ?? "") 桌", icon: "qrcode") { onCheckIn() }
                 HintActionRow(label: "通行证一次性核销 · 无需重复付费")
                     .padding(.top, 6)
+            } else if table.dndLevel == "silent" {
+                // 完全静音不可付费解锁（此前按钮照画、点击吃服务端 400）；
+                // dndLevel 为 nil（旧后端）按可解锁勿扰对待，保持旧表现
+                HintActionRow(label: "完全静音中 · 不可付费解锁打扰")
             } else {
-                SeatActionButton(label: "付费解锁打扰", icon: "lock") { onUnlock() }
+                // 解锁入口显桌主定价（nil=服务端默认 300，不编数）
+                SeatActionButton(label: table.dndUnlockPrice.map { "付费 \($0) 兔币解锁打扰" } ?? "付费解锁打扰", icon: "lock") { onUnlock() }
             }
         } else if status == .reserved {
             HintActionRow(label: "已预定 · \(table.reserveText ?? "到点后开放")")
@@ -380,6 +388,41 @@ struct LobbyTableDrawerView: View {
                 DndTierChip(title: "完全静音", sub: "不可付费解锁", selected: dndSilent) { dndSilent = true }
             }
             .padding(.top, 12)
+            if !dndSilent {
+                // 解锁价：桌主指定兔币金额（解锁者按此价付费，50% 分账桌主）
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("解锁价（兔币，必填）")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
+                    TextField("如 300", text: $dndPrice)
+                        .font(.system(size: 12))
+                        .keyboardType(.numberPad)
+                        .foregroundStyle(LobbyColors.textBody)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(.white.opacity(0.05))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+                            dndPriceError == nil ? Noir.gold.opacity(0.3) : LobbyColors.crimson, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .onChange(of: dndPrice) { _, v in
+                            // ≤7 位纯数字（对齐安卓）
+                            if v.count > 7 || v.contains(where: { !$0.isNumber }) {
+                                dndPrice = String(v.prefix(7)).filter(\.isNumber)
+                            }
+                            dndPriceError = nil
+                        }
+                    if let err = dndPriceError {
+                        Text(err)
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(LobbyColors.crimson)
+                    } else {
+                        Text("他人付费此价申请解锁打扰 · 50% 分账给你")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                }
+                .padding(.top, 10)
+            }
             HStack(spacing: 12) {
                 Button {
                     dndOpen = false
@@ -394,8 +437,18 @@ struct LobbyTableDrawerView: View {
                 }
                 .buttonStyle(.plain)
                 Button {
+                    let amount = Int64(dndPrice)
+                    if !dndSilent, amount == nil || amount! < 1 {
+                        dndPriceError = "请设置解锁价（至少 1 兔币）"
+                        return
+                    }
+                    // 上限与服务端 @Max 同口径（超限本地拦，别等服务端 400 回打）
+                    if !dndSilent, let amount, amount > lobbyAmountMax {
+                        dndPriceError = "解锁价过大（上限 100 万兔币）"
+                        return
+                    }
                     dndOpen = false
-                    onEnableDnd(dndNote.isEmpty ? nil : dndNote, dndSilent)
+                    onEnableDnd(dndNote.isEmpty ? nil : dndNote, dndSilent, dndSilent ? nil : amount)
                 } label: {
                     Text("设为勿扰")
                         .font(.system(size: 13, weight: .semibold))

@@ -140,10 +140,11 @@ final class VoiceRoomSession: ObservableObject {
         }
     }
 
-    /// 进房（public 直进 / approval 落申请 / invite 仅房主拉人）：返回结果供页面分流
-    func join(roomId: Int64) async -> VoiceRoomJoinResult {
+    /// 进房（public 直进 / approval 落申请 / invite 仅房主拉人；密码房带 password、门票房带 payPassword）：
+    /// 返回结果供页面分流。错误要透出（061/063 由页面按码分流弹窗），这里不吞
+    func join(roomId: Int64, password: String? = nil, payPassword: String? = nil) async throws -> VoiceRoomJoinResult {
         self.roomId = roomId
-        return (try? await VoiceRoomAPI.join(roomId: roomId)) ?? VoiceRoomJoinResult(result: nil, imGroupIdStr: nil)
+        return try await VoiceRoomAPI.join(roomId: roomId, password: password, payPassword: payPassword)
     }
 
     /// 退房（在麦自动放麦）；同时断开语音并清详情

@@ -7,7 +7,8 @@ import SwiftUI
 /// 2. 订单档——本面板下单：敬全场 / 通行券（同价），验支付密码 → 扣兔币 → 桌主 10 分钟内接受或原路退款；
 /// 3. 完全静音档——不可解锁（桌主可设静音），面板只标注该档存在，不给入口。
 ///
-/// 价格口径：展示价镜像后端常量（订单档 300 兔币 / 送礼档阈值 660 兔币），真实扣款以服务端为准。
+/// 价格口径：订单档展示价 = 平面图回显的桌主定价（table.dndUnlockPrice，存量无价回退 300，与服务端扣款同规则）；
+/// 送礼档阈值 660 兔币为服务端常量。真实扣款金额以服务端建单为准。
 /// 在途防重：同一人同一桌只能有一笔 pending（服务端唯一键兜底），面板据此关闭下单按钮。
 struct LobbyDndUnlockSheet: View {
 
@@ -143,7 +144,7 @@ struct LobbyDndUnlockSheet: View {
                     .font(.system(size: 12.5, weight: .bold))
                     .foregroundStyle(LobbyColors.ivory)
             }
-            Text("送 660 兔币（66 元）以上礼物发起解锁申请，桌主确认后解锁（礼物照收）；含 50% 分账与礼物广播")
+            Text("送 660 兔币以上礼物发起解锁申请，桌主确认后解锁（礼物照收）；含 50% 分账与礼物广播")
                 .font(.system(size: 9.5))
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.top, 4)
@@ -177,7 +178,7 @@ struct LobbyDndUnlockSheet: View {
                 Text("档位二 · 订单档")
                     .font(.system(size: 12.5, weight: .bold))
                     .foregroundStyle(LobbyColors.ivory)
-                Text("300 兔币（30 元，服务端定价）")
+                Text("\(table.dndUnlockPrice ?? 300) 兔币 · 桌主定价")
                     .font(.system(size: 9.5))
                     .foregroundStyle(LobbyColors.goldLight)
             }
@@ -197,7 +198,7 @@ struct LobbyDndUnlockSheet: View {
                     if busy {
                         ProgressView().tint(.white).scaleEffect(0.7)
                     }
-                    Text(pending != nil ? "已有一笔在途订单" : "支付 300 兔币 · \(level.label)")
+                    Text(pending != nil ? "已有一笔在途订单" : "支付 \(table.dndUnlockPrice ?? 300) 兔币 · \(level.label)")
                         .font(.system(size: 12.5, weight: .bold))
                         .foregroundStyle(.white)
                 }

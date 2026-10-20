@@ -112,7 +112,9 @@ final class StoreLobbyViewModel: ObservableObject {
     func loadTableOps(tableId: Int64, status: String?, isHost: Bool) async {
         let wire = LobbyTableStatus.of(status)
         if isHost && (wire == .sharing || wire == .occupied) {
-            hostApplies = (try? await LobbyAPI.sharePendingByHost(tableId: tableId)) ?? hostApplies
+            // 过期申请（30 分钟窗口超时）源头过滤：不渲染置灰而是直接剔除，横幅计数同步减少
+            hostApplies = ((try? await LobbyAPI.sharePendingByHost(tableId: tableId)) ?? hostApplies)
+                .filter { $0.expired != true }
         } else if isHost && wire == .dnd {
             await refreshHostOrders()
         } else if !isHost && (wire == .sharing || wire == .occupied) {
@@ -152,9 +154,9 @@ extension StoreLobbyViewModel {
         await reloadPlan()
     }
 
-    /// 设置本桌勿扰（有人桌 → 勿扰态；silent=true 为完全静音档）
-    func enableDnd(tableId: Int64, note: String?, silent: Bool) async throws {
-        try await LobbyAPI.hostEnableDnd(tableId: tableId, note: note, silent: silent)
+    /// 设置本桌勿扰（有人桌 → 勿扰态；silent=true 为完全静音档；unlockPrice 为解锁价）
+    func enableDnd(tableId: Int64, note: String?, silent: Bool, unlockPrice: Int64?) async throws {
+        try await LobbyAPI.hostEnableDnd(tableId: tableId, note: note, silent: silent, unlockPrice: unlockPrice)
         if let storeId { await loadTableOps(tableId: tableId, status: "dnd", isHost: true) }
         await reloadPlan()
     }

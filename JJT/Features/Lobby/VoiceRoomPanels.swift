@@ -339,7 +339,12 @@ struct VoiceRoomCreateSheet: View {
 
     @State private var title = ""
     @State private var selectedTags: Set<String> = []
-    @State private var mode = "public"
+    // 访问控制二选一：密码房（4 位数字）XOR 门票房（兔币/萝贝 + 门票价，进房支付不退）。
+    // 原公开/审批制选择下线；审批/邀请能力服务端保留，仅创建入口不再提供
+    @State private var accessKind = "password" // password | threshold
+    @State private var accessPassword = ""
+    @State private var coinType = "rabbit_coin" // rabbit_coin | radish_coin
+    @State private var coinThreshold = ""
     @State private var busy = false
     @State private var error: String?
     private let tagPool = ["微醺", "桌游", "黑胶", "密语", "拼酒"]
@@ -396,18 +401,56 @@ struct VoiceRoomCreateSheet: View {
             }
             .padding(.top, 6)
 
-            // 进房方式：邀请制暂不放开（服务端 mode=invite 能力保留，仅创建入口隐藏）
-            Text("进房方式")
+            // 进房方式：密码 / 兔币·萝贝门票，必须二选一（服务端同校验）
+            Text("进房方式（二选一）")
                 .font(.system(size: 9.5))
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.top, 12)
             HStack(spacing: 6) {
-                ForEach([("public", "公开"), ("approval", "审批制")], id: \.0) { wire, label in
-                    SelectChip(label: label, selected: mode == wire) { mode = wire }
+                ForEach([("password", "密码房"), ("threshold", "门票房")], id: \.0) { wire, label in
+                    SelectChip(label: label, selected: accessKind == wire) { accessKind = wire }
                         .frame(maxWidth: .infinity)
                 }
             }
             .padding(.top, 6)
+            if accessKind == "password" {
+                TextField("设置 4 位数字密码，进房需输入", text: $accessPassword)
+                    .font(.system(size: 12))
+                    .keyboardType(.numberPad)
+                    .foregroundStyle(LobbyColors.ivory)
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.05))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.gold.opacity(0.3), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 8)
+                    .onChange(of: accessPassword) { _, v in
+                        let digits = String(v.filter(\.isNumber).prefix(4))
+                        if digits != v { accessPassword = digits }
+                    }
+            } else {
+                HStack(spacing: 6) {
+                    ForEach([("rabbit_coin", "兔币"), ("radish_coin", "萝贝")], id: \.0) { wire, label in
+                        SelectChip(label: label, selected: coinType == wire) { coinType = wire }
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.top, 8)
+                TextField("进房门票价（进房时支付，不退）", text: $coinThreshold)
+                    .font(.system(size: 12))
+                    .keyboardType(.numberPad)
+                    .foregroundStyle(LobbyColors.ivory)
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.05))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Noir.gold.opacity(0.3), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 8)
+                    .onChange(of: coinThreshold) { _, v in
+                        let digits = String(v.filter(\.isNumber).prefix(7))
+                        if digits != v { coinThreshold = digits }
+                    }
+            }
 
             // 提交
             Button(action: create) {
@@ -463,6 +506,22 @@ struct VoiceRoomCreateSheet: View {
 
     private func create() {
         guard !busy, !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        // 二选一客户端预校验（服务端同规则兜底）；上限与服务端 @Max 同口径，别让服务端 400 回打
+        let threshold = Int(coinThreshold)
+        if accessKind == "password" && accessPassword.count != 4 {
+            error = "请设置 4 位数字密码"
+            return
+        }
+        if accessKind == "threshold" {
+            if let threshold, threshold > Int(lobbyAmountMax) {
+                error = "门票数额过大（上限 100 万）"
+                return
+            }
+            if threshold == nil || threshold! < 1 {
+                error = "请填写门票数额（至少 1）"
+                return
+            }
+        }
         busy = true
         error = nil
         Task {
@@ -472,7 +531,10 @@ struct VoiceRoomCreateSheet: View {
                     storeId: storeId,
                     title: title.trimmingCharacters(in: .whitespaces),
                     tags: tags.isEmpty ? nil : tags,
-                    mode: mode)
+                    mode: "public",
+                    accessPassword: accessKind == "password" ? accessPassword : nil,
+                    coinType: accessKind == "threshold" ? coinType : nil,
+                    coinThreshold: accessKind == "threshold" ? threshold : nil)
                 onCreated(id)
             } catch {
                 self.error = error.localizedDescription
