@@ -129,7 +129,6 @@ struct LobbyDndUnlockSheet: View {
         .task(id: pending?.id) {
             // 在途单轮询：桌主响应后服务端不会推（无 C2C），面板开着就 5s 拉一次我的订单
             guard pending != nil else { return }
-            lastPendingStatus = "pending"
             while !Task.isCancelled, pending != nil {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled, pending != nil else { break }
