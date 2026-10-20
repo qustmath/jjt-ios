@@ -52,10 +52,13 @@ struct LobbyPlazaCard: View {
 
     private var content: some View {
         ZStack(alignment: .bottomLeading) {
-            // 底图：店内实景暗调
+            // 底图：店内实景暗调。必须钉死 190 高再裁剪：原图 1024×1445 竖图，
+            // scaledToFill 会把内容层撑到 ~494pt，外层 190 窗口只露出竖直中段（角标/标题全被裁掉）
             Image("lobby-plaza-bg")
                 .resizable()
                 .scaledToFill()
+                .frame(height: 190)
+                .clipped()
             // 压暗渐变（对齐原型 200deg：上浅下重）
             LinearGradient(stops: [
                 .init(color: Color(red: 0x0A/255, green: 0x06/255, blue: 0x08/255).opacity(0.35), location: 0),

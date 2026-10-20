@@ -374,6 +374,12 @@ struct StoreLobbyView: View {
                 table: t,
                 hostNickname: drawerSpectate(t)?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
                 myOrders: vm.myOrders,
+                onRefreshOrders: { Task { await vm.refreshMyOrders() } },
+                onResolved: { msg in
+                    unlockFor = nil
+                    showToast(msg)
+                    Task { await vm.refreshMyOrders() }
+                },
                 onDismiss: { unlockFor = nil },
                 onGiftTier: {
                     unlockFor = nil
@@ -839,13 +845,21 @@ struct StoreLobbyView: View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            ZStack {
+            // 顶左对齐：桌位/表演区用顶左锚点 offset（对齐安卓 offset(x-22,y-12) 口径，
+            // .position 的中心锚会随桌号文字长度左右漂移）
+            ZStack(alignment: .topLeading) {
                 // 底图
                 if let image = plan?.image, !image.isEmpty, let url = webImageURL(image) {
                     WebImage(url: url) { Color.clear }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.3)
+                // 图面压暗（对齐安卓四段垂直渐变）
+                LinearGradient(stops: [
+                    .init(color: Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.60), location: 0),
+                    .init(color: Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.20), location: 0.22),
+                    .init(color: Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.16), location: 0.62),
+                    .init(color: Color(red: 0x08/255, green: 0x08/255, blue: 0x0B/255).opacity(0.80), location: 1),
+                ], startPoint: .top, endPoint: .bottom)
 
                 // 桌位标记（按百分比坐标）
                 ForEach(plan?.tables ?? []) { t in
@@ -856,7 +870,7 @@ struct StoreLobbyView: View {
                         highlighted: highlight == t.id,
                         mine: seatedHere && seatSession.seat?.tableId == t.id
                     )
-                    .position(x: w * x, y: h * y)
+                    .offset(x: w * x - 22, y: h * y - 12)
                     .onTapGesture { openDrawer(t) }
                 }
 
@@ -896,7 +910,7 @@ struct StoreLobbyView: View {
                         .overlay(Capsule().stroke(LobbyColors.goldLight.opacity(0.7), lineWidth: 1))
                         .clipShape(Capsule())
                     }
-                    .position(x: w * sx, y: h * sy)
+                    .offset(x: w * sx - 70, y: h * sy - 16)
                     .onTapGesture {
                         Task { await vm.refreshRooms(storeId: storeId) }
                         roomListOpen = true
@@ -1574,6 +1588,7 @@ struct LobbyRankSheet: View {
                     ProgressView().tint(LobbyColors.gold)
                         .frame(maxWidth: .infinity)
                         .frame(height: 180)
+                        .padding(.top, 12)
                 } else if let err = error, items.isEmpty {
                     LobbyLoadFailed(message: err, onRetry: { reloadKey += 1 })
                         .frame(height: 180)
@@ -1586,8 +1601,10 @@ struct LobbyRankSheet: View {
                         .frame(height: 140)
                 } else {
                     // 榜单行（v75：奖牌 + 头像框 + 昵称/等级 + 热力；第一行鎏金底）
+                    // tab 与首行间距 12（对齐安卓 Spacer(12)）
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         rankRow(index: index, item: item)
+                            .padding(.top, index == 0 ? 12 : 0)
                             .padding(.bottom, 6)
                             .task(id: item.userId) {
                                 if let uid = item.userId, uid > 0 { MemberCardStore.shared.fetchMissing([uid]) }

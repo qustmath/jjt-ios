@@ -22,20 +22,12 @@ final class PayPasswordGuard: ObservableObject {
 
     private var action: ((String) async throws -> Void)?
 
-    /// 资金操作入口：先查状态——未设置 → 「去设置」引导；已设置 → 弹密码框。
-    /// 状态查询失败兜底弹输入框，由后端校验把守。
+    /// 资金操作入口：立即弹密码框（弱网下预检状态那跳网络会让弹窗迟到十来秒）；
+    /// 未设置由 submit 撞服务端 NOT_SET 码转「去设置」引导，校验本就以后端为准。
     func require(_ action: @escaping (String) async throws -> Void) {
         self.action = action
         errorText = nil
-        Task {
-            let notSet: Bool
-            do {
-                notSet = try await PayPasswordAPI.status().hasPayPassword == false
-            } catch {
-                notSet = false
-            }
-            if notSet { showNotSetGuide = true } else { visible = true }
-        }
+        visible = true
     }
 
     func submit(_ pwd: String) {

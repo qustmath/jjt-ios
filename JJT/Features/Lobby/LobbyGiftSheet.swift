@@ -64,6 +64,8 @@ struct LobbyGiftSheet: View {
     var onSent: (GiftItem) -> Void = { _ in }
 
     @StateObject private var payGuard = PayPasswordGuard()
+    /// 礼物列表进程内缓存：礼物配置极少变，先上缓存秒开、后台再刷新（弱网不至于整面板空等）
+    private static var giftCache: [GiftItem] = []
     @State private var gifts: [GiftItem] = []
     @State private var balance: Int64?
     @State private var tier: LobbyGiftTier = .table
@@ -354,8 +356,16 @@ struct LobbyGiftSheet: View {
 
     private func load() {
         receiverRows = receivers
+        if !Self.giftCache.isEmpty {
+            gifts = Self.giftCache
+            if sel == nil || !list.contains(where: { $0.id == sel?.id }) {
+                sel = list.first
+            }
+        }
         Task {
-            gifts = (try? await GiftAPI.giftList()) ?? []
+            let fresh = (try? await GiftAPI.giftList()) ?? []
+            if !fresh.isEmpty { Self.giftCache = fresh }
+            gifts = fresh.isEmpty ? gifts : fresh
             // 默认落第一个有货的档：本店/全门店档未配置礼物时不至于开面板即空页
             tier = LobbyGiftTier.allCases.first { t in gifts.contains { t.matches($0.broadcastScope) } } ?? .table
             // 收礼人现拉一次（服务端按「正入座该桌」校验，抽屉里的快照可能已过期）；

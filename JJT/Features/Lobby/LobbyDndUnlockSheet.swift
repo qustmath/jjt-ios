@@ -20,6 +20,11 @@ struct LobbyDndUnlockSheet: View {
     let onGiftTier: () -> Void
     /// 订单支付成功回调
     let onOrderPlaced: () -> Void
+    /// 在途单刷新（面板打开期间 5s 轮询用）
+    var onRefreshOrders: () -> Void = {}
+    /// 在途单出结果（桌主接受/拒绝/超时退款）：文案给调用方 toast 并收面板
+    var onResolved: (String) -> Void = { _ in }
+
 
     @StateObject private var payGuard = PayPasswordGuard()
     @State private var level: LobbyDndUnlockLevel = LobbyDndUnlockSheet.loadLastLevel()
@@ -121,6 +126,28 @@ struct LobbyDndUnlockSheet: View {
             .padding(.bottom, 28)
         }
         .payPasswordGuard(payGuard) { showPaySettings = true }
+        .task(id: pending?.id) {
+            // 在途单轮询：桌主响应后服务端不会推（无 C2C），面板开着就 5s 拉一次我的订单
+            guard pending != nil else { return }
+            lastPendingStatus = "pending"
+            while !Task.isCancelled, pending != nil {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled, pending != nil else { break }
+                onRefreshOrders()
+            }
+        }
+        .onChange(of: pending?.status ?? "none") { oldValue, newValue in
+            guard oldValue == "pending" else { return }
+            let text: String?
+            switch newValue {
+            case "accepted": text = "桌主已接受解锁 · 通行证已发放（同店在座自动入桌，未入座到店扫该桌入座码）"
+            case "rejected": text = "桌主已拒绝 · 款项已原路退回"
+            case "timeout_refund": text = "桌主未响应 · 款项已自动原路退回"
+            case "refunded": text = "桌主已取消勿扰 · 款项已原路退回"
+            default: text = nil
+            }
+            if let text { onResolved(text) }
+        }
         .fullScreenCover(isPresented: $showPaySettings) {
             PayPasswordSettingsView()
         }
