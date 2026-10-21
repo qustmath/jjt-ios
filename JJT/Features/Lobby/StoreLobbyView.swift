@@ -787,12 +787,10 @@ struct StoreLobbyView: View {
             // .position 的中心锚会随桌号文字长度左右漂移）
             ZStack(alignment: .topLeading) {
                 // 底图：拉伸铺满（对齐安卓 ContentScale.FillBounds）——桌号按容器百分比定位，
-                // 图若等比留边，图上桌子和百分比桌号就整体错位（两端向中间漂移）
+                // 图若等比留边/裁边，图上桌子和百分比桌号就整体错位（两端向中间漂移）
                 if let image = plan?.image, !image.isEmpty, let url = webImageURL(image) {
-                    WebImage(url: url) { Color.clear }
-                        .resizable()
+                    WebImage(url: url, stretch: true) { Color.clear }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
                 }
                 // 图面压暗（对齐安卓四段垂直渐变）
                 LinearGradient(stops: [

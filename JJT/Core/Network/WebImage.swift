@@ -38,14 +38,18 @@ enum WebImageCache {
 struct WebImage<Placeholder: View>: View {
     let url: URL?
     var contentMode: ContentMode = .fill
+    /// 拉伸铺满（对齐安卓 ContentScale.FillBounds）：平面图这类按容器百分比标定的图必须整图
+    /// 拉伸，cover 等比裁剪会让图上元素与百分比标注错位
+    var stretch = false
     @ViewBuilder var placeholder: () -> Placeholder
 
     @State private var image: UIImage?
 
-    init(url: URL?, contentMode: ContentMode = .fill,
+    init(url: URL?, contentMode: ContentMode = .fill, stretch: Bool = false,
          @ViewBuilder placeholder: @escaping () -> Placeholder) {
         self.url = url
         self.contentMode = contentMode
+        self.stretch = stretch
         self.placeholder = placeholder
     }
 
@@ -55,9 +59,15 @@ struct WebImage<Placeholder: View>: View {
         Color.clear
             .overlay {
                 if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
+                    if stretch {
+                        // resizable 后不加比例修饰符：直接拉伸到容器（FillBounds）
+                        Image(uiImage: image)
+                            .resizable()
+                    } else {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    }
                 } else {
                     placeholder()
                 }
