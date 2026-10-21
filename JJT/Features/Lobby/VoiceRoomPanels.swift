@@ -598,8 +598,9 @@ struct VoiceRoomListSheet: View {
                         // 我正在里面（或「留在房里」未退房）的房间标「当前」
                         LobbyRoomCard(
                             room: room,
-                            isCurrent: room.id == VoiceRoomSession.shared.roomId
-                                || room.id == VoiceRoomSession.shared.presence?.roomId
+                            // 只认 presence 单一真值（票 27 口径；roomId 退房后不清，
+                            // 用它会给还开着的旧房错标「当前」）
+                            isCurrent: room.id == VoiceRoomSession.shared.presence?.roomId
                         ) { onEnter(room) }
                         .padding(.top, 10)
                     }

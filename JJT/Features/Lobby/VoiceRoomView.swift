@@ -736,12 +736,9 @@ struct VoiceRoomView: View {
             } else {
                 showToast("虚位 · 可申请上麦")
             }
-        } else if uid == myUserId {
-            session.runAction {
-                try await session.leaveMic()
-                showToast("已下麦")
-            }
         } else {
+            // 点自己 = 看自己的会员信息卡（对齐安卓 isSelf 口径）；下麦走底栏「下麦」钮，
+            // 头像误触不该把人拉下麦
             selfCard = MicMember(userId: uid!, nickname: mic?.nickname, avatar: mic?.avatar, seatNo: seatNo)
         }
     }

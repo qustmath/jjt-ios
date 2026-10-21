@@ -1138,12 +1138,15 @@ struct StoreLobbyView: View {
             rooms: vm.rooms,
             onRefresh: { Task { await vm.refreshRooms(storeId: storeId) } },
             onEnter: { room in
-                // 票 29 一人一房：无论是否房主，加新方前必须先明确退出当前房
-                if voiceSession.presence != nil {
-                    pendingJoinRoom = VoiceRoomNav(roomId: room.id)
-                } else {
-                    sheet = nil
-                    voiceRoomNav = VoiceRoomNav(roomId: room.id)
+                sheet = nil
+                // 票 29 一人一房：已在房先换房确认；但 presence 可能是死房残留
+                // （留在房里退页后房被清扫，无人清本地）——先向服务端校验，死房直接放行不弹窗
+                Task {
+                    if await VoiceRoomSession.shared.validatePresence() {
+                        pendingJoinRoom = VoiceRoomNav(roomId: room.id)
+                    } else {
+                        voiceRoomNav = VoiceRoomNav(roomId: room.id)
+                    }
                 }
             },
             onCreate: {

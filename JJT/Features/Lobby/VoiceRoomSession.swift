@@ -288,6 +288,22 @@ final class VoiceRoomSession: ObservableObject {
         if presence?.roomId == rid { presence = nil }
     }
 
+    /// 票 29 死房残留校验（对齐安卓 validatePresence）：换房弹窗前调——「留在房里」退页后
+    /// 无轮询也无 RTC 事件，房被幽灵清扫关掉时本地 presence 无人清。在房 → 顺路刷新
+    /// detail/presence 返回 true；详情拉不到（含 055）或 inRoom == false → 清残留返回 false
+    /// （真仍在房时服务端 064 兜底，不会产生双房）
+    func validatePresence() async -> Bool {
+        guard let target = presence?.roomId else { return false }
+        guard let d = try? await VoiceRoomAPI.roomDetail(id: target),
+              d.id == target, d.inRoom == true else {
+            clearStalePresence(target)
+            return false
+        }
+        detail = d
+        presence = VoiceRoomPresence(roomId: d.id, storeId: d.storeId ?? 0, title: d.title)
+        return true
+    }
+
     /// 页面消费完提示后清空（避免重进页面重复弹）
     /// 连接失败归位：同一原因只提示一次（在房轮询会反复补连，不去重就每 5s 弹一次）
     private func failConn(_ text: String) {
