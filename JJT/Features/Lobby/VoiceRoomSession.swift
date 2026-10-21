@@ -66,6 +66,10 @@ final class VoiceRoomSession: ObservableObject {
     private(set) var roomId: Int64 = -1
 
     private var room: Room?
+    /// LiveKit 事件桥强引用：SDK 的 MulticastDelegate 用 NSHashTable.weakObjects 弱持有
+    /// delegate——临时对象没人强持会立刻释放，所有回调静默（状态冻「未连语音」/在房只有自己/
+    /// 5s 自愈反复重连踢掉自己的总根因）
+    private var liveKitDelegate: VoiceRoomLiveKitDelegate?
     private var observer: NSObjectProtocol?
     private var refCount = 0
     /// 主动断开标志：区分被动踢线（解散）与自己退房
@@ -319,10 +323,12 @@ final class VoiceRoomSession: ObservableObject {
             failConn("语音连接失败：服务未返回连接地址")
             return
         }
-        conn = .connecting
         disconnectLiveKit() // 重连前先清旧连接（同 identity 重连会踢前一个连接）
         leavingIntentionally = false // 新连接开始：后续被动断开按解散处理
-        let r = Room(delegate: VoiceRoomLiveKitDelegate(owner: self))
+        conn = .connecting // disconnectLiveKit 会把 conn 归 idle，须在其后再置连接中
+        let d = VoiceRoomLiveKitDelegate(owner: self)
+        liveKitDelegate = d // 会话强持有（SDK 只弱引用 delegate，见属性注释）
+        let r = Room(delegate: d)
         room = r
         // 连接是异步的：状态由 delegate 的 didUpdateConnectionState 回正，
         // 这里不乐观置 connected（否则连接窗口内小标失真）
@@ -346,6 +352,7 @@ final class VoiceRoomSession: ObservableObject {
         reconnectTask = nil
         let r = room
         room = nil
+        liveKitDelegate = nil
         if let r {
             Task {
                 await r.disconnect()
@@ -423,7 +430,10 @@ final class VoiceRoomSession: ObservableObject {
 
     // MARK: - LiveKit 事件（delegate 转发到主 actor）
 
-    func handleConnState(_ state: ConnectionState) {
+    func handleConnState(_ state: ConnectionState, from r: Room? = nil) {
+        // 旧连接的迟到事件（disconnect 是异步 Task，新连接开始后才回 .disconnected）：
+        // 新连接已接管，忽略——否则会把新状态打回 idle、误报「房间已解散」
+        if let r, r !== room { return }
         switch state {
         case .connected:
             conn = .connected
@@ -447,7 +457,8 @@ final class VoiceRoomSession: ObservableObject {
         }
     }
 
-    func handleSpeaking(_ ids: Set<Int64>) {
+    func handleSpeaking(_ ids: Set<Int64>, from r: Room? = nil) {
+        if let r, r !== room { return } // 旧连接的迟到音波事件
         speaking = ids
     }
 
@@ -536,7 +547,7 @@ private final class VoiceRoomLiveKitDelegate: RoomDelegate {
     }
 
     func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldConnectionState: ConnectionState) {
-        Task { @MainActor in owner.handleConnState(connectionState) }
+        Task { @MainActor in owner.handleConnState(connectionState, from: room) }
     }
 
     func room(_ room: Room, participantDidConnect participant: RemoteParticipant) {
@@ -552,7 +563,7 @@ private final class VoiceRoomLiveKitDelegate: RoomDelegate {
             guard let sv = p.identity?.stringValue else { return nil }
             return Int64(sv)
         })
-        Task { @MainActor in owner.handleSpeaking(ids) }
+        Task { @MainActor in owner.handleSpeaking(ids, from: room) }
     }
 
     func room(_ room: Room, didFailToConnectWithError error: LiveKitError?) {

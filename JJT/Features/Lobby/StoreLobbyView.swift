@@ -214,6 +214,7 @@ struct StoreLobbyView: View {
                 .presentationBackground(LobbyColors.panel)
             case .video:
                 LobbyVideoSheet(videos: vm.videos)
+                    .task { await vm.refreshVideos(storeId: storeId) } // 开面板即拉最新（店长刚发的视频实时可见）
                     .presentationDetents([.medium, .large])
                     .presentationBackground(LobbyColors.panel)
             case .roomList:

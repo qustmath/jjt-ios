@@ -29,6 +29,9 @@ struct LobbyPlazaCard: View {
                         .frame(width: ext, height: ext)
                         .rotationEffect(.degrees(phase * 360))
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                        // 环带遮罩：沿 26 圆角路径描 1.5pt 白带当蒙版——四条边与四个圆角
+                        // 都精确落色（此前靠内容层内缩露边，圆角弧段被内容层盖住看不见）
+                        .mask(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white, lineWidth: 1.5))
                 }
             }
 

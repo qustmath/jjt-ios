@@ -80,6 +80,12 @@ final class StoreLobbyViewModel: ObservableObject {
         try? await LobbyAPI.spectateTable(tableId: tableId)
     }
 
+    /// 店长视频 7 天窗口重拉（打开视频面板时刷新：刚发布的视频不必重进大厅才看到）
+    func refreshVideos(storeId: Int64) async {
+        let since = Int64(Date().timeIntervalSince1970 * 1000) - Self.videoWindowMs
+        videos = ((try? await LobbyAPI.listVideos(storeId: storeId)) ?? []).filter { ($0.publishTime ?? 0) >= since }
+    }
+
     /// 拼桌缺口滚动条轮询（轻量接口客户端轮询）
     func refreshGaps(storeId: Int64) async {
         gaps = (try? await LobbyAPI.listSharingGaps(storeId: storeId)) ?? gaps
