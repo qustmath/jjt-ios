@@ -14,22 +14,27 @@ struct LobbyPlazaCard: View {
             // 变更后会冻在 0°——渐变五段色恰有两段深红，冻住时上下边"看起来没边框"）。
             // sweep 圆心必须对准卡片中心，画幅放大 2× 对角线防旋转露角（对齐安卓 drawBehind）
             TimelineView(.animation) { timeline in
-                Canvas { context, size in
+                Canvas { (ctx: inout GraphicsContext, size: CGSize) in
                     let phase = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 3.6) / 3.6
                     let c = CGPoint(x: size.width / 2, y: size.height / 2)
                     let ext = max(size.width, size.height) * 2
-                    var ctx = context
                     ctx.translateBy(x: c.x, y: c.y)
                     ctx.rotate(by: .degrees(phase * 360))
                     let rect = CGRect(x: -ext, y: -ext, width: ext * 2, height: ext * 2)
-                    ctx.fill(Path(rect), with: .angularGradient(Gradient(colors: [
-                        Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255),
+                    let gold = Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255)
+                    let gradient = Gradient(colors: [
+                        gold,
                         Color(red: 0x6E/255, green: 0x0F/255, blue: 0x22/255),
                         Color(red: 0xE8/255, green: 0xCF/255, blue: 0x9A/255),
                         Color(red: 0x7A/255, green: 0x11/255, blue: 0x28/255),
-                        Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255),
-                    ]), center: .zero, startAngle: .zero, endAngle: .degrees(360)))
+                        gold,
+                    ])
+                    ctx.fill(Path(rect), with: .angularGradient(
+                        gradient,
+                        center: CGPoint(x: 0, y: 0),
+                        startAngle: .degrees(0),
+                        endAngle: .degrees(360)))
                 }
             }
 
