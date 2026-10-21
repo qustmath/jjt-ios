@@ -74,6 +74,8 @@ final class VoiceRoomSession: ObservableObject {
     private var lastSeatNo = 0
     /// 重连互斥：抱麦/闭麦通知连发时两次重连会在空中互踩，在跑就跳过本次
     private var reconnectTask: Task<Void, Never>?
+    /// 上一次连接失败提示（自愈轮询每 5s 重试，同一原因不去重会连环弹 toast）
+    private var lastConnFailureNotice: String?
 
     private init() {}
 
@@ -283,6 +285,15 @@ final class VoiceRoomSession: ObservableObject {
     }
 
     /// 页面消费完提示后清空（避免重进页面重复弹）
+    /// 连接失败归位：同一原因只提示一次（在房轮询会反复补连，不去重就每 5s 弹一次）
+    private func failConn(_ text: String) {
+        conn = .failed
+        if text != lastConnFailureNotice {
+            notice = text
+            lastConnFailureNotice = text
+        }
+    }
+
     func clearNotice() { notice = nil }
 
     /// 页面消费完解散态后清空
@@ -301,13 +312,11 @@ final class VoiceRoomSession: ObservableObject {
         do {
             t = try await VoiceRoomAPI.token(roomId: id)
         } catch {
-            conn = .failed
-            notice = "语音连接失败：\((error as? APIError)?.errorDescription ?? "token 获取异常")"
+            failConn("语音连接失败：\((error as? APIError)?.errorDescription ?? "token 获取异常")")
             return
         }
         guard let url = t.url, !url.isEmpty, let jwt = t.token, !jwt.isEmpty else {
-            conn = .failed
-            notice = "语音连接失败：服务未返回连接地址"
+            failConn("语音连接失败：服务未返回连接地址")
             return
         }
         conn = .connecting
@@ -325,8 +334,7 @@ final class VoiceRoomSession: ObservableObject {
                 // 取消型失败 = 更新的连接取代了这一次（重连互踩），属预期——静默归位
                 conn = .idle
             } else {
-                conn = .failed
-                notice = liveKitErrorText(String(describing: error))
+                failConn(liveKitErrorText(String(describing: error)))
             }
         }
     }
@@ -419,6 +427,7 @@ final class VoiceRoomSession: ObservableObject {
         switch state {
         case .connected:
             conn = .connected
+            lastConnFailureNotice = nil // 连上了：失败提示去重表复位，下次失败可再次提示
             syncPeers()
             Task { await syncLocalPublish() }
         case .reconnecting:
@@ -446,8 +455,7 @@ final class VoiceRoomSession: ObservableObject {
         if message.lowercased().contains("cancel") {
             conn = .idle
         } else {
-            conn = .failed
-            notice = liveKitErrorText(message)
+            failConn(liveKitErrorText(message))
         }
     }
 

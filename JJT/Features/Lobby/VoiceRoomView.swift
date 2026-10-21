@@ -134,8 +134,9 @@ struct VoiceRoomView: View {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled else { break }
                 try? await session.refresh()
-                // 自愈：进了房但语音从未连上（如首次 token 拉取失败），补连一次
-                if session.conn == .idle {
+                // 自愈：进了房但语音没连上（首次失败/首连没跑），空闲态与失败态都补连；
+                // 失败提示已按原因去重，重试不会连环弹 toast，右上角小标也能点手动重连
+                if session.conn == .idle || session.conn == .failed {
                     await session.connectLiveKit()
                 }
             }

@@ -7,25 +7,30 @@ struct LobbyPlazaCard: View {
 
     /// 今夜开店数/在玩人数（在玩 = 入座 + 围观；取不到不显示角标）
     @State private var stats: (openStores: Int, seatedMembers: Int)?
-    @State private var flowAngle: Double = 0
 
     var body: some View {
         ZStack {
-            // 旋转彩色流光层：sweep 渐变必须以卡片中心为圆心（圆心偏了会绕卡片外转大圈、
-            // 两侧断边），画幅放大 2× 对角线防旋转露角
-            GeometryReader { geo in
-                let ext = max(geo.size.width, geo.size.height) * 2
-                Rectangle()
-                    .fill(AngularGradient(colors: [
+            // 旋转彩色流光层：TimelineView+Canvas 逐帧重画（repeatForever 动画在首帧 state
+            // 变更后会冻在 0°——渐变五段色恰有两段深红，冻住时上下边"看起来没边框"）。
+            // sweep 圆心必须对准卡片中心，画幅放大 2× 对角线防旋转露角（对齐安卓 drawBehind）
+            TimelineView(.animation) { timeline in
+                Canvas { context, size in
+                    let phase = timeline.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: 3.6) / 3.6
+                    let c = CGPoint(x: size.width / 2, y: size.height / 2)
+                    let ext = max(size.width, size.height) * 2
+                    var ctx = context
+                    ctx.translateBy(x: c.x, y: c.y)
+                    ctx.rotate(by: .degrees(phase * 360))
+                    let rect = CGRect(x: -ext, y: -ext, width: ext * 2, height: ext * 2)
+                    ctx.fill(Path(rect), with: .angularGradient(Gradient(colors: [
                         Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255),
                         Color(red: 0x6E/255, green: 0x0F/255, blue: 0x22/255),
                         Color(red: 0xE8/255, green: 0xCF/255, blue: 0x9A/255),
                         Color(red: 0x7A/255, green: 0x11/255, blue: 0x28/255),
                         Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255),
-                    ], center: .center))
-                    .frame(width: ext, height: ext)
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                    .rotationEffect(.degrees(flowAngle))
+                    ]), center: .zero, startAngle: .zero, endAngle: .degrees(360)))
+                }
             }
 
             // 内容层：内缩 1.5pt 露出边框环
@@ -37,11 +42,6 @@ struct LobbyPlazaCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 26))
         .contentShape(RoundedRectangle(cornerRadius: 26))
         .onTapGesture { onClick() }
-        .onAppear {
-            withAnimation(.linear(duration: 3.6).repeatForever(autoreverses: false)) {
-                flowAngle = 360
-            }
-        }
         .task {
             if let stores = try? await LobbyAPI.listStores(), !stores.isEmpty {
                 let seated = stores.reduce(0) { $0 + ($1.seatedCount ?? 0) + ($1.standingCount ?? 0) }
@@ -52,12 +52,10 @@ struct LobbyPlazaCard: View {
 
     private var content: some View {
         ZStack(alignment: .bottomLeading) {
-            // 底图：店内实景暗调。必须钉死 190 高再裁剪：原图 1024×1445 竖图，
-            // scaledToFill 会把内容层撑到 ~494pt，外层 190 窗口只露出竖直中段（角标/标题全被裁掉）
-            Image("lobby-plaza-bg")
-                .resizable()
-                .scaledToFill()
-                .frame(height: 190)
+            // 底图：店内实景暗调。overlay+clipped 让布局不被竖图撑破（原图 1024×1445，
+            // 直接 scaledToFill 会把内容层撑到 ~494pt、盖住上下边框环）
+            Color.clear
+                .overlay(Image("lobby-plaza-bg").resizable().scaledToFill())
                 .clipped()
             // 压暗渐变（对齐原型 200deg：上浅下重）
             LinearGradient(stops: [

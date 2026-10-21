@@ -18,7 +18,6 @@ struct StoreLobbyView: View {
     @State private var floorIdx = 0
     @State private var showChat = true
     @State private var highlight: Int64 = -1
-    @State private var drawerTable: LobbyTable?
     @State private var spectate: LobbyTableSpectate?
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
@@ -35,14 +34,7 @@ struct StoreLobbyView: View {
     @State private var sending = false
     @State private var showPicker = false
     @State private var photoItem: PhotosPickerItem?
-    // 票 21/23 浮层：勿扰解锁面板、礼物面板（本桌成员 / 勿扰送礼档 / 单人）
-    @State private var unlockFor: LobbyTable?
-    @State private var giftCtx: LobbyGiftContext?
-    // 未入座时的送礼入口：先选桌（收礼人须正入座某桌），再进礼物面板
-    @State private var giftPickOpen = false
-    // 表演区（语音房）：房间列表 / 开房 / 进房
-    @State private var roomListOpen = false
-    @State private var createRoomOpen = false
+    // 表演区（语音房）：进房
     @State private var voiceRoomNav: VoiceRoomNav?
     struct VoiceRoomNav: Identifiable {
         let roomId: Int64
@@ -53,13 +45,44 @@ struct StoreLobbyView: View {
     // 资料卡动作跳转
     @State private var giftNav: NightLobbyView.LobbyNavTarget?
     @State private var chatNav: NightLobbyView.LobbyNavTarget?
-    // 排行榜浮层（v75：独立页改浮层）
-    @State private var rankSheetOpen = false
-    // 店长视频抽屉（v75 2 列网格）
-    @State var videoSheetOpen = false
     // 全屏公屏（v75 chatFocus）：图内点「展开公屏」进入，返回键/「回到座位图」退出；换店重置
     @State private var chatFocus = false
     @State private var chatFocusInput = false
+
+    // 浮层单宿主：同一视图链上多个 .sheet 会排队（第二个要等第一个收起才弹——
+    // 「点送礼 10~20 秒才出面板」的根因）。收敛成一个 item 枚举，切换 case 即换内容：
+    // 抽屉→送礼/勿扰解锁、选桌→送礼、房间列表→开房全部零延迟。
+    @State private var sheet: LobbySheet?
+
+    private enum LobbySheet: Identifiable {
+        case drawer(LobbyTable)      // 桌位抽屉（六态全操作）
+        case unlock(LobbyTable)      // 勿扰付费解锁面板
+        case giftPick                // 未入座送礼先选桌
+        case gift(LobbyGiftContext)  // 礼物面板（本桌成员 / 勿扰送礼档 / 单人）
+        case rank                    // 本店热力榜
+        case video                   // 店长视频
+        case roomList                // 表演区小房间列表
+        case createRoom              // 开小房间
+
+        var id: String {
+            switch self {
+            case .drawer(let t): return "drawer-\(t.id)"
+            case .unlock(let t): return "unlock-\(t.id)"
+            case .giftPick: return "giftPick"
+            case .gift(let c): return "gift-\(c.id)"
+            case .rank: return "rank"
+            case .video: return "video"
+            case .roomList: return "roomList"
+            case .createRoom: return "createRoom"
+            }
+        }
+    }
+
+    /// 抽屉桌面快照（只读视图：平面图刷新回填、围观拉取等沿用旧调用点）
+    private var drawerTable: LobbyTable? {
+        if case .drawer(let t) = sheet { return t }
+        return nil
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -142,13 +165,13 @@ struct StoreLobbyView: View {
         .onChange(of: highlight) { _, newValue in
             // 高亮圈只在抽屉开着时当定位圈：关抽屉 3 秒后自动熄灭，兜住全部关闭路径
             highlightTask?.cancel()
-            guard newValue != -1, drawerTable == nil else { return }
+            guard newValue != -1, sheet == nil else { return }
             highlightTask = Task {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if !Task.isCancelled { highlight = -1 }
             }
         }
-        .onChange(of: drawerTable) { _, newValue in
+        .onChange(of: sheet?.id) { _, newValue in
             highlightTask?.cancel()
             if newValue == nil, highlight != -1 {
                 highlightTask = Task {
@@ -164,43 +187,44 @@ struct StoreLobbyView: View {
             sendPickedImage(item)
         }
         // 点桌抽屉（六态全操作）：用平面图里的最新同 id 桌（动作后 reloadPlan 会回流新桌态）
-        .sheet(item: $drawerTable) { snapshot in
-            let live = vm.plans.flatMap { $0.tables ?? [] }.first { $0.id == snapshot.id } ?? snapshot
-            LobbyTableDrawerView(
-                table: live,
-                spectate: spectate,
-                seat: seatSession.seat,
-                myUserId: myUserId,
-                hostApplies: vm.hostApplies.filter { $0.tableId == live.id },
-                hostOrders: vm.hostOrders.filter { $0.tableId == live.id },
-                myApply: vm.myApply,
-                myOrders: vm.myOrders,
-                onDismiss: { drawerTable = nil; highlight = -1 },
-                onCheckIn: { startCheckIn(live) },
-                onSwitch: { switchTo(live) },
-                onLeave: { leaveConfirmFor = live },
-                onApplyShare: { drawerTable = nil; startShareApply(live) },
-                onUnlock: { unlockFor = live; Task { await vm.refreshMyOrders() } },
-                onGiftToTable: { giftCtx = lobbyGiftContext(live) },
-                onMemberClick: { m in cardUser = m.toCardTarget(tableId: live.id, tableNo: live.tableNo) },
-                onTransfer: { uid in runDrawerAction(toastOK: "已转让桌主") { try await vm.transferHost(tableId: live.id, targetUserId: uid) } },
-                onRemove: { uid in runDrawerAction(toastOK: "已移出该成员 · 对方回到罚站") { try await vm.removeMember(tableId: live.id, targetUserId: uid) } },
-                onInvite: { uid in runDrawerAction(toastOK: "已邀请 · 到店核销后入座") { try await vm.invite(tableId: live.id, inviteeId: uid) } },
-                onShout: { note in runDrawerAction(toastOK: "已喊人拼桌 · 本店滚动条高亮 3 分钟") { try await vm.shout(tableId: live.id, note: note) } },
-                onStopShout: { runDrawerAction(toastOK: "已停止拼桌") { try await vm.stopShout(tableId: live.id) } },
-                onEnableDnd: { note, silent, price in
-                    runDrawerAction(toastOK: silent ? "已设为完全静音 · 不可付费解锁" : "已设为勿扰桌 · 解锁价 \(price ?? 0) 兔币") {
-                        try await vm.enableDnd(tableId: live.id, note: note, silent: silent, unlockPrice: price)
-                    }
-                },
-                onCancelDnd: { runDrawerAction(toastOK: "已取消勿扰") { try await vm.cancelDnd(tableId: live.id) } },
-                onApproveApply: { a in runDrawerAction(toastOK: "已同意 \(a.userNickname ?? "该申请人") 入桌") { try await vm.approveApply(applyId: a.id, tableId: live.id) } },
-                onRejectApply: { a in runDrawerAction(toastOK: "已拒绝 \(a.userNickname ?? "该申请人")") { try await vm.rejectApply(applyId: a.id, tableId: live.id) } },
-                onAcceptOrder: { o in runDrawerAction(toastOK: "已接受解锁 · 收益已分账，对方可在到店后入座") { try await vm.acceptOrder(orderId: o.id) } },
-                onRejectOrder: { o in runDrawerAction(toastOK: "已拒绝并原路退款") { try await vm.rejectOrder(orderId: o.id) } }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationBackground(LobbyColors.panel)
+        .sheet(item: $sheet) { route in
+            switch route {
+            case .drawer(let snapshot):
+                drawerSheetBuilder(snapshot)
+            case .unlock(let t):
+                unlockSheetBuilder(t)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(LobbyColors.panel)
+            case .giftPick:
+                giftTargetSheetBuilder
+                    .presentationDetents([.medium])
+                    .presentationBackground(LobbyColors.panel)
+            case .gift(let ctx):
+                giftSheetBuilder(ctx)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(LobbyColors.panel)
+            case .rank:
+                LobbyRankSheet(storeId: storeId) { item in
+                    sheet = nil
+                    cardUser = LobbyCardTarget(userId: item.userId ?? 0,
+                                               nickname: item.nickname ?? "本店用户",
+                                               avatar: item.avatar)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationBackground(LobbyColors.panel)
+            case .video:
+                LobbyVideoSheet(videos: vm.videos)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(LobbyColors.panel)
+            case .roomList:
+                roomListSheetBuilder
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(LobbyColors.panel)
+            case .createRoom:
+                createRoomSheetBuilder
+                    .presentationDetents([.medium])
+                    .presentationBackground(LobbyColors.panel)
+            }
         }
         // 离桌确认：离桌后回罚站、需重新扫平板码才能再入座，故给一次确认
         .alert(
@@ -209,7 +233,7 @@ struct StoreLobbyView: View {
         ) {
             Button("离桌", role: .destructive) {
                 leaveConfirmFor = nil
-                drawerTable = nil
+                sheet = nil
                 Task {
                     do {
                         try await LobbySeatSession.shared.leave()
@@ -232,53 +256,6 @@ struct StoreLobbyView: View {
                 scanForTableId = nil
                 checkIn(token: token, tableId: target.tableId)
             })
-        }
-        // 勿扰付费解锁面板（三档并列）
-        .sheet(item: $unlockFor) { t in
-            unlockSheetBuilder(t)
-                .presentationDetents([.medium, .large])
-                .presentationBackground(LobbyColors.panel)
-        }
-        // 送桌前先选桌（未入座路径）
-        .sheet(isPresented: $giftPickOpen) {
-            giftTargetSheetBuilder
-                .presentationDetents([.medium])
-                .presentationBackground(LobbyColors.panel)
-        }
-        // 礼物面板（三级广播）
-        .sheet(item: $giftCtx) { ctx in
-            giftSheetBuilder(ctx)
-                .presentationDetents([.medium, .large])
-                .presentationBackground(LobbyColors.panel)
-        }
-        // 排行榜浮层（v75：独立页改浮层）
-        .sheet(isPresented: $rankSheetOpen) {
-            LobbyRankSheet(storeId: storeId) { item in
-                rankSheetOpen = false
-                cardUser = LobbyCardTarget(userId: item.userId ?? 0,
-                                           nickname: item.nickname ?? "本店用户",
-                                           avatar: item.avatar)
-            }
-            .presentationDetents([.medium, .large])
-            .presentationBackground(LobbyColors.panel)
-        }
-        // 店长视频抽屉（v75 2 列网格；点击全屏播放）
-        .sheet(isPresented: $videoSheetOpen) {
-            LobbyVideoSheet(videos: vm.videos)
-                .presentationDetents([.medium, .large])
-                .presentationBackground(LobbyColors.panel)
-        }
-        // 表演区房间列表（20s 轮询在 sheet 内）
-        .sheet(isPresented: $roomListOpen) {
-            roomListSheetBuilder
-                .presentationDetents([.medium, .large])
-                .presentationBackground(LobbyColors.panel)
-        }
-        // 开小房间（门槛全在服务端；建成功直接进房）
-        .sheet(isPresented: $createRoomOpen) {
-            createRoomSheetBuilder
-                .presentationDetents([.medium])
-                .presentationBackground(LobbyColors.panel)
         }
         // 语音房（LiveKit + IM 群公屏 + 麦位管理）
         .fullScreenCover(item: $voiceRoomNav) { nav in
@@ -393,7 +370,7 @@ struct StoreLobbyView: View {
     private func refreshDrawerTable() {
         guard let current = drawerTable else { return }
         guard let fresh = vm.plans.flatMap({ $0.tables ?? [] }).first(where: { $0.id == current.id }) else { return }
-        drawerTable = fresh
+        sheet = .drawer(fresh)
         Task {
             if let result = await vm.spectate(tableId: fresh.id) {
                 if drawerTable?.id == fresh.id { spectate = result }
@@ -407,7 +384,7 @@ struct StoreLobbyView: View {
 
     /// 入座入口：进扫码页（token + 桌位 + GPS 一起提交；GPS 在 checkIn 内采集）
     private func startCheckIn(_ t: LobbyTable) {
-        drawerTable = nil
+        sheet = nil
         scanForTableId = t.id
     }
 
@@ -424,7 +401,7 @@ struct StoreLobbyView: View {
 
     /// 同店换桌（服务端原子「离旧+入新」，不重复核验门槛）；跨店由服务端拒绝并提示
     private func switchTo(_ t: LobbyTable) {
-        drawerTable = nil
+        sheet = nil
         Task {
             do {
                 try await LobbySeatSession.shared.switchTo(tableId: t.id)
@@ -663,15 +640,15 @@ struct StoreLobbyView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 8) {
                     HudIconButton(icon: "film", label: "店长视频", badge: !vm.videos.isEmpty ? "LIVE" : nil) {
-                        videoSheetOpen = true
+                        sheet = .video
                     }
                     HudIconButton(icon: "trophy.fill", label: "排行榜", live: !vm.heatTop.isEmpty) {
-                        rankSheetOpen = true
+                        sheet = .rank
                     }
                     HudIconButton(icon: "mic.fill", label: "小房间",
                                   live: voiceSession.presence?.storeId == storeId) {
                         Task { await vm.refreshRooms(storeId: storeId) }
-                        roomListOpen = true
+                        sheet = .roomList
                     }
                 }
             }
@@ -761,9 +738,9 @@ struct StoreLobbyView: View {
             onPickImage: { showPicker = true },
             onGift: {
                 if let t = myTable {
-                    giftCtx = lobbyGiftContext(t)
+                    sheet = .gift(lobbyGiftContext(t))
                 } else {
-                    giftPickOpen = true
+                    sheet = .giftPick
                 }
             },
             onVoiceStop: { result in
@@ -809,10 +786,13 @@ struct StoreLobbyView: View {
             // 顶左对齐：桌位/表演区用顶左锚点 offset（对齐安卓 offset(x-22,y-12) 口径，
             // .position 的中心锚会随桌号文字长度左右漂移）
             ZStack(alignment: .topLeading) {
-                // 底图
+                // 底图：拉伸铺满（对齐安卓 ContentScale.FillBounds）——桌号按容器百分比定位，
+                // 图若等比留边，图上桌子和百分比桌号就整体错位（两端向中间漂移）
                 if let image = plan?.image, !image.isEmpty, let url = webImageURL(image) {
                     WebImage(url: url) { Color.clear }
+                        .resizable()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
                 }
                 // 图面压暗（对齐安卓四段垂直渐变）
                 LinearGradient(stops: [
@@ -874,7 +854,7 @@ struct StoreLobbyView: View {
                     .offset(x: w * sx - 70, y: h * sy - 16)
                     .onTapGesture {
                         Task { await vm.refreshRooms(storeId: storeId) }
-                        roomListOpen = true
+                        sheet = .roomList
                     }
                 }
             }
@@ -1017,28 +997,73 @@ struct StoreLobbyView: View {
 
     // MARK: - Sheet 构建器（拆出 modifier 链，编译器对超大表达式会超时）
 
+    private func drawerSheetBuilder(_ snapshot: LobbyTable) -> some View {
+        let live = vm.plans.flatMap { $0.tables ?? [] }.first { $0.id == snapshot.id } ?? snapshot
+        return LobbyTableDrawerView(
+            table: live,
+            spectate: spectate,
+            seat: seatSession.seat,
+            myUserId: myUserId,
+            hostApplies: vm.hostApplies.filter { $0.tableId == live.id },
+            hostOrders: vm.hostOrders.filter { $0.tableId == live.id },
+            myApply: vm.myApply,
+            myOrders: vm.myOrders,
+            onDismiss: { sheet = nil; highlight = -1 },
+            onCheckIn: { startCheckIn(live) },
+            onSwitch: { switchTo(live) },
+            onLeave: { leaveConfirmFor = live },
+            onApplyShare: { sheet = nil; startShareApply(live) },
+            onUnlock: { sheet = .unlock(live); Task { await vm.refreshMyOrders() } },
+            onGiftToTable: { sheet = .gift(lobbyGiftContext(live)) },
+            onMemberClick: { m in cardUser = m.toCardTarget(tableId: live.id, tableNo: live.tableNo) },
+            onTransfer: { uid in runDrawerAction(toastOK: "已转让桌主") { try await vm.transferHost(tableId: live.id, targetUserId: uid) } },
+            onRemove: { uid in runDrawerAction(toastOK: "已移出该成员 · 对方回到罚站") { try await vm.removeMember(tableId: live.id, targetUserId: uid) } },
+            onInvite: { uid in runDrawerAction(toastOK: "已邀请 · 到店核销后入座") { try await vm.invite(tableId: live.id, inviteeId: uid) } },
+            onShout: { note in runDrawerAction(toastOK: "已喊人拼桌 · 本店滚动条高亮 3 分钟") { try await vm.shout(tableId: live.id, note: note) } },
+            onStopShout: { runDrawerAction(toastOK: "已停止拼桌") { try await vm.stopShout(tableId: live.id) } },
+            onEnableDnd: { note, silent, price in
+                runDrawerAction(toastOK: silent ? "已设为完全静音 · 不可付费解锁" : "已设为勿扰桌 · 解锁价 \(price ?? 0) 兔币") {
+                    try await vm.enableDnd(tableId: live.id, note: note, silent: silent, unlockPrice: price)
+                }
+            },
+            onCancelDnd: { runDrawerAction(toastOK: "已取消勿扰") { try await vm.cancelDnd(tableId: live.id) } },
+            onApproveApply: { a in runDrawerAction(toastOK: "已同意 \(a.userNickname ?? "该申请人") 入桌") { try await vm.approveApply(applyId: a.id, tableId: live.id) } },
+            onRejectApply: { a in runDrawerAction(toastOK: "已拒绝 \(a.userNickname ?? "该申请人")") { try await vm.rejectApply(applyId: a.id, tableId: live.id) } },
+            onAcceptOrder: { o in runDrawerAction(toastOK: "已接受解锁 · 收益已分账，对方可在到店后入座") { try await vm.acceptOrder(orderId: o.id) } },
+            onRejectOrder: { o in runDrawerAction(toastOK: "已拒绝并原路退款") { try await vm.rejectOrder(orderId: o.id) } }
+        )
+        // 抽屉是系统 sheet：场景层的资料卡/举报/toast 会被压在抽屉底下，
+        // 抽屉内容里再挂一份浮层（成员点头像、桌主动作的提示都在抽屉上直接可见）
+        .overlay {
+            if let u = cardUser { userCard(u) }
+            if let msg = reportTarget { reportSheet(msg) }
+            if let t = toast { LobbyToastView(text: t) }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationBackground(LobbyColors.panel)
+    }
+
     private func unlockSheetBuilder(_ t: LobbyTable) -> some View {
         LobbyDndUnlockSheet(
             table: t,
             hostNickname: drawerSpectate(t)?.members?.first { $0.host == true || $0.userId == t.hostUserId }?.nickname,
             myOrders: vm.myOrders,
-            onDismiss: { unlockFor = nil },
+            onDismiss: { sheet = nil },
             onGiftTier: {
-                unlockFor = nil
                 let hostName = drawerSpectate(t)?.members?
                     .first { $0.host == true || $0.userId == t.hostUserId }?.nickname
-                giftCtx = LobbyGiftContext(
+                sheet = .gift(LobbyGiftContext(
                     tableId: t.id, tableNo: t.tableNo, scene: "lobby_dnd",
-                    receivers: [], toName: hostName ?? "桌主")
+                    receivers: [], toName: hostName ?? "桌主"))
             },
             onOrderPlaced: {
-                unlockFor = nil
+                sheet = nil
                 showToast("解锁订单已支付 · 等桌主响应（10 分钟内，超时自动退款）")
                 Task { await vm.refreshMyOrders() }
             },
             onRefreshOrders: { Task { await vm.refreshMyOrders() } },
             onResolved: { msg in
-                unlockFor = nil
+                sheet = nil
                 showToast(msg)
                 Task { await vm.refreshMyOrders() }
             }
@@ -1050,12 +1075,11 @@ struct StoreLobbyView: View {
             tables: vm.plans.flatMap { $0.tables ?? [] }
                 .filter { ($0.currentCount ?? 0) > 0 }
                 .sorted { ($0.currentCount ?? 0) > ($1.currentCount ?? 0) },
-            onDismiss: { giftPickOpen = false },
+            onDismiss: { sheet = nil },
             onPick: { t in
-                giftPickOpen = false
                 Task {
                     spectate = await vm.spectate(tableId: t.id)
-                    giftCtx = lobbyGiftContext(t)
+                    sheet = .gift(lobbyGiftContext(t))
                 }
             }
         )
@@ -1068,7 +1092,7 @@ struct StoreLobbyView: View {
             scene: ctx.scene,
             receivers: ctx.receivers,
             toName: ctx.toName,
-            onClose: { giftCtx = nil },
+            onClose: { sheet = nil },
             onSent: { gift in
                 showToast(ctx.scene == "lobby_dnd" ? "礼物已送出 · 达门槛即解锁" : "\(gift.name) 已送出")
                 // 送礼会改热力榜与桌况：刷新平面图 + 我的订单（勿扰档可能已发通行证）
@@ -1086,12 +1110,11 @@ struct StoreLobbyView: View {
             rooms: vm.rooms,
             onRefresh: { Task { await vm.refreshRooms(storeId: storeId) } },
             onEnter: { room in
-                roomListOpen = false
+                sheet = nil
                 voiceRoomNav = VoiceRoomNav(roomId: room.id)
             },
             onCreate: {
-                roomListOpen = false
-                createRoomOpen = true
+                sheet = .createRoom
             }
         )
     }
@@ -1099,9 +1122,9 @@ struct StoreLobbyView: View {
     private var createRoomSheetBuilder: some View {
         VoiceRoomCreateSheet(
             storeId: storeId,
-            onDismiss: { createRoomOpen = false },
+            onDismiss: { sheet = nil },
             onCreated: { id in
-                createRoomOpen = false
+                sheet = nil
                 Task { await vm.refreshRooms(storeId: storeId) }
                 voiceRoomNav = VoiceRoomNav(roomId: id)
             }
@@ -1123,7 +1146,7 @@ struct StoreLobbyView: View {
 
     private func openDrawer(_ t: LobbyTable) {
         highlight = t.id
-        drawerTable = t
+        sheet = .drawer(t)
         spectate = nil
         Task {
             if let result = await vm.spectate(tableId: t.id), drawerTable?.id == t.id {
@@ -1196,7 +1219,7 @@ struct StoreLobbyView: View {
                 // 知道对方在哪桌 → 走大厅礼物面板（收礼人须正入座该桌，服务端复核）；
                 // 否则退礼物中心（与聊天/帖子同一路径）
                 if let tid = u.tableId {
-                    giftCtx = singleReceiverContext(tableId: tid, u)
+                    sheet = .gift(singleReceiverContext(tableId: tid, u))
                 } else {
                     giftNav = .init(userId: u.userId, nickname: u.nickname)
                 }
@@ -1235,7 +1258,7 @@ struct StoreLobbyView: View {
                 // 请喝一杯 = 礼物体系里的饮品礼物（同一面板，不另开路径）
                 cardUser = nil
                 if let tid = u.tableId {
-                    giftCtx = singleReceiverContext(tableId: tid, u)
+                    sheet = .gift(singleReceiverContext(tableId: tid, u))
                 } else {
                     giftNav = .init(userId: u.userId, nickname: u.nickname)
                 }
@@ -1294,15 +1317,17 @@ struct LobbyTableMarker: View {
             HStack(spacing: 2) {
                 if status == .dnd {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 6))
+                        .font(.system(size: 7))
                         .foregroundStyle(color)
                 }
                 Text(table.tableNo ?? "?")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .bold, design: .serif))
                     .foregroundStyle(color)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            // 内边距与安卓一致（9/3）：顶左锚点 offset(x-22,y-12) 的定位口径按标签盒宽算，
+            // 盒宽不一致会整批桌号统一偏移
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
             .background(Color(red: 0x06/255, green: 0x05/255, blue: 0x08/255).opacity(0.82))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(markerAlpha), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
