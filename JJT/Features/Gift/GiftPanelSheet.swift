@@ -169,9 +169,9 @@ struct GiftPanelSheet: View {
                     Text(sel?.name ?? "")
                         .font(.system(size: 13.5))
                         .foregroundStyle(Noir.ivory)
-                    if let sel {
-                        let kind = giftRenderKindOf(giftDisplayIcon(sel.icon, sel.animationUrl))?.0
-                        Text(giftKindGroupOf(kind) == "3d" ? "3D 动效" : "2D 动效")
+                    if sel != nil {
+                        // 面板礼物已单轴（只 2D，3D/GLB 2026-08-30 下线且列表过滤）——不再判 3D 分支
+                        Text("2D 动效")
                             .font(.system(size: 9))
                             .foregroundStyle(Noir.gold)
                             .padding(.horizontal, 7)

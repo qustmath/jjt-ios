@@ -8,6 +8,7 @@ struct StoreLobbyView: View {
 
     let storeId: Int64
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var vm = StoreLobbyViewModel()
     @ObservedObject private var seatSession = LobbySeatSession.shared
@@ -36,6 +37,8 @@ struct StoreLobbyView: View {
     @State private var photoItem: PhotosPickerItem?
     // 表演区（语音房）：进房
     @State private var voiceRoomNav: VoiceRoomNav?
+    // 票 29 一人一房：已在房时点别的房 → 先弹「退出当前房间？」确认（服务端 064 兜底）
+    @State private var pendingJoinRoom: VoiceRoomNav?
     struct VoiceRoomNav: Identifiable {
         let roomId: Int64
         var id: Int64 { roomId }
@@ -141,12 +144,20 @@ struct StoreLobbyView: View {
         .task { await LobbySeatSession.shared.heartbeatLoop() }
         .task {
             // 桌态轮询兜底（平面图 + 拼桌投影 20s 一拉）：IM 秒级刷新只覆盖坐席类变化（sys=seat 播报）；
-            // 勿扰设置/取消、喊人拼桌、预定等桌态变更无系统播报，不轮询则他人视角永不更新
+            // 勿扰设置/取消、喊人拼桌、预定等桌态变更无系统播报，不轮询则他人视角永不更新。
+            // 店长视频 60s 低频跟拉（票 26：LIVE 抽屉开着 60s 内自动出新视频）。
+            // 后台跳过工作（省电；回前台下一拍自动恢复）
+            var tick = 0
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 20_000_000_000)
                 guard !Task.isCancelled else { break }
+                guard scenePhase == .active else { continue }
+                tick += 1
                 await vm.refreshPlan(storeId: storeId)
                 await vm.refreshInvites(storeId: storeId)
+                if tick % 3 == 0 {
+                    await vm.refreshVideos(storeId: storeId)
+                }
                 refreshHostPendingNow()
             }
         }
@@ -247,6 +258,24 @@ struct StoreLobbyView: View {
             Button("再想想", role: .cancel) {}
         } message: {
             Text("离桌后回到罚站状态，想再入座需重新扫门店平板上的入座码。")
+        }
+        // 票 29 一人一房：换房确认（房主退出=关房，由「退出并加入」动作承担）
+        .alert(
+            "退出当前房间？",
+            isPresented: Binding(get: { pendingJoinRoom != nil }, set: { if !$0 { pendingJoinRoom = nil } })
+        ) {
+            Button("退出并加入") {
+                guard let target = pendingJoinRoom else { return }
+                pendingJoinRoom = nil
+                sheet = nil
+                Task {
+                    try? await VoiceRoomSession.shared.leave()
+                    voiceRoomNav = target
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("你在语音房「\(voiceSession.presence?.title ?? "")」中。加入新房间需先退出当前房间（若你是房主，退出将关闭该房间）。")
         }
         // 入座扫码（平板入座码）
         .fullScreenCover(item: Binding(
@@ -1109,8 +1138,13 @@ struct StoreLobbyView: View {
             rooms: vm.rooms,
             onRefresh: { Task { await vm.refreshRooms(storeId: storeId) } },
             onEnter: { room in
-                sheet = nil
-                voiceRoomNav = VoiceRoomNav(roomId: room.id)
+                // 票 29 一人一房：无论是否房主，加新方前必须先明确退出当前房
+                if voiceSession.presence != nil {
+                    pendingJoinRoom = VoiceRoomNav(roomId: room.id)
+                } else {
+                    sheet = nil
+                    voiceRoomNav = VoiceRoomNav(roomId: room.id)
+                }
             },
             onCreate: {
                 sheet = .createRoom

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UIKit
 
 /// 入座/换桌/离桌成功通知（页面据此刷新平面图等派生数据；对齐安卓 LobbySeatSession.seatChanged）
 extension Notification.Name {
@@ -93,6 +94,9 @@ final class LobbySeatSession: ObservableObject {
 
     /// 心跳一拍：未入座直接返回；距上次成功上报不足一轮也跳过；定位失败静默跳过，下一周期再试。
     func heartbeatTick() async {
+        // 票 24：后台必须停报——last_geo_time 是服务端 30 分钟判离的依据，后台还报就永远判不掉。
+        // .task 退后台不取消，不能只靠页面生命周期，这里显式再挡一层
+        guard UIApplication.shared.applicationState == .active else { return }
         guard isSeated else { return }
         let now = ProcessInfo.processInfo.systemUptime
         if lastReportAt != 0, now - lastReportAt < Self.heartbeatInterval { return }

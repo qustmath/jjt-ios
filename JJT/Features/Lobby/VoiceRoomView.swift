@@ -15,6 +15,7 @@ struct VoiceRoomView: View {
     let storeName: String?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var session = VoiceRoomSession.shared
     @ObservedObject private var imSession = LobbyImSession.shared
 
@@ -113,9 +114,11 @@ struct VoiceRoomView: View {
             if let m = selfCard { memberCard(m) }
         }
         .task(id: JoinRetryKey(pw: joinPassword, ticket: ticketPwd, attempt: joinAttempt)) { await joinRoom() }
-        .task(id: joinState) {
-            // 审批制待批：10s 轮询详情，通过后服务端把人加进群（inRoom 变真）
-            guard joinState == .applied else { return }
+        .task(id: PollGate(state: joinState, active: scenePhase == .active)) {
+            // 审批制待批：10s 轮询详情，通过后服务端把人加进群（inRoom 变真）。
+            // 票 24：详情轮询是服务端唯一「前台活动」信号——退后台必须停（.task 不会因退后台
+            // 取消，须显式盯 scenePhase），回前台重key即恢复
+            guard joinState == .applied, scenePhase == .active else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard !Task.isCancelled else { break }
@@ -127,9 +130,13 @@ struct VoiceRoomView: View {
                 }
             }
         }
-        .task(id: joinState) {
+        .task(id: PollGate(state: joinState, active: scenePhase == .active)) {
             // 在房：5s 轮询详情兜底（麦位变化只 C2C 通知当事人，其他成员的麦位视图会陈旧）
             guard joinState == .inRoom, !preview else { return }
+            // 票 24：后台停轮询（不停则服务端认为仍活跃，30 分钟强制离桌/离房永远判不掉）
+            guard scenePhase == .active else { return }
+            _ = try? await session.refresh() // 回前台先刷一拍再进循环
+            var inRoomMiss = 0
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled else { break }
@@ -138,6 +145,19 @@ struct VoiceRoomView: View {
                 // 失败提示已按原因去重，重试不会连环弹 toast，右上角小标也能点手动重连
                 if session.conn == .idle || session.conn == .failed {
                     await session.connectLiveKit()
+                }
+                // 票 24 被清退感知：inRoom 连续两拍为 false（防 IM 成员读抖动）→ 提示并退房。
+                // 同一段判定天然覆盖「被房主移出」（票 25 被踢端收尾）
+                if session.detail?.inRoom == false {
+                    inRoomMiss += 1
+                    if inRoomMiss >= 2 {
+                        showToast("你已离开房间「\(session.detail?.title ?? "该房间")」")
+                        try? await VoiceRoomSession.shared.leave()
+                        dismiss()
+                        return
+                    }
+                } else {
+                    inRoomMiss = 0
                 }
             }
         }
@@ -309,6 +329,13 @@ struct VoiceRoomView: View {
         let canManage: Bool
         let inRoom: Bool
         let preview: Bool
+    }
+
+    /// 轮询门控键：joinState + 前台态任一变化都重启轮询任务（票 24——后台停轮询是
+    /// 服务端 30 分钟强制离桌/离房判定的前提）
+    struct PollGate: Equatable {
+        let state: JoinState
+        let active: Bool
     }
 
     // MARK: - 进房弹层（密码/门票）

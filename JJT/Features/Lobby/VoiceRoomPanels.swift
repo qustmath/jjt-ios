@@ -174,6 +174,10 @@ struct VoiceRoomOpsSheet: View {
                                     SmallAction(label: "下麦", primary: false) {
                                         if let uid = m.userId { onKick(uid) }
                                     }
+                                    // 票 25：在麦成员也可直接移出房间（服务端 kickFromRoom 自会放麦+出群+断 RTC）
+                                    SmallAction(label: "移出", primary: false) {
+                                        if let uid = m.userId { onKickFromRoom(uid) }
+                                    }
                                 }
                                 // 设管理麦入口暂隐藏（服务端 mic/role 能力保留；产品节奏另行放开）
                             }
@@ -651,12 +655,13 @@ struct LobbyRoomCard: View {
                     .lineLimit(1)
                 if isCurrent {
                     Spacer().frame(width: 6)
+                    // 「当前所在」金胶囊（票 27 定稿：#F5E3B8→#C9A45C 渐变、字 #2A1C06 9pt SemiBold）
                     Text("当前")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(LinearGradient(colors: [LobbyColors.gold, LobbyColors.deepGold], startPoint: .leading, endPoint: .trailing))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(LinearGradient(colors: [LobbyColors.goldPale, LobbyColors.gold], startPoint: .leading, endPoint: .trailing))
                         .clipShape(Capsule())
                         .fixedSize()
                 }
@@ -713,7 +718,9 @@ struct LobbyRoomCard: View {
         .background(LinearGradient(
             colors: [Color.white.opacity(0.05), Color.white.opacity(0.04)],
             startPoint: .topLeading, endPoint: .bottomTrailing))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.07), lineWidth: 1))
+        // 当前所在房描边换金色 55%（票 27：与金胶囊同一套强调）
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(
+            isCurrent ? LobbyColors.gold.opacity(0.55) : Color.white.opacity(0.07), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .contentShape(Rectangle())
         .onTapGesture { onClick() }
