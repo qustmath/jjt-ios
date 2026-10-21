@@ -10,31 +10,25 @@ struct LobbyPlazaCard: View {
 
     var body: some View {
         ZStack {
-            // 旋转彩色流光层：TimelineView+Canvas 逐帧重画（repeatForever 动画在首帧 state
-            // 变更后会冻在 0°——渐变五段色恰有两段深红，冻住时上下边"看起来没边框"）。
+            // 旋转彩色流光层：TimelineView 逐帧算角度（repeatForever 动画在首帧 state 变更后
+            // 会冻在 0°——渐变五段色恰有两段深红，冻住时上下边"看起来没边框"）。
             // sweep 圆心必须对准卡片中心，画幅放大 2× 对角线防旋转露角（对齐安卓 drawBehind）
-            TimelineView(.animation) { timeline in
-                Canvas { (ctx: inout GraphicsContext, size: CGSize) in
+            GeometryReader { geo in
+                let ext = max(geo.size.width, geo.size.height) * 2
+                TimelineView(.animation) { timeline in
                     let phase = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 3.6) / 3.6
-                    let c = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let ext = max(size.width, size.height) * 2
-                    ctx.translateBy(x: c.x, y: c.y)
-                    ctx.rotate(by: .degrees(phase * 360))
-                    let rect = CGRect(x: -ext, y: -ext, width: ext * 2, height: ext * 2)
-                    let gold = Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255)
-                    let gradient = Gradient(colors: [
-                        gold,
-                        Color(red: 0x6E/255, green: 0x0F/255, blue: 0x22/255),
-                        Color(red: 0xE8/255, green: 0xCF/255, blue: 0x9A/255),
-                        Color(red: 0x7A/255, green: 0x11/255, blue: 0x28/255),
-                        gold,
-                    ])
-                    ctx.fill(Path(rect), with: .angularGradient(
-                        gradient,
-                        center: CGPoint(x: 0, y: 0),
-                        startAngle: .degrees(0),
-                        endAngle: .degrees(360)))
+                    Rectangle()
+                        .fill(AngularGradient(colors: [
+                            Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255),
+                            Color(red: 0x6E/255, green: 0x0F/255, blue: 0x22/255),
+                            Color(red: 0xE8/255, green: 0xCF/255, blue: 0x9A/255),
+                            Color(red: 0x7A/255, green: 0x11/255, blue: 0x28/255),
+                            Color(red: 0xC9/255, green: 0xA4/255, blue: 0x5C/255),
+                        ], center: .center))
+                        .frame(width: ext, height: ext)
+                        .rotationEffect(.degrees(phase * 360))
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
             }
 
