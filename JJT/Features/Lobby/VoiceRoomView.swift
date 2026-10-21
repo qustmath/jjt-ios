@@ -558,13 +558,15 @@ struct VoiceRoomView: View {
                 .font(.system(size: 9.5, weight: .semibold))
                 .foregroundStyle(LobbyColors.goldLight)
             MemberBubble(
+                userId: myUserId,
                 url: me?.avatar ?? avatarOfById(myUserId),
                 name: "我",
                 mine: true)
             ForEach(Array(session.peers.prefix(8))) { p in
                 MemberBubble(
+                    userId: p.userId,
                     url: avatarOfById(p.userId),
-                    name: (p.name?.isEmpty == false) ? p.name! : (session.profiles[p.userId]?.nickname ?? "用户\(p.userId)"))
+                    name: peerBubbleName(p))
             }
             if session.peers.count > 8 {
                 Text("…共 \(session.peers.count + 1) 人")
@@ -572,6 +574,13 @@ struct VoiceRoomView: View {
                     .foregroundStyle(.white.opacity(0.35))
             }
         }
+    }
+
+    /// 在房成员昵称：LiveKit 透传名优先，名片/详情资料兜底（对齐安卓取名顺序）
+    private func peerBubbleName(_ p: VoiceRoomPeer) -> String {
+        if let n = p.name, !n.isEmpty { return n }
+        let n = memberDisplayName(MemberCardStore.shared.card(p.userId), session.profiles[p.userId]?.nickname)
+        return n.isEmpty ? "用户\(p.userId)" : n
     }
 
     @ViewBuilder
@@ -883,8 +892,16 @@ struct MicSlotView: View {
     let onClick: () -> Void
 
     @State private var pulse = false
+    /// 名片缓存：昵称/头像框/等级小标随补拉到位自动刷新（对齐安卓 rememberMemberCards）
+    @ObservedObject private var cardStore = MemberCardStore.shared
 
     private var size: CGFloat { big ? 46 : 40 }
+
+    /// 麦位昵称：名片优先，回退麦位自带（对齐安卓 card?.nickname ?: nickname）
+    private var micDisplayName: String {
+        let n = memberDisplayName(cardStore.card(userId), nickname)
+        return n.isEmpty ? "\(seatNo) 号麦" : String(n.prefix(5))
+    }
 
     var body: some View {
         VStack(spacing: 5) {
@@ -947,12 +964,17 @@ struct MicSlotView: View {
                 .overlay(Circle().stroke(Color(red: 0x0C/255, green: 0x0A/255, blue: 0x0D/255), lineWidth: 1.5))
                 .offset(y: 4)
             }
-            Text(nickname.map { String($0.prefix(5)) } ?? "\(seatNo) 号麦")
+            Text(micDisplayName)
                 .font(.system(size: 8.5))
                 .foregroundStyle(
                     speaking ? LobbyColors.seated
                     : (nickname != nil ? LobbyColors.goldLight : .white.opacity(0.4)))
                 .lineLimit(1)
+            // 等级小标（对齐安卓 MicSlot：vipName 有值才显「段位 · Lv.N」）
+            if let card = cardStore.card(userId), let vip = card.vipName, !vip.isEmpty {
+                LobbyVipChip(vipName: card.vipName, vipColor: card.vipColor,
+                             levelInTier: card.levelInTier, fontSize: 7.5)
+            }
         }
         .frame(width: 66)
         .contentShape(Rectangle())
@@ -994,27 +1016,36 @@ struct ConnChip: View {
     }
 }
 
-/// 在房成员圆头像（头像取公屏消息发送者资料；没说过话用首字占位——都是正圆）
+/// 在房成员圆头像（对齐安卓 MemberBubble：名片驱动头像框，无框画金圈；头像取公屏消息
+/// 发送者资料，没说过话用首字占位——都是正圆）
 struct MemberBubble: View {
+    /// 成员 id：名片缓存接头像框（对齐安卓 card 参数）
+    var userId: Int64? = nil
     let url: String?
     let name: String
     var mine = false
 
     var body: some View {
         VStack(spacing: 2) {
-            ZStack {
-                Circle().fill(.white.opacity(0.08))
-                if let url, let remote = webImageURL(url) {
-                    WebImage(url: remote) { Text(String(name.prefix(1))).font(.system(size: 12)).foregroundStyle(LobbyColors.goldLight) }
-                        .clipShape(Circle())
-                } else {
-                    Text(String(name.prefix(1)))
-                        .font(.system(size: 12))
-                        .foregroundStyle(LobbyColors.goldLight)
+            if let userId, userId > 0 {
+                LobbyMemberAvatar(userId: userId, fallbackAvatar: url, size: 30,
+                                  ringWhenNoFrame: true,
+                                  ringColor: LobbyColors.gold.opacity(mine ? 0.65 : 0.25))
+            } else {
+                ZStack {
+                    Circle().fill(.white.opacity(0.08))
+                    if let url, let remote = webImageURL(url) {
+                        WebImage(url: remote) { Text(String(name.prefix(1))).font(.system(size: 12)).foregroundStyle(LobbyColors.goldLight) }
+                            .clipShape(Circle())
+                    } else {
+                        Text(String(name.prefix(1)))
+                            .font(.system(size: 12))
+                            .foregroundStyle(LobbyColors.goldLight)
+                    }
                 }
+                .frame(width: 30, height: 30)
+                .overlay(Circle().stroke(LobbyColors.gold.opacity(mine ? 0.65 : 0.25), lineWidth: 1))
             }
-            .frame(width: 30, height: 30)
-            .overlay(Circle().stroke(LobbyColors.gold.opacity(mine ? 0.65 : 0.25), lineWidth: 1))
             Text(name)
                 .font(.system(size: 8))
                 .foregroundStyle(mine ? LobbyColors.goldLight : .white.opacity(0.55))

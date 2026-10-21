@@ -10,12 +10,12 @@ struct LobbyPlazaCard: View {
 
     var body: some View {
         ZStack {
-            // 旋转彩色流光层：TimelineView 逐帧算角度（repeatForever 动画在首帧 state 变更后
-            // 会冻在 0°——渐变五段色恰有两段深红，冻住时上下边"看起来没边框"）。
+            // 旋转彩色流光层：TimelineView 按 30fps 定时出帧（.animation 调度只在有活跃动画时
+            // 出帧，静止时整个流光冻在任意相位——金段停在直边、深红段恰停在圆角，圆角"没边框"）。
             // sweep 圆心必须对准卡片中心，画幅放大 2× 对角线防旋转露角（对齐安卓 drawBehind）
             GeometryReader { geo in
                 let ext = max(geo.size.width, geo.size.height) * 2
-                TimelineView(.animation) { timeline in
+                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
                     let phase = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 3.6) / 3.6
                     Rectangle()
@@ -29,9 +29,9 @@ struct LobbyPlazaCard: View {
                         .frame(width: ext, height: ext)
                         .rotationEffect(.degrees(phase * 360))
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                        // 环带遮罩：沿 26 圆角路径描 1.5pt 白带当蒙版——四条边与四个圆角
-                        // 都精确落色（此前靠内容层内缩露边，圆角弧段被内容层盖住看不见）
-                        .mask(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white, lineWidth: 1.5))
+                        // 环带遮罩：沿 26 圆角路径描 2pt 白带当蒙版——四条边与四个圆角都精确落色
+                        // （内容层内缩 1.5，四边与圆角各留 1.5pt 可见环）
+                        .mask(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white, lineWidth: 2))
                 }
             }
 
