@@ -572,8 +572,6 @@ struct HomeView: View {
         .init(name: "AI伴侣", en: "Companion", icon: "sparkles", tab: nil),
         .init(name: "属性测试", en: "Persona", icon: "testtube.2", tab: nil),
         .init(name: "商城", en: "Boutique", icon: "bag", tab: nil),
-        // 选美：2026-10-27 多期化验收临时入口，测完删（对齐安卓 EntryAction.PAGEANT，正式入口仍走轮播图）
-        .init(name: "选美", en: "Pageant", icon: "trophy", tab: nil),
     ]
 
     private var entryRail: some View {
@@ -588,10 +586,6 @@ struct HomeView: View {
                             else if e.name == "属性测试" { showQuiz = true }
                             else if e.name == "商城" { showMall = true }
                             else if e.name == "门店大厅" { showLobby = true }
-                            else if e.name == "选美" {
-                                // 复用 banner/扫码同一条深链呈现（MainTabView 全屏 cover），不另开宿主
-                                NotificationCenter.default.post(name: .jjtDeepLink, object: ["t": "pageant"])
-                            }
                             else if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
                         } label: {
                             VStack(spacing: 0) {
