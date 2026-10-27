@@ -161,6 +161,7 @@ private struct PageantEntryPage: View {
                             activity: activity,
                             voting: vm.voting,
                             shareBusy: posterSharing,
+                            onVoteFree: { n in vm.vote(entryId: entryId, voteType: "free", votes: n) },
                             onVoteCarrot: { n in vm.vote(entryId: entryId, voteType: "carrot", votes: n) },
                             onVoteRabbit: { n in
                                 payGuard.require { pwd in
@@ -440,7 +441,10 @@ private struct PageantEntryPage: View {
     }
 }
 
-// MARK: - 投票区：萝贝卡 → 耗尽切加票面板（对齐安卓 VoteSection）
+// MARK: - 投票区：免费票卡 → 萝贝卡 → 耗尽切加票面板（对齐安卓 VoteSection）
+
+/// 单次投票票数上限：与服务端 AppPageantVoteReqVO @Max(100) 对齐，超出会被 400
+private let pageantMaxVotesPerRequest = 100
 
 private struct VoteSection: View {
 
@@ -448,17 +452,21 @@ private struct VoteSection: View {
     let activity: PageantActivity
     let voting: Bool
     let shareBusy: Bool
+    let onVoteFree: (Int) -> Void
     let onVoteCarrot: (Int) -> Void
     let onVoteRabbit: (Int) -> Void
     let onVoteShare: () -> Void
     let onShare: () -> Void
 
+    @State private var freeQty = 1
     @State private var carrotQty = 1
     @State private var rabbitQty = 1
 
+    private var freeDaily: Int { activity.freeDaily ?? 0 }
     private var carrotDaily: Int { activity.carrotDaily ?? 5 }
     private var rabbitDaily: Int { activity.rabbitDaily ?? 5 }
     private var shareCap: Int { activity.shareDailyCap ?? 2 }
+    private var freeLeft: Int { max(freeDaily - (activity.myFreeUsed ?? 0), 0) }
     private var carrotLeft: Int { max(carrotDaily - (activity.myCarrotUsed ?? 0), 0) }
     private var rabbitLeft: Int { max(rabbitDaily - (activity.myRabbitUsed ?? 0), 0) }
     private var shareChances: Int { max((activity.myShareEarned ?? 0) - (activity.myShareUsed ?? 0), 0) }
@@ -466,6 +474,18 @@ private struct VoteSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if freeDaily > 0 {
+                if freeLeft > 0 {
+                    freeCard
+                } else {
+                    // 免费票渠道开启但今日已用完（对齐安卓提示行）
+                    Text("今日免费票已用完")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 6)
+                }
+            }
             if carrotLeft > 0 {
                 carrotCard
             } else {
@@ -474,6 +494,48 @@ private struct VoteSection: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
+    }
+
+    /// 免费票卡（每日 freeDaily 次，无消耗；freeDaily=0 渠道关闭整卡不显示）
+    private var freeCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("免费投票")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Noir.ivory)
+                        Text("每天 \(freeDaily) 次 · 免费")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Noir.goldLight)
+                    }
+                    Text("今日剩余 \(freeLeft)/\(freeDaily) 次")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                Spacer()
+                QtyStepper(value: $freeQty, max: min(freeLeft, pageantMaxVotesPerRequest))
+            }
+            Button {
+                onVoteFree(min(freeQty, freeLeft))
+            } label: {
+                Text("为TA投出 \(min(freeQty, freeLeft)) 票 · 免费")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Capsule().fill(LinearGradient(
+                        colors: [Noir.goldDeep, Noir.gold, Noir.goldLight],
+                        startPoint: .leading, endPoint: .trailing)))
+            }
+            .buttonStyle(.plain)
+            .disabled(voting)
+            .padding(.top, 14)
+        }
+        .padding(20)
+        .background(LinearGradient(colors: [Color(red: 0x3A/255, green: 0x0A/255, blue: 0x16/255).opacity(0.7), Color(red: 0x10/255, green: 0x08/255, blue: 0x0A/255).opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.gold.opacity(0.45), lineWidth: 1))
     }
 
     /// 萝贝投票卡
@@ -494,7 +556,7 @@ private struct VoteSection: View {
                         .foregroundStyle(.white.opacity(0.35))
                 }
                 Spacer()
-                QtyStepper(value: $carrotQty, max: carrotLeft)
+                QtyStepper(value: $carrotQty, max: min(carrotLeft, pageantMaxVotesPerRequest))
             }
             Button {
                 let n = min(carrotQty, carrotLeft)
@@ -533,57 +595,59 @@ private struct VoteSection: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
 
-            // 分享得票卡
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text("分享得票")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Noir.ivory)
-                            Text("+1 次机会")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Noir.crimsonHot)
+            // 分享得票卡（shareDailyCap=0 时渠道关闭，整卡隐藏，对齐安卓）
+            if shareCap > 0 {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text("分享得票")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Noir.ivory)
+                                Text("+1 次机会")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Noir.crimsonHot)
+                            }
+                            Text("今日还可分享 \(shareLeft) 次" + (shareChances > 0 ? " · 已有 \(shareChances) 次机会可用" : ""))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.35))
                         }
-                        Text("今日还可分享 \(shareLeft) 次" + (shareChances > 0 ? " · 已有 \(shareChances) 次机会可用" : ""))
+                        Spacer()
+                        Text("免费")
                             .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(Noir.goldLight)
                     }
-                    Spacer()
-                    Text("免费")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Noir.goldLight)
+                    HStack(spacing: 10) {
+                        Button { onShare() } label: {
+                            Text(shareBusy ? "生成海报…" : (shareLeft > 0 ? "去分享" : "今日分享已用完"))
+                                .font(.system(size: 12))
+                                .foregroundStyle(shareLeft > 0 ? Noir.goldLight : .white.opacity(0.3))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .overlay(Capsule().stroke(Noir.gold.opacity(0.5), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(shareLeft <= 0 || shareBusy)
+                        Button { onVoteShare() } label: {
+                            Text(shareChances > 0 ? "用机会投 1 票" : "暂无投票机会")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(shareChances > 0 ? .white : .white.opacity(0.3))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Capsule().fill(shareChances > 0
+                                    ? LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine], startPoint: .leading, endPoint: .trailing)
+                                    : LinearGradient(colors: [Color(red: 0x3A/255, green: 0x3A/255, blue: 0x3A/255), Color(red: 0x2A/255, green: 0x2A/255, blue: 0x2A/255)], startPoint: .leading, endPoint: .trailing)))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(shareChances <= 0 || voting)
+                    }
                 }
-                HStack(spacing: 10) {
-                    Button { onShare() } label: {
-                        Text(shareBusy ? "生成海报…" : (shareLeft > 0 ? "去分享" : "今日分享已用完"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(shareLeft > 0 ? Noir.goldLight : .white.opacity(0.3))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .overlay(Capsule().stroke(Noir.gold.opacity(0.5), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(shareLeft <= 0 || shareBusy)
-                    Button { onVoteShare() } label: {
-                        Text(shareChances > 0 ? "用机会投 1 票" : "暂无投票机会")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(shareChances > 0 ? .white : .white.opacity(0.3))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Capsule().fill(shareChances > 0
-                                ? LinearGradient(colors: [Color(red: 0xD9/255, green: 0x04/255, blue: 0x29/255), Noir.crimsonDeep, Noir.wine], startPoint: .leading, endPoint: .trailing)
-                                : LinearGradient(colors: [Color(red: 0x3A/255, green: 0x3A/255, blue: 0x3A/255), Color(red: 0x2A/255, green: 0x2A/255, blue: 0x2A/255)], startPoint: .leading, endPoint: .trailing)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(shareChances <= 0 || voting)
-                }
+                .padding(14)
+                .background(Noir.noir2)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.hairlineGold, lineWidth: 1))
+                .padding(.top, 16)
             }
-            .padding(14)
-            .background(Noir.noir2)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Noir.hairlineGold, lineWidth: 1))
-            .padding(.top, 16)
 
             // 兔币投票卡
             VStack(spacing: 0) {
@@ -602,7 +666,7 @@ private struct VoteSection: View {
                             .foregroundStyle(.white.opacity(0.35))
                     }
                     Spacer()
-                    QtyStepper(value: $rabbitQty, max: max(rabbitLeft, 1))
+                    QtyStepper(value: $rabbitQty, max: max(min(rabbitLeft, pageantMaxVotesPerRequest), 1))
                 }
                 Button {
                     let n = min(rabbitQty, rabbitLeft)

@@ -32,6 +32,9 @@ struct HomeView: View {
     /// 今日心动区块开关：2026-10-18 需求暂时隐藏（对齐安卓 SHOW_TODAY_HEARTBEAT）；推荐接口接入后改回 true
     private static let showTodayHeartbeat = false
 
+    /// 聊天室广场入口卡开关：2026-10-18 曾随门店大厅入口一起隐藏，同日晚间应用户要求恢复；2026-10-27 再隐藏（对齐安卓 SHOW_LOBBY_PLAZA_CARD）
+    private static let showLobbyPlazaCard = false
+
     /// 屏幕宽（竖屏锁定，按场景窗口取）
     private var screenWidth: CGFloat {
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.width ?? 390
@@ -54,10 +57,12 @@ struct HomeView: View {
 
                     Spacer().frame(height: 20)
                     // 聊天室广场入口卡（蜜兔会正上方，对齐安卓；目录入口维持隐藏与安卓同口径）
-                    LobbyPlazaCard(onClick: { showLobby = true })
-                        .padding(.horizontal, 20)
-
-                    Spacer().frame(height: 20)
+                    // 2026-10-27 暂时隐藏（showLobbyPlazaCard=false），恢复时改回 true 即可
+                    if Self.showLobbyPlazaCard {
+                        LobbyPlazaCard(onClick: { showLobby = true })
+                            .padding(.horizontal, 20)
+                        Spacer().frame(height: 20)
+                    }
                     mituEntrance.padding(.horizontal, 20)
 
                     Spacer().frame(height: 32)
@@ -567,6 +572,8 @@ struct HomeView: View {
         .init(name: "AI伴侣", en: "Companion", icon: "sparkles", tab: nil),
         .init(name: "属性测试", en: "Persona", icon: "testtube.2", tab: nil),
         .init(name: "商城", en: "Boutique", icon: "bag", tab: nil),
+        // 选美：2026-10-27 多期化验收临时入口，测完删（对齐安卓 EntryAction.PAGEANT，正式入口仍走轮播图）
+        .init(name: "选美", en: "Pageant", icon: "trophy", tab: nil),
     ]
 
     private var entryRail: some View {
@@ -581,6 +588,10 @@ struct HomeView: View {
                             else if e.name == "属性测试" { showQuiz = true }
                             else if e.name == "商城" { showMall = true }
                             else if e.name == "门店大厅" { showLobby = true }
+                            else if e.name == "选美" {
+                                // 复用 banner/扫码同一条深链呈现（MainTabView 全屏 cover），不另开宿主
+                                NotificationCenter.default.post(name: .jjtDeepLink, object: ["t": "pageant"])
+                            }
                             else if let tab = e.tab { switchTab(tab) } else { showToast("敬请期待") }
                         } label: {
                             VStack(spacing: 0) {

@@ -19,8 +19,11 @@ struct PageantActivity: Decodable {
     let carrotDaily: Int?
     let rabbitDaily: Int?
     let shareDailyCap: Int?
+    /// 免费票每日限次（0=渠道关闭）
+    let freeDaily: Int?
     let myCarrotUsed: Int?
     let myRabbitUsed: Int?
+    let myFreeUsed: Int?
     let myShareEarned: Int?
     let myShareUsed: Int?
     let carrotBalance: Int64?

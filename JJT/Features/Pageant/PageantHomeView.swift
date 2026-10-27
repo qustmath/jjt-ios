@@ -83,12 +83,13 @@ struct PageantHomeView: View {
         }
     }
 
-    /// 今日可投 = 萝贝剩余 + 兔币剩余 + 分享机会余量
+    /// 今日可投 = 萝贝剩余 + 兔币剩余 + 免费票剩余 + 分享机会余量（分享渠道关闭 cap=0 时机会不可用，不计）
     private func todayLeft(_ a: PageantActivity) -> Int {
         let carrotLeft = (a.carrotDaily ?? 0) - (a.myCarrotUsed ?? 0)
         let rabbitLeft = (a.rabbitDaily ?? 0) - (a.myRabbitUsed ?? 0)
-        let shareChances = (a.myShareEarned ?? 0) - (a.myShareUsed ?? 0)
-        return max(carrotLeft + rabbitLeft + shareChances, 0)
+        let freeLeft = (a.freeDaily ?? 0) - (a.myFreeUsed ?? 0)
+        let shareChances = (a.shareDailyCap ?? 0) > 0 ? (a.myShareEarned ?? 0) - (a.myShareUsed ?? 0) : 0
+        return max(carrotLeft + rabbitLeft + freeLeft + shareChances, 0)
     }
 
     // MARK: - 顶栏
