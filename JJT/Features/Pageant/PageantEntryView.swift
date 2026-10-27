@@ -147,6 +147,10 @@ private struct PageantEntryPage: View {
     @State private var posterSharing = false
     @State private var showRecharge = false
     @State private var showPaySettings = false
+    @State private var heroPage = 0
+    /// 选手图片大图预览（双指缩放/左右滑，复用广场 ImagePreviewViewer）
+    @State private var showImagePreview = false
+    @State private var previewIndex = 0
 
     var body: some View {
         ZStack {
@@ -229,6 +233,10 @@ private struct PageantEntryPage: View {
                 }
             }
         }
+        // 图片大图预览（从当前停留页进入）
+        .fullScreenCover(isPresented: $showImagePreview) {
+            ImagePreviewViewer(images: vm.detail?.images ?? [], initialIndex: previewIndex)
+        }
     }
 
     // MARK: - 作品大图区（图片+视频同一轮播；视频页多一个播放按钮）
@@ -239,7 +247,7 @@ private struct PageantEntryPage: View {
         let pageTotal = images.count + (hasVideo ? 1 : 0)
 
         return ZStack(alignment: .topLeading) {
-            TabView {
+            TabView(selection: $heroPage) {
                 ForEach(images.indices, id: \.self) { i in
                     AsyncImage(url: webImageURL(images[i])) { phase in
                         if let image = phase.image {
@@ -249,6 +257,9 @@ private struct PageantEntryPage: View {
                         }
                     }
                     .tag(i)
+                    .contentShape(Rectangle())
+                    // 单击图片 → 大图预览（双指缩放/双击放大，左右滑切图）
+                    .onTapGesture { previewIndex = i; showImagePreview = true }
                 }
                 if hasVideo {
                     ZStack {
@@ -275,7 +286,7 @@ private struct PageantEntryPage: View {
             LinearGradient(colors: [Noir.noir.opacity(0.5), .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: 120)
                 .allowsHitTesting(false)
-            // 返回
+            // 返回（ScrollView ignoresSafeArea 顶到 y=0，让出状态栏/灵动岛高度）
             Button(action: onBack) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 15))
@@ -286,7 +297,7 @@ private struct PageantEntryPage: View {
                     .overlay(Circle().stroke(Noir.hairlineGold, lineWidth: 1))
             }
             .padding(.leading, 20)
-            .padding(.top, 20)
+            .padding(.top, JJTMetrics.topSafeInset + 20)
             // 名次角标
             HStack {
                 Spacer()
@@ -298,7 +309,7 @@ private struct PageantEntryPage: View {
                     .background(Capsule().fill(Color.black.opacity(0.45)))
                     .overlay(Capsule().stroke(Noir.hairlineGold, lineWidth: 1))
                     .padding(.trailing, 20)
-                    .padding(.top, 20)
+                    .padding(.top, JJTMetrics.topSafeInset + 20)
             }
 
             // 底部渐变 + 作者卡 + 票数

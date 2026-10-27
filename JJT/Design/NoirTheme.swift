@@ -88,6 +88,11 @@ enum JJTMetrics {
     static var screenHeight: CGFloat {
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 844
     }
+    /// 顶部安全区高度（状态栏/灵动岛）：SwiftUI 里 .ignoresSafeArea 之后安全区被消费，
+    /// 环境里拿不到，直接从 key window 取（选美详情页 hero 顶到 y=0 时返回键要让位）
+    static var topSafeInset: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first?.safeAreaInsets.top ?? 0
+    }
 }
 
 /// 取景框四角（L 形角标），设计稿标志性元素
