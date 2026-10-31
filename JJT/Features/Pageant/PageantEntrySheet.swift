@@ -347,12 +347,16 @@ private final class PageantEntrySheetModel: ObservableObject {
 
     private func upload(id: UUID) async {
         guard let i = images.firstIndex(where: { $0.id == id }) else { return }
-        guard let data = images[i].image.jpegData(compressionQuality: 0.82) else {
+        // 上传前压缩：长边 2048 / JPEG 85（48MP 原图 20MB → 约 300~600KB）
+        guard let prepared = ImageCompression.prepareForUpload(images[i].image) else {
             images[i].failed = true
             return
         }
         do {
-            let url = try await APIClient.shared.uploadFile(data: data, filename: "pageant_\(id.uuidString.prefix(8)).jpg", mime: "image/jpeg")
+            let url = try await APIClient.shared.uploadFile(
+                data: prepared.data,
+                filename: "pageant_\(id.uuidString.prefix(8)).\(prepared.ext)",
+                mime: prepared.mime)
             if let j = images.firstIndex(where: { $0.id == id }) { images[j].url = url }
         } catch {
             if let j = images.firstIndex(where: { $0.id == id }) { images[j].failed = true }
@@ -386,7 +390,16 @@ private final class PageantEntrySheetModel: ObservableObject {
                 let vurl = try await APIClient.shared.uploadFile(data: videoData, filename: "pageant_video_\(UUID().uuidString.prefix(8)).mp4", mime: "video/mp4")
                 var curl: String?
                 if let coverData {
-                    curl = try? await APIClient.shared.uploadFile(data: coverData, filename: "pageant_cover_\(UUID().uuidString.prefix(8)).jpg", mime: "image/jpeg")
+                    // 封面同样压一遍（抽帧已是 1080，主要收质量）
+                    if let cover = UIImage(data: coverData),
+                       let prepared = ImageCompression.prepareForUpload(cover, maxEdge: 1080) {
+                        curl = try? await APIClient.shared.uploadFile(
+                            data: prepared.data,
+                            filename: "pageant_cover_\(UUID().uuidString.prefix(8)).\(prepared.ext)",
+                            mime: prepared.mime)
+                    } else {
+                        curl = try? await APIClient.shared.uploadFile(data: coverData, filename: "pageant_cover_\(UUID().uuidString.prefix(8)).jpg", mime: "image/jpeg")
+                    }
                 }
                 videoUrl = vurl
                 videoCoverUrl = curl
