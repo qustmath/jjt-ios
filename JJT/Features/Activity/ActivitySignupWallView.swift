@@ -5,11 +5,13 @@ import SwiftUI
 // 标题/装饰/主题色按 ActivityTheme 令牌注入，代码不写死活动皮肤。
 
 /// 会员段位胶囊（皇冠 + 「段位 · Lv.N」，Noir.tierColor 容错解析；单行不换行）
+/// showLevel=false：只显示段位名（选美榜单/详情用，不挂 Lv.N）
 struct ActivityVipChip: View {
     let vipLevel: String?
     let vipLevelColor: String?
     let levelInTier: Int?
     var fontSize: CGFloat = 8
+    var showLevel: Bool = true
 
     var body: some View {
         if let vipLevel, !vipLevel.isEmpty {
@@ -17,7 +19,7 @@ struct ActivityVipChip: View {
                 Image(systemName: "crown.fill")
                     .font(.system(size: fontSize * 0.95))
                     .foregroundStyle(tier)
-                Text("\(vipLevel) · Lv.\(levelInTier ?? 1)")
+                Text(showLevel ? "\(vipLevel) · Lv.\(levelInTier ?? 1)" : vipLevel)
                     .font(.system(size: fontSize, weight: .semibold))
                     .foregroundStyle(tier)
                     .lineLimit(1)

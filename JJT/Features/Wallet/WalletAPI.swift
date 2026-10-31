@@ -38,6 +38,11 @@ enum WalletAPI {
     static func exchangeRadish(amount: Int64) async throws -> Int64 {
         try await APIClient.shared.post("app-api/member/wallet/exchange-radish", query: ["amount": String(amount)])
     }
+
+    /// 收益转入兔币（1 兔币 = 1 角 = 10 分），返回入账兔币数量
+    static func exchangeRabbit(amount: Int64) async throws -> Int64 {
+        try await APIClient.shared.post("app-api/member/wallet/exchange-rabbit", query: ["amount": String(amount)])
+    }
 }
 
 // MARK: - 充值

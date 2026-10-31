@@ -29,6 +29,20 @@ struct PageantActivity: Decodable {
     let carrotBalance: Int64?
     let rabbitBalance: Int64?
     let myEntryId: Int64?
+    // ---- 票池（购票入库后统一投票；对齐安卓 PageantActivity pool 字段） ----
+    /// 免费票剩余（每日重置）
+    let freeLeft: Int?
+    /// 分享票剩余（分享得机会，每日重置）
+    let shareChances: Int?
+    /// 萝贝票库存（购票累计，跨日持久）
+    let carrotTickets: Int?
+    /// 兔币票库存
+    let rabbitTickets: Int?
+    /// 票池总票数 = 免费 + 分享 + 萝贝 + 兔币
+    let totalTickets: Int?
+    /// 今日该渠道还可购票张数（受每日次数与库存约束）
+    let carrotPurchaseLeft: Int?
+    let rabbitPurchaseLeft: Int?
 }
 
 struct PageantEntry: Decodable, Identifiable {
@@ -41,6 +55,10 @@ struct PageantEntry: Decodable, Identifiable {
     /// 头像框（会员当前佩戴）
     let avatarFrame: String?
     let avatarFrameScale: Double?
+    /// 段位名/色值/段内等级（未付费为 nil）
+    let vipLevel: String?
+    let vipLevelColor: String?
+    let levelInTier: Int?
     let images: [String]?
     let video: String?
     let videoCover: String?
@@ -57,6 +75,11 @@ struct PageantEntryDetail: Decodable {
     let userId: Int64
     let nickname: String?
     let avatar: String?
+    let avatarFrame: String?
+    let avatarFrameScale: Double?
+    let vipLevel: String?
+    let vipLevelColor: String?
+    let levelInTier: Int?
     let images: [String]?
     let video: String?
     let videoCover: String?
@@ -70,6 +93,11 @@ struct PageantEntryDetail: Decodable {
     struct Voter: Decodable {
         let nickname: String?
         let avatar: String?
+        let avatarFrame: String?
+        let avatarFrameScale: Double?
+        let vipLevel: String?
+        let vipLevelColor: String?
+        let levelInTier: Int?
         let votes: Int?
         let timeText: String?
     }
@@ -95,6 +123,30 @@ struct PageantVoteReq: Encodable {
     let voteType: String
     let votes: Int
     let payPassword: String?
+}
+
+/// 购票：type=rabbit/carrot，count=张数；兔币需支付密码；扣钱包后进入票池
+struct PageantTicketPurchaseReq: Encodable {
+    let type: String
+    let count: Int
+    let payPassword: String?
+}
+
+/// 票池投票：服务端按 免费→分享→萝贝→兔币 顺序扣票
+struct PageantPoolVoteReq: Encodable {
+    let entryId: Int64
+    let votes: Int
+}
+
+/// 购票后的票池快照
+struct PageantTicketPool: Decodable {
+    let freeLeft: Int?
+    let shareChances: Int?
+    let carrotTickets: Int?
+    let rabbitTickets: Int?
+    let totalTickets: Int?
+    let carrotPurchaseLeft: Int?
+    let rabbitPurchaseLeft: Int?
 }
 
 enum PageantAPI {
@@ -136,5 +188,15 @@ enum PageantAPI {
 
     static func shareEarn(entryId: Int64) async throws -> Bool {
         try await APIClient.shared.post("app-api/member/pageant/share-earn", query: ["entryId": "\(entryId)"])
+    }
+
+    /// 购票入池（扣兔币/萝贝钱包），返回最新票池
+    static func purchaseTicket(_ body: PageantTicketPurchaseReq) async throws -> PageantTicketPool {
+        try await APIClient.shared.post("app-api/member/pageant/ticket/purchase", body: body)
+    }
+
+    /// 票池投票（免费→分享→萝贝→兔币 顺序扣票）
+    static func votePool(_ body: PageantPoolVoteReq) async throws -> Bool {
+        try await APIClient.shared.post("app-api/member/pageant/ticket/vote", body: body)
     }
 }

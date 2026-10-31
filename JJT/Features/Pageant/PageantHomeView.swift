@@ -121,7 +121,8 @@ struct PageantHomeView: View {
                 Image(systemName: "ticket")
                     .font(.system(size: 11))
                     .foregroundStyle(Noir.goldLight)
-                Text("今日可投 \(todayLeft(activity))")
+                // 预热期（start_time 未到）投票未开放，顶栏不显示可用票数
+                Text((activity.startTime ?? 0) > nowMs ? "投票未开启" : "今日可投 \(todayLeft(activity))")
                     .font(.system(size: 10))
                     .foregroundStyle(Noir.goldLight)
             }
@@ -261,13 +262,11 @@ struct PageantHomeView: View {
     // MARK: - 我要参选
 
     private func enterButton(_ activity: PageantActivity) -> some View {
-        let notStarted = (activity.startTime ?? 0) > nowMs
-        return Button { showEntrySheet = true } label: {
-            Text(notStarted
-                 ? "活动未开始 · 敬请期待"
-                 : (activity.myEntryId != nil ? "编辑我的参赛作品" : "我要参选 · 上传我的暗夜之姿"))
+        // 预热期报名/编辑全程开放（与安卓一致：投票未开启不影响报名）
+        Button { showEntrySheet = true } label: {
+            Text(activity.myEntryId != nil ? "编辑我的参赛作品" : "我要参选 · 上传我的暗夜之姿")
                 .font(.system(size: 13.5, weight: .semibold))
-                .foregroundStyle(notStarted ? .white.opacity(0.45) : .white)
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(Capsule().fill(LinearGradient(
@@ -275,7 +274,6 @@ struct PageantHomeView: View {
                     startPoint: .leading, endPoint: .trailing)))
         }
         .buttonStyle(.plain)
-        .disabled(notStarted)
         .padding(.horizontal, 20)
         .padding(.top, 16)
     }
@@ -321,6 +319,13 @@ struct PageantHomeView: View {
                         .font(.system(size: isChampion ? 15 : 13, weight: .bold, design: .serif))
                         .foregroundStyle(Noir.ivory)
                         .lineLimit(1)
+                    ActivityVipChip(
+                        vipLevel: entry.vipLevel,
+                        vipLevelColor: entry.vipLevelColor,
+                        levelInTier: entry.levelInTier,
+                        fontSize: isChampion ? 8 : 7.5,
+                        showLevel: false
+                    )
                     Text("\(entry.votes ?? 0) 票")
                         .font(.system(size: isChampion ? 12 : 11, weight: .semibold, design: .serif))
                         .foregroundStyle(isChampion ? AnyShapeStyle(Noir.goldText) : AnyShapeStyle(Noir.gold))
@@ -447,6 +452,13 @@ struct PageantHomeView: View {
                         .font(.system(size: 13.5, weight: .bold, design: .serif))
                         .foregroundStyle(Noir.ivory)
                         .lineLimit(1)
+                    ActivityVipChip(
+                        vipLevel: entry.vipLevel,
+                        vipLevelColor: entry.vipLevelColor,
+                        levelInTier: entry.levelInTier,
+                        fontSize: 7.5,
+                        showLevel: false
+                    )
                 }
                 .padding(.top, 6)
             }

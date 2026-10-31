@@ -32,6 +32,10 @@ targets:
         type: folder
       - path: JJT/Resources/posters
         type: folder
+      # 选美投票 UI 贴图（红色投票钮/玻璃票档底图，与安卓 drawable-nodpi 同源）：
+      # 按单文件资源扁平打进 bundle 根，SwiftUI Image("vote_red_button") 直接取
+      - path: JJT/Resources/vote
+        buildPhase: resources
     info:
       path: JJT/Info.plist
       properties:

@@ -14,6 +14,7 @@ struct WalletView: View {
     @StateObject private var vm = WalletViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var showExchange = false
+    @State private var showEarningsExchange = false
 
     private static let titles: [String: (String, String)] = [
         "rabbit_coin": ("兔币", "RABBIT COIN"),
@@ -73,6 +74,21 @@ struct WalletView: View {
             .presentationDetents([.height(280)])
             .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
         }
+        // 收益 → 兔币（1 元 = 10 兔币，金额按分扣减）
+        .sheet(isPresented: $showEarningsExchange) {
+            EarningsExchangeSheet(earningsCents: vm.balance ?? vm.transactions.first?.balanceAfter ?? 0) { amount in
+                do {
+                    let got = try await vm.exchangeEarningsToRabbit(amount)
+                    showEarningsExchange = false
+                    jjtShowToast("已转入 \(got) 兔币")
+                } catch {
+                    jjtShowToast(error.localizedDescription)
+                }
+            }
+            .jjtPageGestures()
+            .presentationDetents([.height(300)])
+            .presentationBackground(Color(red: 0x14/255, green: 0x14/255, blue: 0x1A/255))
+        }
         .jjtPageGestures()
     }
 
@@ -130,8 +146,25 @@ struct WalletView: View {
                 showExchange = true
             }
         case "earnings":
-            balanceCardView(label: "可提现余额（元）", value: fenToYuan(latestBalance),
-                            actionText: onWithdraw != nil ? "提现" : nil) { onWithdraw?() }
+            VStack(spacing: 0) {
+                balanceCardView(label: "可提现余额（元）", value: fenToYuan(latestBalance),
+                                actionText: onWithdraw != nil ? "提现" : nil) { onWithdraw?() }
+                // 收益直接转入兔币钱包（1 元 = 10 兔币）
+                Button {
+                    showEarningsExchange = true
+                } label: {
+                    Text("收益转入兔币钱包")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .leading, endPoint: .trailing))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
+            }
         default:
             EmptyView()
         }
@@ -294,6 +327,102 @@ struct RadishExchangeSheet: View {
     }
 }
 
+// MARK: - 收益转入兔币弹层
+//
+// 收益钱包按分计价，1 兔币 = 10 分（1 元 = 10 兔币）。
+// 输入兔币数量，按分扣减收益后入账兔币。
+
+struct EarningsExchangeSheet: View {
+
+    let earningsCents: Int64
+    /// 确认转入（挂起；失败抛异常由调用方提示）
+    let onConfirm: (Int64) async throws -> Void
+
+    @State private var amountText = ""
+    @State private var submitting = false
+    @Environment(\.dismiss) private var dismiss
+
+    /// 最多可转兔币数（收益分 ÷ 10 向下取整）
+    private var maxRabbit: Int64 { max(earningsCents / 10, 0) }
+    private var amount: Int64? { Int64(amountText) }
+    private var valid: Bool { (amount ?? 0) > 0 && (amount ?? 0) <= maxRabbit }
+
+    private func yuan(_ cents: Int64) -> String {
+        String(format: "%.2f", Double(cents) / 100)
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Rectangle().fill(Noir.goldLine).frame(height: 1)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("收益转入兔币")
+                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .foregroundStyle(Noir.ivory)
+                    Text("1 元 = 10 兔币 · 可转 ¥\(yuan(earningsCents))（最多 \(maxRabbit) 兔币）")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+            }
+
+            HStack {
+                TextField("转入兔币数量", text: $amountText)
+                    .keyboardType(.numberPad)
+                    .noirField()
+                    .onChange(of: amountText) { _, newValue in
+                        amountText = String(newValue.filter(\.isNumber).prefix(9))
+                    }
+                Button("全部") { amountText = "\(maxRabbit)" }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Noir.gold)
+            }
+
+            if let amount, amount > 0 {
+                Text(amount <= maxRabbit
+                     ? "需扣除收益 ¥\(yuan(amount * 10)) · 兔币 +\(amount)"
+                     : "可转收益不足")
+                    .font(.system(size: 12))
+                    .foregroundStyle(amount <= maxRabbit ? Noir.goldLight : Noir.crimsonHot)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                guard let amount, valid, !submitting else { return }
+                submitting = true
+                Task {
+                    try? await onConfirm(amount)
+                    submitting = false
+                }
+            } label: {
+                Text("确认转入")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(valid ? Color(red: 0x2A/255, green: 0x1C/255, blue: 0x06/255) : Color.white.opacity(0.3))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(
+                        valid
+                            ? AnyShapeStyle(LinearGradient(colors: [Noir.goldPale, Noir.gold], startPoint: .leading, endPoint: .trailing))
+                            : AnyShapeStyle(Color.white.opacity(0.08))
+                    )
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!valid || submitting)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -345,6 +474,17 @@ final class WalletViewModel: ObservableObject {
     /// 兔币兑换萝贝，返回获得的萝贝数
     func exchangeRadish(_ amount: Int64) async throws -> Int64 {
         let got = try await WalletAPI.exchangeRadish(amount: amount)
+        // 刷新流水与余额
+        if let type = loadedType {
+            loadedType = nil
+            refresh(walletType: type)
+        }
+        return got
+    }
+
+    /// 收益转入兔币（1 兔币 = 10 分），返回入账兔币数
+    func exchangeEarningsToRabbit(_ amount: Int64) async throws -> Int64 {
+        let got = try await WalletAPI.exchangeRabbit(amount: amount)
         // 刷新流水与余额
         if let type = loadedType {
             loadedType = nil
