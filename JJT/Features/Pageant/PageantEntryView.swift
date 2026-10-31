@@ -695,6 +695,10 @@ private struct PageantPoolVoteButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
+                // 底：酒红渐变（贴图缺失/加载前也不空）
+                Capsule().fill(LinearGradient(
+                    colors: [Color(red: 0xD9 / 255, green: 0x04 / 255, blue: 0x29 / 255), Noir.crimsonDeep, Noir.wine],
+                    startPoint: .leading, endPoint: .trailing))
                 Image("vote_red_button")
                     .resizable()
                     .frame(width: 68, height: 40)
@@ -728,6 +732,10 @@ private struct VoteTicketRow: View {
     var body: some View {
         Button(action: action) {
             ZStack {
+                // 底：玻璃渐变（贴图缺失/加载前也不空）
+                Capsule().fill(LinearGradient(
+                    colors: [Color.white.opacity(0.18), Color.white.opacity(0.07)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
                 Image(texture)
                     .resizable()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
