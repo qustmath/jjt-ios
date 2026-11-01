@@ -72,6 +72,10 @@ struct PostShareSheet: View {
             "cover": cover,
         ]
         let data = try JSONSerialization.data(withJSONObject: payload)
+        // 发送前预检（封号/非互关等）；接口异常放行
+        if let deny = await MessageCheckAPI.check(scene: "c2c", target: "\(friend.userId)") {
+            throw APIError.business(code: -1, message: deny)
+        }
         try await ImManager.shared.sendCustom(String(decoding: data, as: UTF8.self), to: "\(friend.userId)", isGroup: false)
         // 分享成功回调：上报分享计数（取消/失败不走到这里，不上报）
         reportShare(post.id)

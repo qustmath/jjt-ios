@@ -374,6 +374,11 @@ final class ChatViewModel: ObservableObject {
         }
         let atIds = isGroup ? Array(atUserIds) : []
         Task {
+            // 发送前预检（腾讯发送前回调已停用）：接发条数/禁言/封号等由服务端判定
+            if let deny = await MessageCheckAPI.check(scene: isGroup ? "group" : "c2c", target: peerId, text: t) {
+                self.error = deny
+                return
+            }
             do {
                 if !atIds.isEmpty {
                     try await ImManager.shared.sendTextAt(t, atUsers: atIds, to: peerId, cloudCustomData: cloudData)
@@ -400,6 +405,10 @@ final class ChatViewModel: ObservableObject {
     /// 发送图片（本地文件路径）
     func sendImage(localPath: String) {
         Task {
+            if let deny = await MessageCheckAPI.check(scene: isGroup ? "group" : "c2c", target: peerId) {
+                self.error = deny
+                return
+            }
             do {
                 try await ImManager.shared.sendImage(localPath, to: peerId, isGroup: isGroup)
                 var m = ChatMessage(isMine: true, senderId: "", senderName: "", senderAvatar: myAvatar,
@@ -424,6 +433,10 @@ final class ChatViewModel: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: obj),
               let json = String(data: data, encoding: .utf8) else { return }
         Task {
+            if let deny = await MessageCheckAPI.check(scene: isGroup ? "group" : "c2c", target: peerId) {
+                self.error = deny
+                return
+            }
             do {
                 try await ImManager.shared.sendCustom(json, to: peerId, isGroup: isGroup)
                 var m = ChatMessage(isMine: true, senderId: "", senderName: "", senderAvatar: myAvatar,
@@ -445,6 +458,10 @@ final class ChatViewModel: ObservableObject {
     func sendSticker(pack: String, name: String) {
         let json = "{\"type\":\"sticker\",\"pack\":\"\(pack)\",\"name\":\"\(name)\"}"
         Task {
+            if let deny = await MessageCheckAPI.check(scene: isGroup ? "group" : "c2c", target: peerId) {
+                self.error = deny
+                return
+            }
             do {
                 try await ImManager.shared.sendCustom(json, to: peerId, isGroup: isGroup)
                 var m = ChatMessage(isMine: true, senderId: "", senderName: "", senderAvatar: myAvatar,
@@ -469,6 +486,12 @@ final class ChatViewModel: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: obj),
               let json = String(data: data, encoding: .utf8) else { return }
         Task {
+            if let deny = await MessageCheckAPI.check(scene: isGroup ? "group" : "c2c", target: peerId) {
+                // 预检拒绝 → 撤回红包，金额原路退回（与发送失败同口径）
+                _ = try? await RedPacketAPI.cancel(packetId: packetId)
+                self.error = "红包发送失败：\(deny)（金额已退回钱包）"
+                return
+            }
             do {
                 try await ImManager.shared.sendCustom(json, to: peerId, isGroup: isGroup)
                 var m = ChatMessage(isMine: true, senderId: "", senderName: "", senderAvatar: myAvatar,

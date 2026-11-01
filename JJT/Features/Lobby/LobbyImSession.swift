@@ -481,6 +481,11 @@ final class LobbyImSession: ObservableObject {
         guard let gid = validGroup(groupId) else { return "本店公屏暂未开通（门店群未建）" }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
+        // 发送前预检（腾讯发送前回调已停用）：大厅禁言/限频/聚合群只读/封号由服务端判定
+        if let deny = await MessageCheckAPI.check(
+            scene: "lobby", target: gid, text: body, cloudCustomData: Self.lobbyMeta(seatedInStore)) {
+            return deny
+        }
         do {
             try await ImManager.shared.sendText(body, to: gid, isGroup: true, cloudCustomData: Self.lobbyMeta(seatedInStore))
             appendLocal(gid, .text, text: body)
@@ -494,6 +499,10 @@ final class LobbyImSession: ObservableObject {
     @discardableResult
     func sendVoice(groupId: String?, path: String, seconds: Int, seatedInStore: Bool) async -> String? {
         guard let gid = validGroup(groupId) else { return "本店公屏暂未开通（门店群未建）" }
+        if let deny = await MessageCheckAPI.check(
+            scene: "lobby", target: gid, cloudCustomData: Self.lobbyMeta(seatedInStore)) {
+            return deny
+        }
         do {
             try await ImManager.shared.sendSound(path, seconds: Int32(seconds), to: gid, isGroup: true,
                                                  cloudCustomData: Self.lobbyMeta(seatedInStore))
@@ -508,6 +517,10 @@ final class LobbyImSession: ObservableObject {
     @discardableResult
     func sendImage(groupId: String?, path: String, seatedInStore: Bool) async -> String? {
         guard let gid = validGroup(groupId) else { return "本店公屏暂未开通（门店群未建）" }
+        if let deny = await MessageCheckAPI.check(
+            scene: "lobby", target: gid, cloudCustomData: Self.lobbyMeta(seatedInStore)) {
+            return deny
+        }
         do {
             try await ImManager.shared.sendImage(path, to: gid, isGroup: true, cloudCustomData: Self.lobbyMeta(seatedInStore))
             appendLocal(gid, .image, imagePath: path)
@@ -523,6 +536,10 @@ final class LobbyImSession: ObservableObject {
         guard let gid = validGroup(groupId) else { return "本店公屏暂未开通（门店群未建）" }
         let payload: [String: Any] = ["type": "sticker", "pack": pack, "name": name]
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        if let deny = await MessageCheckAPI.check(
+            scene: "lobby", target: gid, cloudCustomData: Self.lobbyMeta(seatedInStore)) {
+            return deny
+        }
         do {
             try await ImManager.shared.sendCustom(String(data: data, encoding: .utf8) ?? "", to: gid, isGroup: true,
                                                   cloudCustomData: Self.lobbyMeta(seatedInStore))
