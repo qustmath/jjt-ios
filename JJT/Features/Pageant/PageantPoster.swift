@@ -30,9 +30,9 @@ enum PageantPoster {
             return nil
         }
         let photo = await loadImage(detail.images?.first)
-        // 自定义底图的白色照片槽是「圆角矩形」（比内置椭圆更大/更靠上），
-        // 沿用椭圆会露出四角白边；内置模板仍走椭圆。
         let isCustom = activity.shareImage?.isEmpty == false
+        // PNG 透明镂空：按 alpha 透明区把照片透出来（形状不用猜）；不透明底图走几何槽
+        let hole = isCustom ? alphaHoleRect(bg) : nil
         let photoRect = isCustom ? customRect : builtinEllipse
         let photoPath: UIBezierPath = isCustom
             ? UIBezierPath(roundedRect: photoRect, cornerRadius: customCorner)
@@ -42,16 +42,29 @@ enum PageantPoster {
 
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: W, height: H))
         return renderer.image { ctx in
-            // ---- 模板打底 ----
-            bg.draw(in: CGRect(x: 0, y: 0, width: W, height: H))
-
-            // ---- 椭圆槽：参赛者照片（center-crop + 椭圆裁剪） ----
-            if let photo {
-                ctx.cgContext.saveGState()
-                ctx.cgContext.addPath(photoPath.cgPath)
-                ctx.cgContext.clip()
-                drawCover(photo, in: photoRect)
-                ctx.cgContext.restoreGState()
+            if let hole {
+                // 先画照片到镂空 bbox，再用底图盖住；透明洞自然露出照片
+                if let photo {
+                    let bmpW = CGFloat(bg.cgImage?.width ?? Int(bg.size.width))
+                    let bmpH = CGFloat(bg.cgImage?.height ?? Int(bg.size.height))
+                    let sx = W / max(bmpW, 1)
+                    let sy = H / max(bmpH, 1)
+                    drawCover(photo, in: CGRect(
+                        x: hole.minX * sx, y: hole.minY * sy,
+                        width: hole.width * sx, height: hole.height * sy))
+                }
+                bg.draw(in: CGRect(x: 0, y: 0, width: W, height: H))
+            } else {
+                // ---- 模板打底 ----
+                bg.draw(in: CGRect(x: 0, y: 0, width: W, height: H))
+                // ---- 照片槽（center-crop + 椭圆/圆角矩形裁剪） ----
+                if let photo {
+                    ctx.cgContext.saveGState()
+                    ctx.cgContext.addPath(photoPath.cgPath)
+                    ctx.cgContext.clip()
+                    drawCover(photo, in: photoRect)
+                    ctx.cgContext.restoreGState()
+                }
             }
 
             // ---- 参赛号：抹掉模板烘焙的原字（垂直渐变贴合背景），重画「小 label + 大号码」 ----
@@ -94,6 +107,43 @@ enum PageantPoster {
             return nil
         }
         return UIImage(contentsOfFile: path)
+    }
+
+    /// 自定义底图若为带透明镂空的 PNG，返回透明区 bbox（像素坐标）；不透明返回 nil
+    private static func alphaHoleRect(_ image: UIImage) -> CGRect? {
+        guard let cg = image.cgImage,
+              let data = cg.dataProvider?.data,
+              let ptr = CFDataGetBytePtr(data) else { return nil }
+        let w = cg.width
+        let h = cg.height
+        let bpp = cg.bitsPerPixel / 8
+        guard bpp >= 4 else { return nil }
+        let alphaOffset: Int
+        switch cg.alphaInfo {
+        case .premultipliedLast, .last: alphaOffset = 3
+        case .premultipliedFirst, .first: alphaOffset = 0
+        default: return nil
+        }
+        let bpr = cg.bytesPerRow
+        var count = 0
+        var minX = w
+        var minY = h
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<h {
+            let row = y * bpr
+            for x in 0..<w {
+                if ptr[row + x * bpp + alphaOffset] < 250 {
+                    count += 1
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                }
+            }
+        }
+        guard maxX >= 0, count > w * h / 20 else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
     }
 
     /// cover 模式绘制到目标区域
