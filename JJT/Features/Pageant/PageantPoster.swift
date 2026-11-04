@@ -16,9 +16,16 @@ enum PageantPoster {
     private static let numColor = UIColor(red: 203 / 255, green: 199 / 255, blue: 196 / 255, alpha: 1)
 
     /// 生成海报。photoUrl 取参赛者第一张图，center-crop 进椭圆槽。返回 UIImage。
+    /// 后台配置了 shareImage 时用后台底图（941×1672 同槽位），nil/加载失败回退内置模板。
     static func generate(activity: PageantActivity, detail: PageantEntryDetail, qrContent: String) async -> UIImage? {
-        guard let bgPath = Bundle.main.path(forResource: "pageant_poster_bg", ofType: "jpg", inDirectory: "posters"),
-              let bg = UIImage(contentsOfFile: bgPath) else { return nil }
+        let bg: UIImage
+        if let custom = await loadImage(activity.shareImage) {
+            bg = custom
+        } else if let bundled = bundledPoster() {
+            bg = bundled
+        } else {
+            return nil
+        }
         let photo = await loadImage(detail.images?.first)
         let qr = qrCodeImage(qrContent, side: qrRect.width * 4) // 4 倍超采样，保证小尺寸可扫
         let noText = String(format: "No.%03d", detail.entryNo ?? Int(detail.id))
@@ -70,6 +77,14 @@ enum PageantPoster {
     }
 
     // MARK: - 私有
+
+    /// 内置模板（后台 shareImage 为空/加载失败时兜底）
+    private static func bundledPoster() -> UIImage? {
+        guard let path = Bundle.main.path(forResource: "pageant_poster_bg", ofType: "jpg", inDirectory: "posters") else {
+            return nil
+        }
+        return UIImage(contentsOfFile: path)
+    }
 
     /// cover 模式绘制到目标区域
     private static func drawCover(_ src: UIImage, in dest: CGRect) {

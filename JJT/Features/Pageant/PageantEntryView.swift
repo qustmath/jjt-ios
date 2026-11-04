@@ -62,11 +62,19 @@ private final class PageantEntryModel: ObservableObject {
     /// 投票请求进行中：防连点（并发扣票会冲突）
     @Published var voting = false
     @Published var error: String?
+    /// 投票贡献榜全量（打开弹层时拉取）
+    @Published var voterBoard: [PageantEntryDetail.Voter] = []
+    @Published var voterBoardLoading = false
+    /// 我是否已隐藏投票信息（服务端为准）
+    @Published var voterHidden = false
+    @Published var voterHiddenBusy = false
 
     func load(_ entryId: Int64) async {
         isLoading = true
         detail = try? await PageantAPI.entryDetail(id: entryId)
-        activity = try? await PageantAPI.activity()
+        let a = try? await PageantAPI.activity()
+        activity = a
+        if let v = a?.voterHidden { voterHidden = v }
         isLoading = false
     }
 
@@ -74,7 +82,40 @@ private final class PageantEntryModel: ObservableObject {
     func refreshSilent(_ entryId: Int64) async {
         guard let d = try? await PageantAPI.entryDetail(id: entryId) else { return }
         detail = d
-        if let a = try? await PageantAPI.activity() { activity = a }
+        if let a = try? await PageantAPI.activity() {
+            activity = a
+            if let v = a.voterHidden { voterHidden = v }
+        }
+    }
+
+    /// 拉取投票贡献榜全量（弹层打开时调用；不占用详情轮询）
+    func loadVoterBoard(_ entryId: Int64) async {
+        guard !voterBoardLoading else { return }
+        voterBoardLoading = true
+        if let list = try? await PageantAPI.entryVoters(id: entryId) {
+            voterBoard = list
+        } else {
+            jjtShowToast("投票榜单加载失败，请稍后重试")
+        }
+        voterBoardLoading = false
+    }
+
+    /// 隐藏/恢复我的投票信息；成功后刷新详情与贡献榜（昵称脱敏即时生效）
+    func setVoterHidden(_ entryId: Int64, hidden: Bool) async {
+        guard !voterHiddenBusy else { return }
+        voterHiddenBusy = true
+        do {
+            _ = try await PageantAPI.setVoterHidden(hidden)
+            voterHidden = hidden
+            jjtShowToast(hidden ? "已隐藏我的投票信息" : "已恢复我的投票信息")
+            await load(entryId)
+            await loadVoterBoard(entryId)
+        } catch let e as APIError {
+            if case .business(_, let msg) = e { jjtShowToast(msg) } else { jjtShowToast("网络异常") }
+        } catch {
+            jjtShowToast("网络异常")
+        }
+        voterHiddenBusy = false
     }
 
     /// 票池投票：服务端按 免费→分享→萝贝→兔币 顺序扣票。成功后刷新 + 爆发动效
@@ -145,6 +186,10 @@ private struct PageantEntryPage: View {
     /// 选手图片大图预览（双指缩放/左右滑，复用广场 ImagePreviewViewer）
     @State private var showImagePreview = false
     @State private var previewIndex = 0
+    /// 投票贡献榜弹层
+    @State private var showVoterBoard = false
+    /// 点击参赛者头像打开的他人主页
+    @State private var profileId: Int64?
 
     var body: some View {
         ZStack {
@@ -166,6 +211,7 @@ private struct PageantEntryPage: View {
                             onNeedRecharge: { showRecharge = true },
                             onShare: { sharePoster(detail, activity) }
                         )
+                        voterBoardEntryCard(detail)
                         recentVoters(detail)
                         Spacer().frame(height: 40)
                     }
@@ -182,8 +228,30 @@ private struct PageantEntryPage: View {
                     .foregroundStyle(Noir.crimsonHot)
                     .transition(.scale.combined(with: .opacity))
             }
+
+            // 投票贡献榜弹层（全量投票人；隐藏/恢复入口在我的行）
+            if showVoterBoard {
+                PageantVoterBoardOverlay(
+                    targetNickname: vm.detail?.nickname ?? "TA",
+                    voters: vm.voterBoard,
+                    loading: vm.voterBoardLoading,
+                    myHidden: vm.voterHidden,
+                    busy: vm.voterHiddenBusy,
+                    onDismiss: { showVoterBoard = false },
+                    onUserClick: { id in
+                        showVoterBoard = false
+                        profileId = id
+                    },
+                    onSetHidden: { hidden in
+                        Task { await vm.setVoterHidden(entryId, hidden: hidden) }
+                    }
+                )
+            }
         }
         .task { await vm.load(entryId) }
+        .onChange(of: showVoterBoard) { _, open in
+            if open { Task { await vm.loadVoterBoard(entryId) } }
+        }
         // 当前停留页 4 秒轮询：别人的投票实时可见（静默刷新）
         .task {
             while !Task.isCancelled {
@@ -238,6 +306,15 @@ private struct PageantEntryPage: View {
         // 图片大图预览（从当前停留页进入）
         .fullScreenCover(isPresented: $showImagePreview) {
             ImagePreviewViewer(images: vm.detail?.images ?? [], initialIndex: previewIndex)
+        }
+        // 点击参赛者头像进入其主页
+        .fullScreenCover(isPresented: Binding(
+            get: { profileId != nil },
+            set: { if !$0 { profileId = nil } }
+        )) {
+            if let id = profileId {
+                UserProfileView(userId: id)
+            }
         }
     }
 
@@ -321,6 +398,8 @@ private struct PageantEntryPage: View {
                     AppAvatar(url: detail.avatar, size: 48,
                               frameURL: detail.avatarFrame,
                               frameScale: CGFloat(detail.avatarFrameScale ?? 1.0))
+                        .contentShape(Circle())
+                        .onTapGesture { profileId = detail.userId }
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Text(detail.nickname ?? "用户\(detail.userId)")
@@ -381,6 +460,59 @@ private struct PageantEntryPage: View {
         .frame(height: 380)
     }
 
+    // MARK: - 给 TA 投票的榜单（贡献榜入口）
+
+    private func voterBoardEntryCard(_ detail: PageantEntryDetail) -> some View {
+        Button { showVoterBoard = true } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Noir.gold.opacity(0.1))
+                    Circle().stroke(Noir.gold.opacity(0.4), lineWidth: 1)
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Noir.goldLight)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("给 \(detail.nickname ?? "TA") 投票的榜单")
+                        .font(.system(size: 14, weight: .bold, design: .serif))
+                        .foregroundStyle(Noir.ivory)
+                        .lineLimit(1)
+                    Text("贡献榜 · 查看全部投票人")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                Spacer(minLength: 6)
+
+                if let top = detail.topVoters, !top.isEmpty {
+                    HStack(spacing: -10) {
+                        ForEach(Array(top.prefix(3).enumerated()), id: \.offset) { i, voter in
+                            AppAvatar(url: voter.avatar, size: 30,
+                                      frameURL: voter.avatarFrame,
+                                      frameScale: CGFloat(voter.avatarFrameScale ?? 1.0))
+                                .background(Circle().fill(Noir.noir2))
+                                .zIndex(Double(3 - i))
+                        }
+                    }
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.3))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Noir.noir2)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Noir.hairlineGold, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+    }
+
     // MARK: - 最近投票人
 
     @ViewBuilder
@@ -398,44 +530,63 @@ private struct PageantEntryPage: View {
                         .foregroundStyle(.white.opacity(0.25))
                 }
                 .padding(.bottom, 12)
-                VStack(spacing: 0) {
-                    ForEach(Array(voters.enumerated()), id: \.offset) { i, voter in
-                        HStack(spacing: 12) {
-                            AppAvatar(url: voter.avatar, size: 36,
-                                      frameURL: voter.avatarFrame,
-                                      frameScale: CGFloat(voter.avatarFrameScale ?? 1.0))
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 5) {
-                                    Text(voter.nickname ?? "神秘人")
-                                        .font(.system(size: 12.5))
-                                        .foregroundStyle(Noir.ivory)
-                                    ActivityVipChip(
-                                        vipLevel: voter.vipLevel,
-                                        vipLevelColor: voter.vipLevelColor,
-                                        levelInTier: voter.levelInTier,
-                                        fontSize: 8,
-                                        showLevel: false
-                                    )
+
+                let visibleRows = min(voters.count, 5)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(voters.enumerated()), id: \.offset) { i, voter in
+                            HStack(spacing: 12) {
+                                AppAvatar(url: voter.avatar, size: 36,
+                                          frameURL: voter.avatarFrame,
+                                          frameScale: CGFloat(voter.avatarFrameScale ?? 1.0))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 5) {
+                                        Text(voter.nickname ?? "神秘人")
+                                            .font(.system(size: 12.5))
+                                            .foregroundStyle(Noir.ivory)
+                                            .lineLimit(1)
+                                        if voter.hidden == true {
+                                            Image(systemName: "eye.slash")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(.white.opacity(0.3))
+                                        }
+                                        ActivityVipChip(
+                                            vipLevel: voter.vipLevel,
+                                            vipLevelColor: voter.vipLevelColor,
+                                            levelInTier: voter.levelInTier,
+                                            fontSize: 8,
+                                            showLevel: true
+                                        )
+                                    }
+                                    Text(voter.timeText ?? "")
+                                        .font(.system(size: 9.5))
+                                        .foregroundStyle(.white.opacity(0.3))
                                 }
-                                Text(voter.timeText ?? "")
-                                    .font(.system(size: 9.5))
-                                    .foregroundStyle(.white.opacity(0.3))
+                                Spacer()
+                                Text("+\(voter.votes ?? 1) 票")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Noir.crimsonHot)
                             }
-                            Spacer()
-                            Text("+\(voter.votes ?? 1) 票")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Noir.crimsonHot)
-                        }
-                        .padding(.vertical, 12)
-                        if i < voters.count - 1 {
-                            Rectangle().fill(Color.white.opacity(0.05)).frame(height: 1)
+                            .padding(.horizontal, 16)
+                            .frame(height: 60)
+                            if i < voters.count - 1 {
+                                Rectangle().fill(Color.white.opacity(0.05)).frame(height: 1)
+                            }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
+                .frame(height: CGFloat(visibleRows * 61 - 1))
                 .background(Noir.noir2)
                 .clipShape(RoundedRectangle(cornerRadius: 24))
                 .overlay(RoundedRectangle(cornerRadius: 24).stroke(Noir.hairlineGold, lineWidth: 1))
+
+                if voters.count > 5 {
+                    Text("上下滑动查看全部 \(voters.count) 位投票人")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.25))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 7)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 24)
@@ -472,12 +623,240 @@ private struct PageantEntryPage: View {
     }
 }
 
+// MARK: - 投票贡献榜弹层（对齐安卓 VoterBoardDialog）
+
+private struct PageantVoterBoardOverlay: View {
+    let targetNickname: String
+    let voters: [PageantEntryDetail.Voter]
+    let loading: Bool
+    let myHidden: Bool
+    let busy: Bool
+    let onDismiss: () -> Void
+    let onUserClick: (Int64) -> Void
+    let onSetHidden: (Bool) -> Void
+
+    /// nil=不弹确认；true=确认隐藏；false=确认恢复
+    @State private var hidePrompt: Bool?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 0) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("投票贡献榜")
+                            .font(.system(size: 18, weight: .bold, design: .serif))
+                            .foregroundStyle(Noir.ivory)
+                        Text("支持 \(targetNickname) 的全部投票人")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .frame(width: 30, height: 30)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.leading, 20)
+                .padding(.trailing, 14)
+                .padding(.top, 18)
+
+                Spacer().frame(height: 10)
+
+                if loading && voters.isEmpty {
+                    ProgressView().tint(Noir.crimson)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 220)
+                } else if voters.isEmpty {
+                    Text("还没有人投票")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 180)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(voters.enumerated()), id: \.offset) { i, voter in
+                                voterRow(voter, rank: i + 1)
+                                if i < voters.count - 1 {
+                                    Rectangle()
+                                        .fill(Color.white.opacity(0.05))
+                                        .frame(height: 1)
+                                        .padding(.leading, 58)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 400)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .background(LinearGradient(
+                colors: [
+                    Color(red: 0x1B / 255, green: 0x0C / 255, blue: 0x12 / 255),
+                    Color(red: 0x0A / 255, green: 0x07 / 255, blue: 0x0B / 255),
+                ],
+                startPoint: .topLeading, endPoint: .bottomTrailing))
+            .clipShape(RoundedRectangle(cornerRadius: 26))
+            .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.gold.opacity(0.42), lineWidth: 1))
+            .padding(.horizontal, 24)
+            .contentShape(Rectangle())
+            .onTapGesture { /* 消费卡片内点击，避免穿透到遮罩关闭 */ }
+
+            if let hide = hidePrompt {
+                Color.black.opacity(0.55)
+                    .ignoresSafeArea()
+                    .onTapGesture { hidePrompt = nil }
+                hideConfirmCard(hide: hide)
+            }
+        }
+    }
+
+    private func voterRow(_ voter: PageantEntryDetail.Voter, rank: Int) -> some View {
+        let mine = voter.mine == true
+        let hidden = voter.hidden == true
+        let clickable = mine || (!hidden && voter.userId != nil)
+        return Button {
+            if mine {
+                hidePrompt = !(voter.hidden ?? myHidden)
+            } else if !hidden, let uid = voter.userId {
+                onUserClick(uid)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Text("\(rank)")
+                    .font(.system(size: 13, weight: .bold, design: .serif))
+                    .foregroundStyle(rank <= 3 ? Noir.goldPale : Color.white.opacity(0.3))
+                    .frame(width: 26)
+                AppAvatar(url: voter.avatar, size: 42,
+                          frameURL: voter.avatarFrame,
+                          frameScale: CGFloat(voter.avatarFrameScale ?? 1.0))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        Text(voter.nickname ?? "神秘人")
+                            .font(.system(size: 14, weight: .semibold, design: .serif))
+                            .foregroundStyle(Noir.ivory)
+                            .lineLimit(1)
+                        if hidden {
+                            Image(systemName: "eye.slash")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.35))
+                        }
+                    }
+                    ActivityVipChip(
+                        vipLevel: voter.vipLevel,
+                        vipLevelColor: voter.vipLevelColor,
+                        levelInTier: voter.levelInTier,
+                        fontSize: 8.5,
+                        showLevel: true
+                    )
+                }
+                Spacer()
+                if mine {
+                    Text(hidden ? "点击恢复" : "点击隐藏")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.28))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!clickable)
+    }
+
+    private func hideConfirmCard(hide: Bool) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle().fill(Color(red: 0xFF / 255, green: 0x7D / 255, blue: 0x9C / 255).opacity(0.1))
+                Circle().stroke(Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0xB5 / 255).opacity(0.33), lineWidth: 1)
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Noir.goldLight)
+            }
+            .frame(width: 56, height: 56)
+
+            Text(hide ? "隐藏我的投票信息？" : "恢复我的投票信息？")
+                .font(.system(size: 18, weight: .bold, design: .serif))
+                .foregroundStyle(Noir.ivory)
+                .padding(.top, 16)
+
+            Text(hide
+                 ? "隐藏后仅显示昵称首字与 VIP 等级\n任何人不能从榜单跳转你的个人主页"
+                 : "恢复后展示完整昵称与头像\n其他人可从榜单进入你的个人主页")
+                .font(.system(size: 12))
+                .lineSpacing(5)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.45))
+                .padding(.top, 10)
+
+            HStack(spacing: 10) {
+                Button { hidePrompt = nil } label: {
+                    Text("取消")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Capsule().fill(Color.white.opacity(0.05)))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+
+                Button {
+                    onSetHidden(hide)
+                    hidePrompt = nil
+                } label: {
+                    Group {
+                        if busy {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text(hide ? "确认隐藏" : "确认恢复")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Capsule().fill(LinearGradient(
+                        colors: [Color(red: 0xD9 / 255, green: 0x04 / 255, blue: 0x29 / 255), Noir.crimsonDeep, Noir.wine],
+                        startPoint: .leading, endPoint: .trailing)))
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+            }
+            .padding(.top, 20)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 26)
+        .background(LinearGradient(
+            colors: [
+                Color(red: 0x1B / 255, green: 0x0C / 255, blue: 0x12 / 255),
+                Color(red: 0x0A / 255, green: 0x07 / 255, blue: 0x0B / 255),
+            ],
+            startPoint: .topLeading, endPoint: .bottomTrailing))
+        .clipShape(RoundedRectangle(cornerRadius: 26))
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(Noir.gold.opacity(0.42), lineWidth: 1))
+        .padding(.horizontal, 34)
+        .contentShape(Rectangle())
+        .onTapGesture { /* 消费卡片内点击 */ }
+    }
+}
+
 // MARK: - 投票区：预热期倒计时 / 票池面板（对齐安卓 VoteArea / VoteSection）
 
-/// 单次请求票数上限：与服务端 AppPageantVoteReqVO @Max(100) 对齐，超出会被 400
+/// 购票单次张数上限：与服务端购票 @Max(100) 对齐（投票不再设单次固定上限）
 private let pageantMaxVotesPerRequest = 100
-/// 票池投票单次可选张数（步进器上限，对齐安卓 QtyStepper(max=5)）
-private let pageantVoteQtyCap = 5
 
 /// 投票区入口：活动未开始（start_time 在将来）时显示秒级开启倒计时，报名/展示不受影响
 private struct VoteArea: View {
@@ -548,6 +927,8 @@ private struct VoteSection: View {
 
     @State private var qty = 1
     @State private var orderType: PageantOrderType?
+    /// 票数不足：提示加票，确认后打开兔币购票
+    @State private var showBuyPrompt = false
 
     private var freeLeft: Int { activity.freeLeft ?? 0 }
     private var shareChances: Int { activity.shareChances ?? 0 }
@@ -583,6 +964,23 @@ private struct VoteSection: View {
                 .presentationDetents([.height(470)])
                 .presentationBackground(Color(red: 0x14 / 255, green: 0x14 / 255, blue: 0x1A / 255))
             }
+            // 票数不足 → 引导加票（确认后打开兔币购票半屏）
+            .alert("票数不足", isPresented: $showBuyPrompt) {
+                Button("去购票") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        orderType = PageantOrderType(id: "rabbit")
+                    }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text(total <= 0
+                     ? "当前没有可用的票。\n是否增加票数？购买兔币票后可继续为 TA 投票。"
+                     : "当前最多可投 \(total) 张票。\n是否增加票数？购买兔币票后可投更多。")
+            }
+            // 余量变化（投票/购票/轮询）后收敛输入，避免显示超过实际剩余
+            .onChange(of: total) { _, newTotal in
+                if qty > newTotal { qty = max(newTotal, 1) }
+            }
     }
 
     private var panel: some View {
@@ -607,10 +1005,15 @@ private struct VoteSection: View {
                         .minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 8)
-                QtyStepper(value: $qty, max: pageantVoteQtyCap, enabled: total > 0)
+                QtyStepper(value: $qty, max: total, enabled: total > 0,
+                           onOverflow: { showBuyPrompt = true })
                 Spacer().frame(width: 8)
-                PageantPoolVoteButton(enabled: total > 0 && !voting) {
-                    onVotePool(min(max(qty, 1), max(total, 1)))
+                PageantPoolVoteButton(dimmed: total <= 0) {
+                    if total <= 0 {
+                        showBuyPrompt = true
+                    } else {
+                        onVotePool(min(max(qty, 1), total))
+                    }
                 }
             }
 
@@ -687,9 +1090,9 @@ private struct VoteSection: View {
     }
 }
 
-/// 顶部投票按钮：复用 UI 稿红色底图，票池为空置灰
+/// 顶部投票按钮：复用 UI 稿红色底图，票池为空置灰（仍可点：弹加票提示）
 private struct PageantPoolVoteButton: View {
-    let enabled: Bool
+    let dimmed: Bool
     let action: () -> Void
 
     var body: some View {
@@ -702,18 +1105,17 @@ private struct PageantPoolVoteButton: View {
                 Image("vote_red_button")
                     .resizable()
                     .frame(width: 68, height: 40)
-                    .saturation(enabled ? 1 : 0)
-                    .opacity(enabled ? 1 : 0.5)
+                    .saturation(dimmed ? 0 : 1)
+                    .opacity(dimmed ? 0.5 : 1)
                 Text("投票")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(enabled ? Color.white : Color.white.opacity(0.5))
+                    .foregroundStyle(dimmed ? Color.white.opacity(0.5) : Color.white)
             }
             .frame(width: 68, height: 40)
             .clipShape(Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(PageantPressStyle(scale: 0.94))
-        .disabled(!enabled)
     }
 }
 
@@ -1090,15 +1492,24 @@ private struct QtyStepper: View {
     @Binding var value: Int
     let max: Int
     var enabled: Bool = true
+    /// 到达上限仍点 + 时回调（投票区用来弹「票数不足」；购票不传）
+    var onOverflow: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
             stepperBtn("-") { value = Swift.max(value - 1, 1) }
+                .disabled(!enabled || value <= 1)
             Text("\(value)")
                 .font(.system(size: 16))
                 .foregroundStyle(enabled ? Noir.ivory : Noir.ivory.opacity(0.3))
-                .frame(width: 36)
-            stepperBtn("+") { value = Swift.min(value + 1, Swift.max(max, 1)) }
+                .frame(width: 40)
+            stepperBtn("+") {
+                if value >= Swift.max(max, 1) {
+                    onOverflow?()
+                } else {
+                    value += 1
+                }
+            }
         }
     }
 

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 暗夜选美主页（对齐安卓 PageantHomeScreen）：
 /// 顶栏（今日可投） → 舞台 Hero（倒计时） → 参赛要求 → 我要参选 →
-/// 前三甲 → 全部参赛者 → 投票播报 → 我的资产
+/// 投票榜 TOP 50（一排 3 张左右滑） → 全部参赛者 → 投票播报 → 我的资产
 struct PageantHomeView: View {
 
     @StateObject private var vm = PageantHomeViewModel()
@@ -68,7 +68,7 @@ struct PageantHomeView: View {
                 heroStage(activity)
                 rulesCard(activity)
                 enterButton(activity)
-                podium
+                rankingCarousel
                 allEntriesHeader
                 entriesGrid
                 liveFeed
@@ -278,69 +278,85 @@ struct PageantHomeView: View {
         .padding(.top, 16)
     }
 
-    // MARK: - 前三甲（按票数取；选手列表整体按报名时间倒序）
+    // MARK: - 投票榜 TOP 50（一排 3 张，左右滑动；对齐安卓 V121b）
 
     @ViewBuilder
-    private var podium: some View {
-        let top3 = vm.entries.filter { $0.auditStatus == 1 }
+    private var rankingCarousel: some View {
+        let ranked = vm.entries.filter { $0.auditStatus == 1 }
             .sorted { ($0.votes ?? 0) > ($1.votes ?? 0) }
-            .prefix(3)
-        if top3.count == 3 {
-            HStack(alignment: .bottom, spacing: 12) {
-                podiumCard(top3[1], rank: 2, height: 120)
-                podiumCard(top3[0], rank: 1, height: 152)
-                podiumCard(top3[2], rank: 3, height: 120)
+            .prefix(50)
+        if !ranked.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .bottom, spacing: 0) {
+                    Text("投票榜")
+                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .foregroundStyle(Noir.ivory)
+                    Text("TOP 50")
+                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .foregroundStyle(Noir.goldLight)
+                        .padding(.leading, 6)
+                    Text("RANKING")
+                        .font(.system(size: 9, design: .serif).italic())
+                        .tracking(2.5)
+                        .foregroundStyle(.white.opacity(0.25))
+                        .padding(.leading, 10)
+                    Spacer()
+                    Text("左右滑动查看")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
+                .padding(.horizontal, 20)
+
+                let cardWidth = (UIScreen.main.bounds.width - 60) / 3
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 10) {
+                        ForEach(Array(ranked.enumerated()), id: \.element.id) { i, entry in
+                            rankingCard(entry, rank: i + 1, width: cardWidth)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
             }
-            .padding(.horizontal, 20)
             .padding(.top, 28)
         }
     }
 
-    private func podiumCard(_ entry: PageantEntry, rank: Int, height: CGFloat) -> some View {
-        let isChampion = rank == 1
-        return VStack(spacing: 0) {
-            if isChampion {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Noir.goldPale)
-                    .padding(.bottom, 4)
+    private func rankingCard(_ entry: PageantEntry, rank: Int, width: CGFloat) -> some View {
+        let champion = rank == 1
+        return ZStack(alignment: .topLeading) {
+            entryCover(entry)
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.25), location: 0),
+                    .init(color: .clear, location: 0.35),
+                    .init(color: .black.opacity(0.95), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom)
+            Text("N°\(rank)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.leading, 8)
+                .padding(.top, 7)
+            VStack(alignment: .leading, spacing: 3) {
+                Spacer()
+                Text(entry.nickname ?? "用户\(entry.userId)")
+                    .font(.system(size: 13, weight: .bold, design: .serif))
+                    .foregroundStyle(Noir.ivory)
+                    .lineLimit(1)
+                Text("\((entry.votes ?? 0).formatted()) 票")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.7))
             }
-            ZStack(alignment: .topLeading) {
-                entryCover(entry)
-                LinearGradient(colors: [.clear, .black.opacity(0.9)], startPoint: .top, endPoint: .bottom)
-                Text("N°\(rank)")
-                    .font(.system(size: isChampion ? 15 : 14, weight: .semibold, design: .serif))
-                    .foregroundStyle(isChampion ? AnyShapeStyle(Noir.goldText) : AnyShapeStyle(Color.white.opacity(0.7)))
-                    .padding(.leading, 8)
-                    .padding(.top, 6)
-                VStack(alignment: .leading, spacing: 2) {
-                    Spacer()
-                    Text(entry.nickname ?? "用户\(entry.userId)")
-                        .font(.system(size: isChampion ? 15 : 13, weight: .bold, design: .serif))
-                        .foregroundStyle(Noir.ivory)
-                        .lineLimit(1)
-                    ActivityVipChip(
-                        vipLevel: entry.vipLevel,
-                        vipLevelColor: entry.vipLevelColor,
-                        levelInTier: entry.levelInTier,
-                        fontSize: isChampion ? 8 : 7.5,
-                        showLevel: false
-                    )
-                    Text("\(entry.votes ?? 0) 票")
-                        .font(.system(size: isChampion ? 12 : 11, weight: .semibold, design: .serif))
-                        .foregroundStyle(isChampion ? AnyShapeStyle(Noir.goldText) : AnyShapeStyle(Noir.gold))
-                }
-                .padding(10)
-            }
-            .frame(height: height)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(
-                isChampion ? Noir.goldPale.opacity(0.75) : Noir.gold.opacity(0.4),
-                lineWidth: isChampion ? 1.5 : 1))
-            .contentShape(Rectangle())
-            .onTapGesture { openEntryId = entry.id }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 9)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: width, height: width * 1.6)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+            champion ? Noir.goldPale.opacity(0.85) : Noir.gold.opacity(0.3),
+            lineWidth: champion ? 1.2 : 0.8))
+        .contentShape(Rectangle())
+        .onTapGesture { openEntryId = entry.id }
     }
 
     /// 作品封面：视频显示封面图，否则第一张图

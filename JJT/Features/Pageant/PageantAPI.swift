@@ -8,6 +8,8 @@ struct PageantActivity: Decodable {
     let nameEn: String?
     let seasonTag: String?
     let cover: String?
+    /// 分享海报底图（941×1672，后台可换；nil=内置模板）
+    let shareImage: String?
     let rules: String?
     /// 开始时间（epoch 毫秒；nil 不限）
     let startTime: Int64?
@@ -29,6 +31,8 @@ struct PageantActivity: Decodable {
     let carrotBalance: Int64?
     let rabbitBalance: Int64?
     let myEntryId: Int64?
+    /// 我是否已隐藏投票信息（贡献榜/最近投票）
+    let voterHidden: Bool?
     // ---- 票池（购票入库后统一投票；对齐安卓 PageantActivity pool 字段） ----
     /// 免费票剩余（每日重置）
     let freeLeft: Int?
@@ -89,8 +93,13 @@ struct PageantEntryDetail: Decodable {
     let rank: Int?
     let gapVotes: Int64?
     let recentVoters: [Voter]?
+    /// 投票贡献榜前三（入口卡头像堆叠）
+    let topVoters: [Voter]?
 
     struct Voter: Decodable {
+        /// 已隐藏且非本人时服务端不下发
+        let userId: Int64?
+        /// 隐藏后为「首字***」
         let nickname: String?
         let avatar: String?
         let avatarFrame: String?
@@ -98,8 +107,11 @@ struct PageantEntryDetail: Decodable {
         let vipLevel: String?
         let vipLevelColor: String?
         let levelInTier: Int?
-        let votes: Int?
+        /// 贡献榜为累计票数，最近投票为单次票数
+        let votes: Int64?
         let timeText: String?
+        let mine: Bool?
+        let hidden: Bool?
     }
 }
 
@@ -160,6 +172,17 @@ enum PageantAPI {
 
     static func entryDetail(id: Int64) async throws -> PageantEntryDetail {
         try await APIClient.shared.get("app-api/member/pageant/entry", query: ["id": "\(id)"])
+    }
+
+    /// 投票贡献榜（按投票人聚合累计票数倒序）
+    static func entryVoters(id: Int64) async throws -> [PageantEntryDetail.Voter] {
+        try await APIClient.shared.get("app-api/member/pageant/entry/voters", query: ["id": "\(id)"])
+    }
+
+    /// 隐藏/恢复我的投票信息
+    static func setVoterHidden(_ hidden: Bool) async throws -> Bool {
+        try await APIClient.shared.put("app-api/member/pageant/voter-hidden",
+                                       query: ["hidden": hidden ? "true" : "false"])
     }
 
     static func myEntry() async throws -> PageantEntry? {
