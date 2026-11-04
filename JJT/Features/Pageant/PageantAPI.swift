@@ -73,6 +73,13 @@ struct PageantEntry: Decodable, Identifiable {
     let auditRemark: String?
 }
 
+struct PageantEntryRealtime: Decodable {
+    let entryId: Int64
+    let votes: Int64?
+    let rank: Int?
+    let gapVotes: Int64?
+}
+
 struct PageantEntryDetail: Decodable {
     let id: Int64
     let entryNo: Int?
@@ -88,10 +95,10 @@ struct PageantEntryDetail: Decodable {
     let video: String?
     let videoCover: String?
     let line: String?
-    let votes: Int64?
+    var votes: Int64?
     let mine: Bool?
-    let rank: Int?
-    let gapVotes: Int64?
+    var rank: Int?
+    var gapVotes: Int64?
     let recentVoters: [Voter]?
     /// 投票贡献榜前三（入口卡头像堆叠）
     let topVoters: [Voter]?
@@ -172,6 +179,10 @@ enum PageantAPI {
 
     static func entryDetail(id: Int64) async throws -> PageantEntryDetail {
         try await APIClient.shared.get("app-api/member/pageant/entry", query: ["id": "\(id)"])
+    }
+
+    static func entryRealtime(id: Int64) async throws -> PageantEntryRealtime {
+        try await APIClient.shared.get("app-api/member/pageant/entry/realtime", query: ["id": "\(id)"])
     }
 
     /// 投票贡献榜（按投票人聚合累计票数倒序）

@@ -13,21 +13,22 @@ struct PageantEntryView: View {
     var body: some View {
         ZStack {
             Noir.noir.ignoresSafeArea()
-            if pager.isLoading {
-                ProgressView().tint(Noir.crimson).scaleEffect(1.3)
-            } else if pager.entries.isEmpty {
-                Text("暂无参赛作品")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.4))
-            } else {
+            if pager.entries.contains(where: { $0.id == entryId }) {
                 TabView(selection: $selection) {
                     ForEach(pager.entries.indices, id: \.self) { i in
-                        PageantEntryPage(entryId: pager.entries[i].id, active: selection == i, onBack: { dismiss() })
+                        PageantEntryPage(entryId: pager.entries[i].id, active: selection == i,
+                                         onBack: { dismiss() }, vm: pager.model(for: pager.entries[i].id))
                             .tag(i)
+                            .id("pageant-entry-\(pager.entries[i].id)")
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .ignoresSafeArea()
+            } else {
+                // 榜单加载期间/失败或往期深链：当前作品先显示，不被全量 entries 门控
+                PageantEntryPage(entryId: entryId, active: true, onBack: { dismiss() },
+                                 vm: pager.model(for: entryId))
+                    .id("pageant-entry-\(entryId)")
             }
         }
         .task {
@@ -41,6 +42,15 @@ struct PageantEntryView: View {
 private final class PageantPagerModel: ObservableObject {
     @Published var entries: [PageantEntry] = []
     @Published var isLoading = false
+    private var models: [Int64: PageantEntryModel] = [:]
+
+    /// 单页 → TabView 及来回翻页都复用同一作品 VM，避免结构变化触发重复首载。
+    func model(for entryId: Int64) -> PageantEntryModel {
+        if let existing = models[entryId] { return existing }
+        let created = PageantEntryModel()
+        models[entryId] = created
+        return created
+    }
 
     func load() async {
         guard !isLoading, entries.isEmpty else { return }
@@ -68,24 +78,88 @@ private final class PageantEntryModel: ObservableObject {
     /// 我是否已隐藏投票信息（服务端为准）
     @Published var voterHidden = false
     @Published var voterHiddenBusy = false
+    @Published var loadError: String?
+    @Published var activityLoadFailed = false
 
-    func load(_ entryId: Int64) async {
-        isLoading = true
-        detail = try? await PageantAPI.entryDetail(id: entryId)
-        let a = try? await PageantAPI.activity()
-        activity = a
-        if let v = a?.voterHidden { voterHidden = v }
-        isLoading = false
+    private var snapshotGeneration = 0
+    private var snapshotInFlight = false
+    private var realtimeInFlight = false
+    private var lastSnapshotAt = Date.distantPast
+
+    /// 首载/完整快照：详情与活动并行，详情先发布；操作后的强制刷新采用 latest-wins。
+    func load(_ entryId: Int64, force: Bool = false) async {
+        if !force {
+            // 单页/TabView 切换会取消旧 .task：等待在途首载结束，成功复用、失败自动重试
+            while snapshotInFlight && !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            if Task.isCancelled { return }
+            if detail != nil && activity != nil { return }
+        }
+        snapshotGeneration += 1
+        let generation = snapshotGeneration
+        snapshotInFlight = true
+        isLoading = detail == nil
+        loadError = nil
+        activityLoadFailed = false
+        defer {
+            if generation == snapshotGeneration { snapshotInFlight = false }
+        }
+
+        async let detailResult = try? PageantAPI.entryDetail(id: entryId)
+        async let activityResult = try? PageantAPI.activity()
+
+        let d = await detailResult
+        if generation == snapshotGeneration {
+            if let d {
+                detail = d
+            } else if detail == nil {
+                loadError = "作品加载失败，请检查网络后重试"
+            }
+            isLoading = false
+        }
+
+        let a = await activityResult
+        if generation == snapshotGeneration {
+            if let a {
+                activity = a
+                if let v = a.voterHidden { voterHidden = v }
+            }
+            activityLoadFailed = a == nil && activity == nil
+            if d != nil && a != nil { lastSnapshotAt = Date() }
+        }
     }
 
-    /// 轮询静默刷新（不动 isLoading，不闪加载态）
-    func refreshSilent(_ entryId: Int64) async {
-        guard let d = try? await PageantAPI.entryDetail(id: entryId) else { return }
-        detail = d
-        if let a = try? await PageantAPI.activity() {
-            activity = a
-            if let v = a.voterHidden { voterHidden = v }
+    /// 4 秒轻量轮询：只更新票数/名次/差票；完整快照开始后丢弃旧实时结果。
+    func refreshRealtime(_ entryId: Int64) async {
+        guard detail != nil, !snapshotInFlight, !realtimeInFlight else { return }
+        realtimeInFlight = true
+        let generation = snapshotGeneration
+        defer { realtimeInFlight = false }
+        guard let realtime = try? await PageantAPI.entryRealtime(id: entryId),
+              generation == snapshotGeneration,
+              var updated = detail,
+              updated.id == realtime.entryId else { return }
+        updated.votes = realtime.votes ?? updated.votes
+        updated.rank = realtime.rank ?? updated.rank
+        updated.gapVotes = realtime.gapVotes ?? updated.gapVotes
+        detail = updated
+    }
+
+    /// 回前台/单页切 Pager：先等在途任务收尾，成功不重复、失败立即重试。
+    func refreshSnapshotIfStale(_ entryId: Int64) async {
+        while snapshotInFlight && !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
+        if Task.isCancelled { return }
+        guard Date().timeIntervalSince(lastSnapshotAt) >= 30 else { return }
+        await refreshSnapshot(entryId)
+    }
+
+    /// 30 秒完整快照；首载仍在途时不叠加。
+    func refreshSnapshot(_ entryId: Int64) async {
+        guard !snapshotInFlight else { return }
+        await load(entryId, force: true)
     }
 
     /// 拉取投票贡献榜全量（弹层打开时调用；不占用详情轮询）
@@ -108,7 +182,7 @@ private final class PageantEntryModel: ObservableObject {
             _ = try await PageantAPI.setVoterHidden(hidden)
             voterHidden = hidden
             jjtShowToast(hidden ? "已隐藏我的投票信息" : "已恢复我的投票信息")
-            await load(entryId)
+            await load(entryId, force: true)
             await loadVoterBoard(entryId)
         } catch let e as APIError {
             if case .business(_, let msg) = e { jjtShowToast(msg) } else { jjtShowToast("网络异常") }
@@ -130,7 +204,7 @@ private final class PageantEntryModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: 1_600_000_000)
                     burst = 0
                 }
-                await load(entryId)
+                await load(entryId, force: true)
             } catch let e as APIError {
                 if case .business(_, let msg) = e {
                     error = msg
@@ -150,7 +224,7 @@ private final class PageantEntryModel: ObservableObject {
         _ = try await PageantAPI.purchaseTicket(
             PageantTicketPurchaseReq(type: type, count: count, payPassword: payPassword))
         jjtShowToast("购票成功，已加入票池")
-        await load(entryId)
+        await load(entryId, force: true)
     }
 
     /// 分享得机会：海报拉起系统分享 5 秒后再确认到账并提示（对齐安卓 shareEarn）
@@ -160,7 +234,7 @@ private final class PageantEntryModel: ObservableObject {
             do {
                 _ = try await PageantAPI.shareEarn(entryId: entryId)
                 jjtShowToast("分享成功，获得 1 次投票机会")
-                await load(entryId)
+                await load(entryId, force: true)
             } catch let e as APIError {
                 if case .business(_, let msg) = e { jjtShowToast(msg) }
             } catch { /* 静默 */ }
@@ -175,8 +249,9 @@ private struct PageantEntryPage: View {
     let entryId: Int64
     let active: Bool
     let onBack: () -> Void
+    @Environment(\.scenePhase) private var scenePhase
 
-    @StateObject private var vm = PageantEntryModel()
+    @ObservedObject var vm: PageantEntryModel
     @State private var showVideoPlayer = false
     @State private var posterSharing = false
     @State private var showCarrotTask = false
@@ -191,34 +266,50 @@ private struct PageantEntryPage: View {
     /// 点击参赛者头像打开的他人主页
     @State private var profileId: Int64?
 
+    private var pollingID: String { "\(active)-\(scenePhase)" }
+
     var body: some View {
         ZStack {
             Noir.noir.ignoresSafeArea()
 
-            if let detail = vm.detail, let activity = vm.activity {
+            if let detail = vm.detail {
                 ScrollView {
                     VStack(spacing: 0) {
                         hero(detail)
-                        VoteArea(
-                            activity: activity,
-                            voting: vm.voting,
-                            shareBusy: posterSharing,
-                            onVotePool: { n in vm.voteFromPool(entryId: entryId, votes: n) },
-                            onPurchase: { type, count, pwd in
-                                try await vm.purchase(entryId: entryId, type: type, count: count, payPassword: pwd)
-                            },
-                            onCarrotInsufficient: { showCarrotTask = true },
-                            onNeedRecharge: { showRecharge = true },
-                            onShare: { sharePoster(detail, activity) }
-                        )
+                        if let activity = vm.activity {
+                            VoteArea(
+                                activity: activity,
+                                voting: vm.voting,
+                                shareBusy: posterSharing,
+                                onVotePool: { n in vm.voteFromPool(entryId: entryId, votes: n) },
+                                onPurchase: { type, count, pwd in
+                                    try await vm.purchase(entryId: entryId, type: type, count: count, payPassword: pwd)
+                                },
+                                onCarrotInsufficient: { showCarrotTask = true },
+                                onNeedRecharge: { showRecharge = true },
+                                onShare: { sharePoster(detail, activity) }
+                            )
+                        } else {
+                            PageantActivityVotePlaceholder(failed: vm.activityLoadFailed) {
+                                Task { await vm.load(entryId, force: true) }
+                            }
+                        }
                         voterBoardEntryCard(detail)
                         recentVoters(detail)
                         Spacer().frame(height: 40)
                     }
                 }
                 .ignoresSafeArea(edges: .top)
-            } else {
+            } else if vm.isLoading || vm.loadError == nil {
                 ProgressView().tint(Noir.crimson).scaleEffect(1.3)
+            } else {
+                VStack(spacing: 12) {
+                    Text(vm.loadError ?? "作品暂不可用")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.55))
+                    Button("重试") { Task { await vm.load(entryId, force: true) } }
+                        .foregroundStyle(Noir.goldLight)
+                }
             }
 
             // +N 爆发动效
@@ -252,11 +343,22 @@ private struct PageantEntryPage: View {
         .onChange(of: showVoterBoard) { _, open in
             if open { Task { await vm.loadVoterBoard(entryId) } }
         }
-        // 当前停留页 4 秒轮询：别人的投票实时可见（静默刷新）
-        .task {
+        // 仅当前页且前台 active：独立 4 秒轻量票数与 30 秒完整快照，回前台按新旧补一轮
+        .task(id: pollingID) {
+            guard active, scenePhase == .active else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
-                if active { await vm.refreshSilent(entryId) }
+                if Task.isCancelled { break }
+                await vm.refreshRealtime(entryId)
+            }
+        }
+        .task(id: pollingID) {
+            guard active, scenePhase == .active else { return }
+            await vm.refreshSnapshotIfStale(entryId)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                if Task.isCancelled { break }
+                await vm.refreshSnapshot(entryId)
             }
         }
         .alert("提示", isPresented: Binding(
@@ -282,7 +384,7 @@ private struct PageantEntryPage: View {
         .fullScreenCover(isPresented: $showTaskCenter) { TaskCenterView() }
         .fullScreenCover(isPresented: $showRecharge, onDismiss: {
             // 充值回来刷新票池/余额
-            Task { await vm.load(entryId) }
+            Task { await vm.load(entryId, force: true) }
         }) { CoinRechargeView() }
         .fullScreenCover(isPresented: $showVideoPlayer) {
             if let video = vm.detail?.video, let url = webImageURL(video) {
@@ -620,6 +722,32 @@ private struct PageantEntryPage: View {
         while let presented = top.presentedViewController { top = presented }
         let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
         top.present(vc, animated: true)
+    }
+}
+
+/// 活动未回时只占位/禁用投票区，不阻塞作品详情。
+private struct PageantActivityVotePlaceholder: View {
+    let failed: Bool
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if failed {
+                Text("活动信息加载失败")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.5))
+                Button("重试", action: onRetry)
+                    .foregroundStyle(Noir.goldLight)
+            } else {
+                ProgressView().tint(Noir.crimson)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 96)
+        .background(Noir.noir2)
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
     }
 }
 
