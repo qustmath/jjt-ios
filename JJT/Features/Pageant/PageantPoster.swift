@@ -10,8 +10,9 @@ enum PageantPoster {
 
     /// 内置模板照片槽（模板像素实测，对齐安卓）
     private static let builtinEllipse = CGRect(x: 209, y: 592, width: 740 - 209, height: 1384 - 592)
-    /// 后台自定义底图照片槽（Halloween 模板白色椭圆内缘实测，避免残留白边）
-    private static let customEllipse = CGRect(x: 171, y: 490, width: 759 - 171, height: 1390 - 490)
+    /// 后台自定义底图照片槽（Halloween 模板白色圆角矩形内缘实测）
+    private static let customRect = CGRect(x: 162, y: 465, width: 768 - 162, height: 1390 - 465)
+    private static let customCorner: CGFloat = 120
     /// 二维码槽内嵌区（居中 124 方形码）
     private static let qrRect = CGRect(x: 730, y: 1331, width: 854 - 730, height: 1455 - 1331)
     /// 号码颜色（与模板「参赛号」文字同色）
@@ -29,8 +30,13 @@ enum PageantPoster {
             return nil
         }
         let photo = await loadImage(detail.images?.first)
-        // 自定义底图的白色照片槽比内置模板更大/更靠上，沿用内置坐标会露出白边
-        let photoEllipse = (activity.shareImage?.isEmpty == false) ? customEllipse : builtinEllipse
+        // 自定义底图的白色照片槽是「圆角矩形」（比内置椭圆更大/更靠上），
+        // 沿用椭圆会露出四角白边；内置模板仍走椭圆。
+        let isCustom = activity.shareImage?.isEmpty == false
+        let photoRect = isCustom ? customRect : builtinEllipse
+        let photoPath: UIBezierPath = isCustom
+            ? UIBezierPath(roundedRect: photoRect, cornerRadius: customCorner)
+            : UIBezierPath(ovalIn: photoRect)
         let qr = qrCodeImage(qrContent, side: qrRect.width * 4) // 4 倍超采样，保证小尺寸可扫
         let noText = String(format: "No.%03d", detail.entryNo ?? Int(detail.id))
 
@@ -42,9 +48,9 @@ enum PageantPoster {
             // ---- 椭圆槽：参赛者照片（center-crop + 椭圆裁剪） ----
             if let photo {
                 ctx.cgContext.saveGState()
-                ctx.cgContext.addEllipse(in: photoEllipse)
+                ctx.cgContext.addPath(photoPath.cgPath)
                 ctx.cgContext.clip()
-                drawCover(photo, in: photoEllipse)
+                drawCover(photo, in: photoRect)
                 ctx.cgContext.restoreGState()
             }
 
